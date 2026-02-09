@@ -19,7 +19,7 @@ pub async fn refresh_token(
         return Err(Error::MissingCredential("refresh_token".into()));
     }
 
-    let url = kiro_refresh_url(&token_info.region);
+    let url = kiro_refresh_url(&token_info.region)?;
     info!("Refreshing token via Kiro Desktop Auth...");
 
     let payload = serde_json::json!({
@@ -31,7 +31,7 @@ pub async fn refresh_token(
         .header("Content-Type", "application/json")
         .header(
             "User-Agent",
-            format!("{}-{}", super::constants::KIRO_IDE_VERSION, fingerprint),
+            super::constants::amz_user_agent(fingerprint),
         )
         .json(&payload)
         .send()

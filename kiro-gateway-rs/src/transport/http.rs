@@ -11,6 +11,8 @@ use crate::transport::headers;
 /// HTTP client for Kiro API with retry and refresh logic.
 pub struct KiroHttpClient {
     client: reqwest::Client,
+    /// Persistent client for streaming requests (no default timeout).
+    stream_client: reqwest::Client,
     auth: std::sync::Arc<KiroAuthManager>,
 }
 
@@ -23,12 +25,22 @@ impl KiroHttpClient {
             .build()
             .expect("Failed to build HTTP client");
 
-        Self { client, auth }
+        let stream_client = reqwest::Client::builder()
+            .connect_timeout(CONNECT_TIMEOUT)
+            .build()
+            .expect("Failed to build streaming HTTP client");
+
+        Self { client, stream_client, auth }
     }
 
     /// Create with a custom reqwest client.
     pub fn with_client(client: reqwest::Client, auth: std::sync::Arc<KiroAuthManager>) -> Self {
-        Self { client, auth }
+        let stream_client = reqwest::Client::builder()
+            .connect_timeout(CONNECT_TIMEOUT)
+            .build()
+            .expect("Failed to build streaming HTTP client");
+
+        Self { client, stream_client, auth }
     }
 
     /// Send a POST request with automatic retry and token refresh.
@@ -147,13 +159,7 @@ impl KiroHttpClient {
             let fingerprint = self.auth.fingerprint();
             let hdrs = headers::kiro_streaming_headers(&token, fingerprint);
 
-            // Build a client without default timeout for streaming
-            let stream_client = reqwest::Client::builder()
-                .connect_timeout(CONNECT_TIMEOUT)
-                .build()
-                .map_err(Error::Network)?;
-
-            let response = stream_client
+            let response = self.stream_client
                 .post(url)
                 .headers(hdrs)
                 .json(body)

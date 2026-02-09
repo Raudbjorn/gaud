@@ -12,7 +12,7 @@ pub async fn raw_request(
     profile_arn: Option<&str>,
     payload: &serde_json::Value,
 ) -> Result<String> {
-    let url = crate::config::generate_assistant_response_url(region, profile_arn);
+    let url = crate::config::generate_assistant_response_url(region, profile_arn)?;
 
     let response = http.post_with_retry(&url, payload).await?;
     let text = response
@@ -30,6 +30,6 @@ pub async fn raw_request_stream(
     profile_arn: Option<&str>,
     payload: &serde_json::Value,
 ) -> Result<reqwest::Response> {
-    let url = crate::config::generate_assistant_response_url(region, profile_arn);
+    let url = crate::config::generate_assistant_response_url(region, profile_arn)?;
     http.post_streaming(&url, payload).await
 }

@@ -12,7 +12,7 @@ pub async fn list_models(
     region: &str,
     profile_arn: Option<&str>,
 ) -> Result<Vec<String>> {
-    let url = config::list_models_url(region, profile_arn);
+    let url = config::list_models_url(region, profile_arn)?;
     info!("Fetching available models from {}", url);
 
     match http.get(&url).await {

@@ -48,26 +48,16 @@ impl FileTokenStorage {
 
         let content =
             serde_json::to_string_pretty(data).map_err(|e| Error::StorageSerialization(e.to_string()))?;
+        std::fs::write(&self.path, &content)
+            .map_err(|e| Error::storage_io(&self.path, e.to_string()))?;
 
-        // Write file with restrictive permissions from the start (no race condition).
+        // Set 0600 permissions on Unix
         #[cfg(unix)]
         {
-            use std::io::Write;
-            use std::os::unix::fs::OpenOptionsExt;
-            let mut file = std::fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .mode(0o600)
-                .open(&self.path)
-                .map_err(|e| Error::storage_io(&self.path, e.to_string()))?;
-            file.write_all(content.as_bytes())
-                .map_err(|e| Error::storage_io(&self.path, e.to_string()))?;
-        }
-        #[cfg(not(unix))]
-        {
-            std::fs::write(&self.path, &content)
-                .map_err(|e| Error::storage_io(&self.path, e.to_string()))?;
+            use std::os::unix::fs::PermissionsExt;
+            let perms = std::fs::Permissions::from_mode(0o600);
+            std::fs::set_permissions(&self.path, perms)
+                .map_err(|e| Error::storage_io(&self.path, format!("chmod: {}", e)))?;
         }
 
         debug!(path = %self.path.display(), "Token saved");

@@ -55,42 +55,79 @@ pub const KIRO_API_HOST_TEMPLATE: &str = "https://q.{region}.amazonaws.com";
 /// Kiro API origin query param.
 pub const API_ORIGIN: &str = "AI_EDITOR";
 
+/// Validate that a region string matches the expected AWS region format.
+///
+/// Valid format: `xx-xxxx-N` (e.g., `us-east-1`, `eu-west-2`, `ap-southeast-1`).
+fn validate_region(region: &str) -> Result<(), crate::error::Error> {
+    use std::sync::LazyLock;
+    static REGION_RE: LazyLock<regex_lite::Regex> =
+        LazyLock::new(|| regex_lite::Regex::new(r"^[a-z]{2}-[a-z]+-\d+$").unwrap());
+    if REGION_RE.is_match(region) {
+        Ok(())
+    } else {
+        Err(crate::error::Error::Config(format!(
+            "Invalid AWS region format: '{}' (expected pattern like 'us-east-1')",
+            region
+        )))
+    }
+}
+
+/// Percent-encode a string for use in URL query parameters.
+fn url_encode(s: &str) -> String {
+    // Encode characters that are not unreserved per RFC 3986
+    let mut encoded = String::with_capacity(s.len() * 3);
+    for byte in s.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(byte as char);
+            }
+            _ => {
+                encoded.push_str(&format!("%{:02X}", byte));
+            }
+        }
+    }
+    encoded
+}
+
 /// Returns the Kiro Desktop Auth refresh URL for the given region.
-pub fn kiro_refresh_url(region: &str) -> String {
-    KIRO_REFRESH_URL_TEMPLATE.replace("{region}", region)
+pub fn kiro_refresh_url(region: &str) -> Result<String, crate::error::Error> {
+    validate_region(region)?;
+    Ok(KIRO_REFRESH_URL_TEMPLATE.replace("{region}", region))
 }
 
 /// Returns the AWS SSO OIDC token URL for the given region.
-pub fn aws_sso_oidc_url(region: &str) -> String {
-    AWS_SSO_OIDC_URL_TEMPLATE.replace("{region}", region)
+pub fn aws_sso_oidc_url(region: &str) -> Result<String, crate::error::Error> {
+    validate_region(region)?;
+    Ok(AWS_SSO_OIDC_URL_TEMPLATE.replace("{region}", region))
 }
 
 /// Returns the Kiro API host for the given region.
-pub fn kiro_api_host(region: &str) -> String {
-    KIRO_API_HOST_TEMPLATE.replace("{region}", region)
+pub fn kiro_api_host(region: &str) -> Result<String, crate::error::Error> {
+    validate_region(region)?;
+    Ok(KIRO_API_HOST_TEMPLATE.replace("{region}", region))
 }
 
 /// Returns the generateAssistantResponse URL for the given region.
-pub fn generate_assistant_response_url(region: &str, profile_arn: Option<&str>) -> String {
-    let host = kiro_api_host(region);
+pub fn generate_assistant_response_url(region: &str, profile_arn: Option<&str>) -> Result<String, crate::error::Error> {
+    let host = kiro_api_host(region)?;
     match profile_arn {
-        Some(arn) => format!(
+        Some(arn) => Ok(format!(
             "{}/generateAssistantResponse?origin={}&profileArn={}",
-            host, API_ORIGIN, arn
-        ),
-        None => format!("{}/generateAssistantResponse?origin={}", host, API_ORIGIN),
+            host, API_ORIGIN, url_encode(arn)
+        )),
+        None => Ok(format!("{}/generateAssistantResponse?origin={}", host, API_ORIGIN)),
     }
 }
 
 /// Returns the ListAvailableModels URL for the given region.
-pub fn list_models_url(region: &str, profile_arn: Option<&str>) -> String {
-    let host = kiro_api_host(region);
+pub fn list_models_url(region: &str, profile_arn: Option<&str>) -> Result<String, crate::error::Error> {
+    let host = kiro_api_host(region)?;
     match profile_arn {
-        Some(arn) => format!(
+        Some(arn) => Ok(format!(
             "{}/ListAvailableModels?origin={}&profileArn={}",
-            host, API_ORIGIN, arn
-        ),
-        None => format!("{}/ListAvailableModels?origin={}", host, API_ORIGIN),
+            host, API_ORIGIN, url_encode(arn)
+        )),
+        None => Ok(format!("{}/ListAvailableModels?origin={}", host, API_ORIGIN)),
     }
 }
 
@@ -108,4 +145,54 @@ pub fn fallback_models() -> Vec<&'static str> {
         "claude-sonnet-4.5",
         "claude-opus-4.5",
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_region_valid() {
+        assert!(validate_region("us-east-1").is_ok());
+        assert!(validate_region("eu-west-2").is_ok());
+        assert!(validate_region("ap-southeast-1").is_ok());
+    }
+
+    #[test]
+    fn test_validate_region_invalid() {
+        assert!(validate_region("invalid").is_err());
+        assert!(validate_region("US-EAST-1").is_err());
+        assert!(validate_region("us-east-").is_err());
+        assert!(validate_region("../etc/passwd").is_err());
+        assert!(validate_region("us-east-1; DROP TABLE").is_err());
+    }
+
+    #[test]
+    fn test_url_encode_arn() {
+        let arn = "arn:aws:q:us-east-1:123456789012:profile/abc-123";
+        let encoded = url_encode(arn);
+        assert!(encoded.contains("%3A")); // colons encoded
+        assert!(encoded.contains("%2F")); // slashes encoded
+        assert!(!encoded.contains(':'));
+        assert!(!encoded.contains('/'));
+    }
+
+    #[test]
+    fn test_generate_url_encodes_arn() {
+        let url = generate_assistant_response_url("us-east-1", Some("arn:aws:q:us-east-1:123:profile/x")).unwrap();
+        assert!(!url.contains("arn:aws")); // raw ARN should not appear
+        assert!(url.contains("profileArn=arn%3Aaws"));
+    }
+
+    #[test]
+    fn test_generate_url_no_arn() {
+        let url = generate_assistant_response_url("us-east-1", None).unwrap();
+        assert!(!url.contains("profileArn"));
+    }
+
+    #[test]
+    fn test_invalid_region_rejected() {
+        assert!(generate_assistant_response_url("evil-region; DROP", None).is_err());
+        assert!(kiro_refresh_url("../hack").is_err());
+    }
 }

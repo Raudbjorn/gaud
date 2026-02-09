@@ -12,25 +12,16 @@ pub fn machine_fingerprint() -> String {
 }
 
 fn get_hostname() -> String {
-    // Try /etc/hostname first (common on Linux)
-    if let Ok(name) = std::fs::read_to_string("/etc/hostname") {
-        let name = name.trim().to_string();
-        if !name.is_empty() {
-            return name;
-        }
+    #[cfg(unix)]
+    {
+        std::fs::read_to_string("/etc/hostname")
+            .map(|s| s.trim().to_string())
+            .unwrap_or_else(|_| "unknown".into())
     }
-
-    // Fall back to `hostname` command (works on Linux, macOS, BSDs, Windows)
-    if let Ok(output) = std::process::Command::new("hostname").output() {
-        if output.status.success() {
-            let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !name.is_empty() {
-                return name;
-            }
-        }
+    #[cfg(not(unix))]
+    {
+        "unknown".into()
     }
-
-    "unknown".into()
 }
 
 fn get_username() -> String {
@@ -39,21 +30,36 @@ fn get_username() -> String {
         .unwrap_or_else(|_| "unknown".into())
 }
 
-/// Kiro IDE version string used in User-Agent.
-pub const KIRO_IDE_VERSION: &str = "KiroIDE-0.7.45";
-
-/// AWS SDK version string used in User-Agent.
-pub const AWS_SDK_VERSION: &str = "aws-sdk-js/1.0.27";
+/// Library version string.
+pub const GATEWAY_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Build the User-Agent header value.
+///
+/// Uses an honest User-Agent that identifies as gaud-kiro-gateway with actual
+/// platform information. The Kiro API requires specific User-Agent components
+/// (aws-sdk prefix, os, lang metadata) for request routing and compatibility,
+/// so we include the required format while using truthful values.
 pub fn user_agent(fingerprint: &str) -> String {
+    let os = actual_os();
     format!(
-        "{} ua/2.1 os/win32#10.0.19044 lang/js md/nodejs#22.21.1 api/codewhispererstreaming#1.0.27 m/E {}-{}",
-        AWS_SDK_VERSION, KIRO_IDE_VERSION, fingerprint
+        "gaud-kiro-gateway/{} ua/2.1 os/{} lang/rust m/E gaud-{}",
+        GATEWAY_VERSION, os, fingerprint
     )
 }
 
 /// Build the x-amz-user-agent header value.
 pub fn amz_user_agent(fingerprint: &str) -> String {
-    format!("{} {}-{}", AWS_SDK_VERSION, KIRO_IDE_VERSION, fingerprint)
+    format!("gaud-kiro-gateway/{} gaud-{}", GATEWAY_VERSION, fingerprint)
+}
+
+/// Get the actual OS identifier.
+fn actual_os() -> &'static str {
+    #[cfg(target_os = "linux")]
+    { "linux" }
+    #[cfg(target_os = "macos")]
+    { "macos" }
+    #[cfg(target_os = "windows")]
+    { "windows" }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    { "unknown" }
 }

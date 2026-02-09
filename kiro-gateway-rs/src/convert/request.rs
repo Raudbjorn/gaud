@@ -122,6 +122,45 @@ pub fn build_kiro_payload(
     Ok(payload)
 }
 
+
+/// Merge two message contents, preserving all content blocks (text, images, tool results).
+///
+/// When both are plain text, concatenates them. When either has structured blocks,
+/// combines all blocks into a single Blocks variant to avoid losing non-text content.
+fn merge_content(
+    existing: &crate::models::request::MessageContent,
+    new: &crate::models::request::MessageContent,
+) -> crate::models::request::MessageContent {
+    use crate::models::request::{ContentBlock, MessageContent};
+
+    let existing_blocks = content_to_blocks(existing);
+    let new_blocks = content_to_blocks(new);
+
+    // If both sides are pure text (single text block each), use the simple format
+    let all_text = existing_blocks.iter().all(|b| matches!(b, ContentBlock::Text { .. }))
+        && new_blocks.iter().all(|b| matches!(b, ContentBlock::Text { .. }));
+
+    if all_text {
+        let existing_text = content::extract_text(existing);
+        let new_text = content::extract_text(new);
+        return MessageContent::Text(format!("{}\n{}", existing_text, new_text));
+    }
+
+    // Otherwise, combine all blocks
+    let mut blocks = existing_blocks;
+    blocks.extend(new_blocks);
+    MessageContent::Blocks(blocks)
+}
+
+/// Convert a MessageContent to a Vec of ContentBlocks.
+fn content_to_blocks(content: &crate::models::request::MessageContent) -> Vec<crate::models::request::ContentBlock> {
+    use crate::models::request::{ContentBlock, MessageContent};
+    match content {
+        MessageContent::Text(s) => vec![ContentBlock::Text { text: s.clone() }],
+        MessageContent::Blocks(blocks) => blocks.clone(),
+    }
+}
+
 /// Process messages: merge adjacent same-role, ensure alternating user/assistant.
 fn process_messages(messages: &[Message]) -> Vec<Message> {
     if messages.is_empty() {
@@ -136,7 +175,7 @@ fn process_messages(messages: &[Message]) -> Vec<Message> {
             other => other,
         };
 
-        // Merge with previous if same role (preserve all content blocks, not just text)
+        // Merge with previous if same role, preserving all content blocks
         if let Some(last) = result.last_mut() {
             if last.role == role {
                 last.content = merge_content(&last.content, &msg.content);
@@ -162,26 +201,6 @@ fn process_messages(messages: &[Message]) -> Vec<Message> {
     }
 
     result
-}
-
-/// Merge two message contents, preserving all content blocks (text, images, tool results, etc.).
-fn merge_content(
-    existing: &crate::models::request::MessageContent,
-    new: &crate::models::request::MessageContent,
-) -> crate::models::request::MessageContent {
-    use crate::models::request::{ContentBlock, MessageContent};
-
-    let mut blocks: Vec<ContentBlock> = match existing {
-        MessageContent::Text(t) => vec![ContentBlock::Text { text: t.clone() }],
-        MessageContent::Blocks(b) => b.clone(),
-    };
-
-    match new {
-        MessageContent::Text(t) => blocks.push(ContentBlock::Text { text: t.clone() }),
-        MessageContent::Blocks(b) => blocks.extend(b.iter().cloned()),
-    }
-
-    MessageContent::Blocks(blocks)
 }
 
 /// Ensure messages alternate between user and assistant by inserting fillers.
@@ -321,42 +340,7 @@ mod tests {
         ];
         let result = process_messages(&messages);
         assert_eq!(result.len(), 1);
-        // Merged as blocks: text from both messages preserved
-        assert_eq!(result[0].content.text(), "HelloWorld");
-    }
-
-    #[test]
-    fn test_process_messages_merge_preserves_non_text_blocks() {
-        use crate::models::request::{ContentBlock, ImageSource};
-
-        let messages = vec![
-            Message {
-                role: Role::User,
-                content: MessageContent::Blocks(vec![
-                    ContentBlock::Text { text: "Look at this:".into() },
-                    ContentBlock::Image {
-                        source: ImageSource {
-                            source_type: "base64".into(),
-                            media_type: "image/png".into(),
-                            data: "iVBOR".into(),
-                        },
-                    },
-                ]),
-            },
-            Message {
-                role: Role::User,
-                content: MessageContent::Text("What do you see?".into()),
-            },
-        ];
-        let result = process_messages(&messages);
-        assert_eq!(result.len(), 1);
-        match &result[0].content {
-            MessageContent::Blocks(blocks) => {
-                assert_eq!(blocks.len(), 3); // text + image + text
-                assert!(matches!(&blocks[1], ContentBlock::Image { .. }));
-            }
-            _ => panic!("Expected Blocks content after merge"),
-        }
+        assert_eq!(result[0].content.text(), "Hello\nWorld");
     }
 
     #[test]

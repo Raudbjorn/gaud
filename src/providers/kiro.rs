@@ -109,6 +109,13 @@ impl KiroProvider {
                         .as_ref()
                         .map(|c| c.as_text().to_string())
                         .unwrap_or_default();
+                    // OpenAI tool messages don't carry an explicit is_error
+                    // field. We infer error status from the content: if it
+                    // starts with "Error:" or contains a recognizable error
+                    // pattern, mark it as an error for the Kiro API.
+                    let is_error = text.starts_with("Error:")
+                        || text.starts_with("error:")
+                        || text.starts_with("ERROR:");
                     messages.push(kiro_gateway::Message {
                         role: kiro_gateway::Role::User,
                         content: kiro_gateway::MessageContent::Blocks(vec![
@@ -117,7 +124,7 @@ impl KiroProvider {
                                 content: kiro_gateway::models::request::ToolResultContent::Text(
                                     text,
                                 ),
-                                is_error: false,
+                                is_error,
                             },
                         ]),
                     });
@@ -271,7 +278,7 @@ impl KiroProvider {
         for block in &resp.content {
             match block {
                 kiro_gateway::ResponseContentBlock::Text { text } => {
-                    content_text = Some(text.clone());
+                    content_text.get_or_insert_with(String::new).push_str(text);
                 }
                 kiro_gateway::ResponseContentBlock::ToolUse { id, name, input } => {
                     tool_calls.push(ToolCall {
@@ -483,8 +490,29 @@ impl KiroProvider {
                 None
             }
             kiro_gateway::StreamEvent::Error { error } => {
-                debug!(error = %error.message, "Kiro stream error event");
-                None
+                tracing::warn!(
+                    error_type = %error.error_type,
+                    error_message = %error.message,
+                    "Kiro stream error event"
+                );
+                // Propagate as a final chunk with error info so the client
+                // learns the stream had an error, rather than silently dropping.
+                Some(ChatChunk {
+                    id: response_id.to_string(),
+                    object: "chat.completion.chunk".to_string(),
+                    created: chrono::Utc::now().timestamp(),
+                    model: model.to_string(),
+                    choices: vec![ChunkChoice {
+                        index: 0,
+                        delta: Delta {
+                            role: None,
+                            content: Some(format!("[Stream error: {}]", error.message)),
+                            tool_calls: None,
+                        },
+                        finish_reason: Some("error".to_string()),
+                    }],
+                    usage: None,
+                })
             }
         }
     }

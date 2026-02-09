@@ -8,8 +8,16 @@
 //! - "claude-3-5-sonnet-v2" -> "claude-3.5-sonnet"
 
 use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::{LazyLock, RwLock};
 use tracing::debug;
+
+/// Pre-compiled regexes for model name normalization.
+static RE_DATE: LazyLock<regex_lite::Regex> =
+    LazyLock::new(|| regex_lite::Regex::new(r"-\d{8}$").unwrap());
+static RE_VSUFFIX: LazyLock<regex_lite::Regex> =
+    LazyLock::new(|| regex_lite::Regex::new(r"-v\d+$").unwrap());
+static RE_VERSION_DASH: LazyLock<regex_lite::Regex> =
+    LazyLock::new(|| regex_lite::Regex::new(r"(\d)-(\d)").unwrap());
 
 /// Normalize a model name by applying Kiro's naming rules.
 ///
@@ -21,18 +29,13 @@ pub fn normalize_model_name(name: &str) -> String {
     let mut result = name.to_string();
 
     // Strip date suffix first: "-20241022", "-20250514" (8 digits at end)
-    let re_date = regex_lite::Regex::new(r"-\d{8}$").unwrap();
-    result = re_date.replace(&result, "").to_string();
+    result = RE_DATE.replace(&result, "").to_string();
 
     // Strip version suffix: "-v1", "-v2"
-    let re_vsuffix = regex_lite::Regex::new(r"-v\d+$").unwrap();
-    result = re_vsuffix.replace(&result, "").to_string();
+    result = RE_VSUFFIX.replace(&result, "").to_string();
 
     // Replace dash between adjacent single digits: "4-5" -> "4.5", "3-5" -> "3.5"
-    // regex-lite doesn't support lookahead, so use a simple pattern:
-    // Match digit-dash-digit and replace with digit.digit
-    let re_version_dash = regex_lite::Regex::new(r"(\d)-(\d)").unwrap();
-    result = re_version_dash.replace_all(&result, "${1}.${2}").to_string();
+    result = RE_VERSION_DASH.replace_all(&result, "${1}.${2}").to_string();
 
     result
 }
@@ -59,11 +62,11 @@ impl ModelResolver {
 
     /// Set the list of available models (from ListAvailableModels).
     pub fn set_available_models(&self, models: Vec<String>) {
-        let mut available = self.available_models.write().unwrap();
+        let mut available = self.available_models.write().unwrap_or_else(|e| e.into_inner());
         *available = models;
 
         // Clear cache when models list changes
-        let mut cache = self.cache.write().unwrap();
+        let mut cache = self.cache.write().unwrap_or_else(|e| e.into_inner());
         cache.clear();
     }
 
@@ -88,18 +91,18 @@ impl ModelResolver {
 
         // 3. Cache lookup
         {
-            let cache = self.cache.read().unwrap();
+            let cache = self.cache.read().unwrap_or_else(|e| e.into_inner());
             if let Some(cached) = cache.get(&normalized) {
                 return cached.clone();
             }
         }
 
         // 4. Match against available models
-        let available = self.available_models.read().unwrap();
+        let available = self.available_models.read().unwrap_or_else(|e| e.into_inner());
         for model_id in available.iter() {
             let norm_available = normalize_model_name(model_id);
             if norm_available == normalized {
-                let mut cache = self.cache.write().unwrap();
+                let mut cache = self.cache.write().unwrap_or_else(|e| e.into_inner());
                 cache.insert(normalized, model_id.clone());
                 debug!(name, resolved = model_id.as_str(), "Model matched from available");
                 return model_id.clone();
@@ -110,7 +113,7 @@ impl ModelResolver {
         for (hidden_name, hidden_id) in crate::config::hidden_models() {
             if normalized == hidden_name || name == hidden_id {
                 let result = hidden_id.to_string();
-                let mut cache = self.cache.write().unwrap();
+                let mut cache = self.cache.write().unwrap_or_else(|e| e.into_inner());
                 cache.insert(normalized, result.clone());
                 debug!(name, resolved = result.as_str(), "Hidden model matched");
                 return result;

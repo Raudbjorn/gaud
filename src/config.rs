@@ -289,6 +289,16 @@ pub struct KiroProviderConfig {
     pub default_model: Option<String>,
 }
 
+impl KiroProviderConfig {
+    /// Returns true if any credential source is configured.
+    pub fn has_credentials(&self) -> bool {
+        self.credentials_file.is_some()
+            || self.refresh_token.is_some()
+            || std::env::var("KIRO_REFRESH_TOKEN").is_ok()
+            || std::env::var("GAUD_KIRO_REFRESH_TOKEN").is_ok()
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum RoutingStrategy {

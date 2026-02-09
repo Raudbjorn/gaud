@@ -30,7 +30,7 @@ pub async fn refresh_token(
         .sso_region
         .as_deref()
         .unwrap_or(&token_info.region);
-    let url = aws_sso_oidc_url(sso_region);
+    let url = aws_sso_oidc_url(sso_region)?;
 
     info!("Refreshing token via AWS SSO OIDC (region: {})...", sso_region);
 

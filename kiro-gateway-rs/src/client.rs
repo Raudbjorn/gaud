@@ -70,7 +70,7 @@ impl KiroClient {
 
         let payload = build_kiro_payload(&request, &model_id, profile_arn.as_deref())?;
         let url =
-            crate::config::generate_assistant_response_url(&region, profile_arn.as_deref());
+            crate::config::generate_assistant_response_url(&region, profile_arn.as_deref())?;
 
         debug!(model = model_id.as_str(), "Sending Messages request");
 
@@ -100,7 +100,7 @@ impl KiroClient {
 
         let payload = build_kiro_payload(&request, &model_id, profile_arn.as_deref())?;
         let url =
-            crate::config::generate_assistant_response_url(&region, profile_arn.as_deref());
+            crate::config::generate_assistant_response_url(&region, profile_arn.as_deref())?;
 
         debug!(model = model_id.as_str(), "Sending streaming Messages request");
 

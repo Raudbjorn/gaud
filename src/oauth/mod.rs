@@ -441,16 +441,23 @@ impl OAuthManager {
 
     /// Get the current OAuth status for a provider.
     ///
-    /// For Kiro, auth is managed internally by the kiro-gateway client, so
-    /// we always report it as authenticated (the actual auth check happens
-    /// at request time).
+    /// For Kiro, auth is managed internally by the kiro-gateway client.
+    /// We report `authenticated: true` only if the provider is configured
+    /// AND credentials are available. The actual token validity is checked
+    /// at request time by kiro-gateway.
     pub fn get_status(&self, provider: &str) -> Result<OAuthStatus, OAuthError> {
-        // Kiro manages its own auth -- report as authenticated if configured.
+        // Kiro manages its own auth -- check if configured and has credentials.
         if provider == "kiro" {
-            let configured = self.config.providers.kiro.is_some();
+            let kiro_config = self.config.providers.kiro.as_ref();
+            let configured = kiro_config.is_some();
+            // Report as authenticated only if configured and credential source
+            // is specified (refresh token, credentials file, or SQLite DB).
+            let has_credentials = kiro_config
+                .map(|c| c.has_credentials())
+                .unwrap_or(false);
             return Ok(OAuthStatus {
                 provider: provider.to_string(),
-                authenticated: configured,
+                authenticated: configured && has_credentials,
                 expired: false,
                 needs_refresh: false,
                 expires_in_secs: None,
