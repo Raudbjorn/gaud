@@ -1,0 +1,56 @@
+# Gaud LLM Proxy Configuration
+#
+# Every setting can be overridden with a GAUD_* environment variable.
+# See docs/configuration.md for the full reference.
+
+[server]
+host = "127.0.0.1"
+port = 8400
+# cors_origins = ["http://localhost:3000"]
+
+[database]
+path = "gaud.db"
+
+[auth]
+enabled = true                     # GAUD_AUTH_ENABLED  (set to false to disable auth entirely)
+default_admin_name = "admin"       # GAUD_AUTH_ADMIN_NAME
+# bootstrap_key = "sk-prx-CHANGE_ME"  # GAUD_AUTH_BOOTSTRAP_KEY
+
+# TLS client certificate authentication (reverse proxy header-based).
+# When a TLS-terminating proxy passes the client cert CN via a header,
+# gaud can use that for authentication instead of (or in addition to) API keys.
+[auth.tls_client_cert]
+enabled = false                    # GAUD_AUTH_TLS_ENABLED
+# ca_cert_path = "/etc/ssl/ca.pem" # GAUD_AUTH_TLS_CA_CERT  (informational)
+require_cert = false               # GAUD_AUTH_TLS_REQUIRE
+# header_name = "X-Client-Cert-CN" # GAUD_AUTH_TLS_HEADER   (default: X-Client-Cert-CN)
+
+[providers]
+routing_strategy = "priority"      # GAUD_PROVIDERS_ROUTING  (priority|round_robin|least_used|random)
+token_storage_dir = "~/.local/share/gaud/tokens"  # GAUD_PROVIDERS_TOKEN_DIR
+storage_backend = "file"           # GAUD_PROVIDERS_STORAGE_BACKEND  (file|keyring|memory)
+
+[providers.claude]
+client_id = "YOUR_ANTHROPIC_CLIENT_ID"
+# auth_url = "https://console.anthropic.com/oauth/authorize"
+# token_url = "https://console.anthropic.com/v1/oauth/token"
+# callback_port = 19284
+
+[providers.gemini]
+client_id = "YOUR_GOOGLE_CLIENT_ID"
+client_secret = "YOUR_GOOGLE_CLIENT_SECRET"
+# auth_url = "https://accounts.google.com/o/oauth2/v2/auth"
+# token_url = "https://oauth2.googleapis.com/token"
+# callback_port = 19285
+
+[providers.copilot]
+# client_id = "Iv1.b507a08c87ecfe98"
+
+[budget]
+enabled = true                     # GAUD_BUDGET_ENABLED
+warning_threshold_percent = 80     # GAUD_BUDGET_WARNING_THRESHOLD
+
+[logging]
+level = "info"                     # GAUD_LOG_LEVEL  (trace|debug|info|warn|error)
+json = false                       # GAUD_LOG_JSON
+log_content = false                # GAUD_LOG_CONTENT
