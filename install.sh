@@ -7,7 +7,7 @@
 #   sudo ./install.sh             # Install gaud
 #   sudo ./install.sh --uninstall # Remove gaud
 
-set -e
+set -eo pipefail
 
 # Color codes for output
 RED='\033[0;31m'
