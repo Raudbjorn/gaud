@@ -221,6 +221,7 @@ pub struct ProvidersConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ClaudeProviderConfig {
+    #[serde(default = "default_claude_client_id")]
     pub client_id: String,
     #[serde(default = "default_claude_auth_url")]
     pub auth_url: String,

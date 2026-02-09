@@ -33,6 +33,8 @@ const DEFAULT_SCOPES: &[&str] = &[
     "https://www.googleapis.com/auth/cloud-platform",
     "https://www.googleapis.com/auth/userinfo.email",
     "https://www.googleapis.com/auth/userinfo.profile",
+    "https://www.googleapis.com/auth/cclog",
+    "https://www.googleapis.com/auth/experimentsandconfigs",
 ];
 
 /// Configuration for the Gemini OAuth flow.
