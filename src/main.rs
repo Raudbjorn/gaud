@@ -26,10 +26,12 @@ use gaud::api;
 use gaud::auth::middleware::require_auth;
 use gaud::auth::users::bootstrap_admin;
 use gaud::budget::{spawn_audit_logger, BudgetTracker};
-use gaud::config::{Config, KiroProviderConfig};
+use gaud::config::{Config, KiroProviderConfig, LitellmProviderConfig};
 use gaud::db::Database;
 use gaud::providers::kiro::KiroProvider;
+use gaud::providers::litellm::{LitellmConfig, LitellmProvider};
 use gaud::providers::router::ProviderRouter;
+use gaud::providers::LlmProvider;
 use gaud::web;
 use gaud::AppState;
 
@@ -164,6 +166,20 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    // Register LiteLLM provider if configured.
+    if let Some(ref litellm_config) = config.providers.litellm {
+        match build_litellm_provider(litellm_config).await {
+            Ok(provider) => {
+                let model_count = provider.models().len();
+                provider_router.register(Arc::new(provider));
+                tracing::info!(models = model_count, "LiteLLM provider registered");
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to initialize LiteLLM provider, skipping");
+            }
+        }
+    }
+
     let provider_router = Arc::new(RwLock::new(provider_router));
 
     // 7. Create budget tracker
@@ -245,6 +261,32 @@ async fn build_kiro_provider(kiro_config: &KiroProviderConfig) -> anyhow::Result
 
     let client = builder.build().await?;
     Ok(KiroProvider::new(client))
+}
+
+// ---------------------------------------------------------------------------
+// LiteLLM provider builder
+// ---------------------------------------------------------------------------
+
+/// Build a [`LitellmProvider`] from the configuration.
+///
+/// The provider connects to the LiteLLM proxy at the configured URL and
+/// optionally discovers available models from its `/v1/models` endpoint.
+async fn build_litellm_provider(
+    config: &LitellmProviderConfig,
+) -> anyhow::Result<LitellmProvider> {
+    let litellm_config = LitellmConfig {
+        url: config.url.clone(),
+        api_key: config.api_key.clone(),
+        discover_models: config.discover_models,
+        models: config.models.clone(),
+        timeout_secs: config.timeout_secs,
+    };
+
+    let provider = LitellmProvider::new(litellm_config)
+        .await
+        .map_err(|e| anyhow::anyhow!("LiteLLM provider init failed: {e}"))?;
+
+    Ok(provider)
 }
 
 // ---------------------------------------------------------------------------

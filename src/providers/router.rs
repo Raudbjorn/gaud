@@ -184,11 +184,15 @@ impl ProviderRouter {
     /// Determine which provider should handle the given model string.
     ///
     /// Mapping rules:
+    ///   litellm:*          -> "litellm"
     ///   kiro:*             -> "kiro"
     ///   claude-*           -> "claude"
     ///   gemini-*           -> "gemini"
     ///   gpt-* | o1* | o3* -> "copilot"
     fn resolve_provider_id(model: &str) -> Option<&'static str> {
+        if model.starts_with("litellm:") {
+            return Some("litellm");
+        }
         if model.starts_with("kiro:") {
             return Some("kiro");
         }
@@ -584,6 +588,18 @@ mod tests {
         assert_eq!(
             ProviderRouter::resolve_provider_id("kiro:auto"),
             Some("kiro")
+        );
+    }
+
+    #[test]
+    fn test_resolve_provider_litellm() {
+        assert_eq!(
+            ProviderRouter::resolve_provider_id("litellm:gpt-4o"),
+            Some("litellm")
+        );
+        assert_eq!(
+            ProviderRouter::resolve_provider_id("litellm:anthropic/claude-3"),
+            Some("litellm")
         );
     }
 
