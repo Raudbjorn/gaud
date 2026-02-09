@@ -114,7 +114,10 @@ pub async fn request_device_code(
     let response = http_client
         .post(&config.device_code_url)
         .header("Accept", "application/json")
-        .form(&[("client_id", &config.client_id)])
+        .form(&[
+            ("client_id", &config.client_id),
+            ("scope", "read:user"),
+        ])
         .send()
         .await?;
 

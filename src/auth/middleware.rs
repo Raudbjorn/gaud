@@ -157,12 +157,14 @@ mod tests {
     fn test_state() -> AppState {
         let db = Database::open_in_memory().unwrap();
         let config = crate::config::Config::default();
+        let config_arc = std::sync::Arc::new(config);
         let (audit_tx, _audit_rx) = tokio::sync::mpsc::unbounded_channel();
         let budget = crate::budget::BudgetTracker::new(db.clone());
         let router = crate::providers::router::ProviderRouter::new();
+        let oauth_manager = crate::oauth::OAuthManager::from_config(config_arc.clone(), db.clone());
 
         AppState {
-            config: std::sync::Arc::new(config),
+            config: config_arc,
             config_path: std::path::PathBuf::from("test.toml"),
             db,
             router: std::sync::Arc::new(tokio::sync::RwLock::new(router)),
@@ -170,6 +172,7 @@ mod tests {
             audit_tx,
             cost_calculator: std::sync::Arc::new(crate::providers::cost::CostCalculator::new()),
             cache: None,
+            oauth_manager: std::sync::Arc::new(oauth_manager),
         }
     }
 

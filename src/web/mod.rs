@@ -13,6 +13,7 @@ use axum::routing::{get, post};
 use axum::Router;
 use minijinja::{context, Environment};
 use serde::Deserialize;
+use tracing::warn;
 
 use crate::AppState;
 
@@ -104,6 +105,9 @@ pub fn build_web_router() -> Router<AppState> {
         // AJAX endpoints (auth checked in handler via Authorization header)
         .route("/ui/api/oauth/start/{provider}", post(api_oauth_start))
         .route("/ui/api/oauth/status/{provider}", get(api_oauth_status))
+        // Copilot device code flow endpoints
+        .route("/ui/api/oauth/copilot/device", post(api_copilot_device_start))
+        .route("/ui/api/oauth/copilot/poll", post(api_copilot_poll))
 }
 
 // ---------------------------------------------------------------------------
@@ -168,11 +172,12 @@ struct OAuthCallbackQuery {
 /// Handle the OAuth callback redirect from the provider.
 ///
 /// This is called by the OAuth provider after the user authorizes (or denies).
-/// It renders a small page that shows success/failure and auto-closes.
+/// It validates the state token, exchanges the authorization code for tokens
+/// via OAuthManager, and renders a success/failure page that auto-closes.
 async fn oauth_callback(
     Path(provider): Path<String>,
     Query(params): Query<OAuthCallbackQuery>,
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
 ) -> Response {
     if let Some(error) = &params.error {
         let description = params
@@ -180,7 +185,7 @@ async fn oauth_callback(
             .as_deref()
             .unwrap_or("Unknown error");
         let message = format!("OAuth flow failed for {provider}: {error} - {description}");
-        tracing::warn!(%provider, %error, "OAuth callback error");
+        warn!(%provider, %error, "OAuth callback error");
         return render(
             "oauth_callback",
             context! {
@@ -191,17 +196,38 @@ async fn oauth_callback(
         );
     }
 
-    match &params.code {
-        Some(_code) => {
-            // The actual token exchange is handled by the OAuth module's callback
-            // server (running on a separate port). This web UI callback route is
-            // for display purposes -- showing the user that the flow completed.
-            //
-            // In a full implementation, we would exchange the code here via
-            // OAuthManager::handle_callback(provider, code, state). For now we
-            // show success and let the OAuth module handle the exchange on its
-            // own callback port.
-            tracing::info!(%provider, "OAuth callback received authorization code");
+    let code = match &params.code {
+        Some(c) => c.clone(),
+        None => {
+            return render(
+                "oauth_callback",
+                context! {
+                    success => false,
+                    provider => &provider,
+                    error => "No authorization code received.",
+                },
+            );
+        }
+    };
+
+    let state_token = match &params.state {
+        Some(s) => s.clone(),
+        None => {
+            return render(
+                "oauth_callback",
+                context! {
+                    success => false,
+                    provider => &provider,
+                    error => "Missing state parameter. Possible CSRF attack or expired flow.",
+                },
+            );
+        }
+    };
+
+    // Exchange the authorization code for tokens via OAuthManager
+    match state.oauth_manager.complete_flow(&provider, &code, &state_token).await {
+        Ok(_token) => {
+            tracing::info!(%provider, "OAuth flow completed successfully");
             render(
                 "oauth_callback",
                 context! {
@@ -210,14 +236,17 @@ async fn oauth_callback(
                 },
             )
         }
-        None => render(
-            "oauth_callback",
-            context! {
-                success => false,
-                provider => &provider,
-                error => "No authorization code received.",
-            },
-        ),
+        Err(err) => {
+            warn!(%provider, error = %err, "OAuth token exchange failed");
+            render(
+                "oauth_callback",
+                context! {
+                    success => false,
+                    provider => &provider,
+                    error => format!("Token exchange failed: {err}"),
+                },
+            )
+        }
     }
 }
 
@@ -226,6 +255,11 @@ async fn oauth_callback(
 // ---------------------------------------------------------------------------
 
 /// Start an OAuth flow for a provider. Returns JSON with `auth_url`.
+///
+/// For Claude and Gemini, uses OAuthManager to generate a proper PKCE-based
+/// authorization URL with state token. For Copilot, returns info about the
+/// device code flow (caller should use the /copilot/device endpoint instead).
+/// For Kiro, returns info that auth is managed internally.
 async fn api_oauth_start(
     Path(provider): Path<String>,
     State(state): State<AppState>,
@@ -235,13 +269,7 @@ async fn api_oauth_start(
         return resp;
     }
 
-    let config = &state.config;
-    let is_configured = match provider.as_str() {
-        "claude" => config.providers.claude.is_some(),
-        "gemini" => config.providers.gemini.is_some(),
-        "copilot" => config.providers.copilot.is_some(),
-        _ => false,
-    };
+    let is_configured = is_provider_configured(&provider, &state.config);
 
     if !is_configured {
         return (
@@ -251,22 +279,63 @@ async fn api_oauth_start(
             .into_response();
     }
 
-    // Return a placeholder response. The actual OAuth flow initiation would be
-    // done through the OAuthManager. This endpoint provides the auth URL to
-    // open in a popup.
-    let auth_url = build_oauth_start_url(&provider, config);
-    (
-        StatusCode::OK,
-        axum::Json(serde_json::json!({
-            "provider": provider,
-            "auth_url": auth_url,
-            "message": "Open the auth_url to begin authorization"
-        })),
-    )
-        .into_response()
+    match provider.as_str() {
+        "copilot" => {
+            // Copilot uses device code flow -- tell the frontend to use the
+            // dedicated /copilot/device endpoint instead.
+            (
+                StatusCode::OK,
+                axum::Json(serde_json::json!({
+                    "provider": "copilot",
+                    "flow": "device_code",
+                    "message": "Use /ui/api/oauth/copilot/device to start the device code flow"
+                })),
+            )
+                .into_response()
+        }
+        "kiro" => {
+            // Kiro uses internal auth (AWS SSO / refresh token). No browser flow.
+            (
+                StatusCode::OK,
+                axum::Json(serde_json::json!({
+                    "provider": "kiro",
+                    "flow": "internal",
+                    "message": "Kiro authentication is managed via credentials file or refresh token in config"
+                })),
+            )
+                .into_response()
+        }
+        _ => {
+            // Claude and Gemini use PKCE authorization code flow via OAuthManager
+            match state.oauth_manager.start_flow(&provider) {
+                Ok(auth_url) => (
+                    StatusCode::OK,
+                    axum::Json(serde_json::json!({
+                        "provider": provider,
+                        "auth_url": auth_url,
+                        "message": "Open the auth_url to begin authorization"
+                    })),
+                )
+                    .into_response(),
+                Err(err) => {
+                    warn!(%provider, error = %err, "Failed to start OAuth flow");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        axum::Json(serde_json::json!({
+                            "error": format!("Failed to start OAuth flow: {err}")
+                        })),
+                    )
+                        .into_response()
+                }
+            }
+        }
+    }
 }
 
 /// Get the OAuth status for a specific provider.
+///
+/// Uses OAuthManager to check token storage and report authentication state,
+/// including expiry and refresh status.
 async fn api_oauth_status(
     Path(provider): Path<String>,
     State(state): State<AppState>,
@@ -276,13 +345,7 @@ async fn api_oauth_status(
         return resp;
     }
 
-    let config = &state.config;
-    let is_configured = match provider.as_str() {
-        "claude" => config.providers.claude.is_some(),
-        "gemini" => config.providers.gemini.is_some(),
-        "copilot" => config.providers.copilot.is_some(),
-        _ => false,
-    };
+    let is_configured = is_provider_configured(&provider, &state.config);
 
     if !is_configured {
         return (
@@ -296,21 +359,161 @@ async fn api_oauth_status(
             .into_response();
     }
 
-    // Check if there is a stored token for this provider by attempting to
-    // read from the token storage directory.
-    let token_dir = &config.providers.token_storage_dir;
-    let token_file = token_dir.join(format!("{provider}.json"));
-    let authenticated = token_file.exists();
+    match state.oauth_manager.get_status(&provider) {
+        Ok(status) => (
+            StatusCode::OK,
+            axum::Json(serde_json::json!({
+                "provider": status.provider,
+                "configured": true,
+                "authenticated": status.authenticated,
+                "expired": status.expired,
+                "needs_refresh": status.needs_refresh,
+                "expires_in_secs": status.expires_in_secs,
+            })),
+        )
+            .into_response(),
+        Err(err) => {
+            warn!(%provider, error = %err, "Failed to get OAuth status");
+            (
+                StatusCode::OK,
+                axum::Json(serde_json::json!({
+                    "provider": provider,
+                    "configured": true,
+                    "authenticated": false,
+                    "error": err.to_string(),
+                })),
+            )
+                .into_response()
+        }
+    }
+}
 
-    (
-        StatusCode::OK,
-        axum::Json(serde_json::json!({
-            "provider": provider,
-            "configured": true,
-            "authenticated": authenticated,
-        })),
+// ---------------------------------------------------------------------------
+// Copilot device code flow endpoints
+// ---------------------------------------------------------------------------
+
+/// Start the Copilot device code flow.
+///
+/// Returns the user_code, verification_uri, and device_code that the
+/// frontend needs to display to the user and use for polling.
+async fn api_copilot_device_start(State(state): State<AppState>) -> Response {
+    if let Err(resp) = validate_web_auth(&state).await {
+        return resp;
+    }
+
+    if state.config.providers.copilot.is_none() {
+        return (
+            StatusCode::BAD_REQUEST,
+            axum::Json(serde_json::json!({ "error": "Copilot provider is not configured" })),
+        )
+            .into_response();
+    }
+
+    match state.oauth_manager.start_copilot_device_flow().await {
+        Ok(device_response) => (
+            StatusCode::OK,
+            axum::Json(serde_json::json!({
+                "device_code": device_response.device_code,
+                "user_code": device_response.user_code,
+                "verification_uri": device_response.verification_uri,
+                "expires_in": device_response.expires_in,
+                "interval": device_response.interval,
+            })),
+        )
+            .into_response(),
+        Err(err) => {
+            warn!(error = %err, "Failed to start Copilot device flow");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                axum::Json(serde_json::json!({
+                    "error": format!("Failed to start device flow: {err}")
+                })),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Poll query for Copilot device code flow.
+#[derive(Debug, Deserialize)]
+struct CopilotPollRequest {
+    device_code: String,
+}
+
+/// Poll the Copilot device code flow for completion.
+///
+/// Returns the poll result: pending, slow_down, or complete.
+async fn api_copilot_poll(
+    State(state): State<AppState>,
+    axum::Json(body): axum::Json<CopilotPollRequest>,
+) -> Response {
+    if let Err(resp) = validate_web_auth(&state).await {
+        return resp;
+    }
+
+    let provider_config = match state.config.providers.copilot.as_ref() {
+        Some(c) => c,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                axum::Json(serde_json::json!({ "error": "Copilot provider is not configured" })),
+            )
+                .into_response();
+        }
+    };
+
+    let oauth_config =
+        crate::oauth::copilot::CopilotOAuthConfig::from_provider_config(&provider_config.client_id);
+
+    match crate::oauth::copilot::poll_for_token(
+        state.oauth_manager.http_client(),
+        &oauth_config,
+        &body.device_code,
     )
-        .into_response()
+    .await
+    {
+        Ok(crate::oauth::copilot::PollResult::Pending) => (
+            StatusCode::OK,
+            axum::Json(serde_json::json!({ "status": "pending" })),
+        )
+            .into_response(),
+        Ok(crate::oauth::copilot::PollResult::SlowDown) => (
+            StatusCode::OK,
+            axum::Json(serde_json::json!({ "status": "slow_down" })),
+        )
+            .into_response(),
+        Ok(crate::oauth::copilot::PollResult::Complete(access_token)) => {
+            // Store the token via OAuthManager's storage
+            let token = crate::oauth::copilot::create_token_info(&access_token);
+            if let Err(err) = state.oauth_manager.storage().save("copilot", &token) {
+                warn!(error = %err, "Failed to store Copilot token");
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    axum::Json(serde_json::json!({
+                        "error": format!("Token storage failed: {err}")
+                    })),
+                )
+                    .into_response();
+            }
+            tracing::info!("Copilot device code flow completed, token stored");
+            (
+                StatusCode::OK,
+                axum::Json(serde_json::json!({ "status": "complete" })),
+            )
+                .into_response()
+        }
+        Err(err) => {
+            warn!(error = %err, "Copilot poll error");
+            (
+                StatusCode::OK,
+                axum::Json(serde_json::json!({
+                    "status": "error",
+                    "error": err.to_string(),
+                })),
+            )
+                .into_response()
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -332,74 +535,17 @@ async fn validate_web_auth(state: &AppState) -> Result<(), Response> {
     Ok(())
 }
 
-/// Build the initial OAuth authorization URL for a given provider.
-fn build_oauth_start_url(provider: &str, config: &crate::config::Config) -> String {
+/// Check whether a provider is configured.
+fn is_provider_configured(provider: &str, config: &crate::config::Config) -> bool {
     match provider {
-        "claude" => {
-            if let Some(ref claude) = config.providers.claude {
-                let redirect_uri = format!(
-                    "http://localhost:{}/oauth/callback/claude",
-                    claude.callback_port
-                );
-                format!(
-                    "{}?response_type=code&client_id={}&redirect_uri={}&scope=user:inference&code_challenge_method=S256",
-                    claude.auth_url,
-                    claude.client_id,
-                    urlencoding_encode(&redirect_uri),
-                )
-            } else {
-                String::new()
-            }
-        }
-        "gemini" => {
-            if let Some(ref gemini) = config.providers.gemini {
-                let redirect_uri = format!(
-                    "http://localhost:{}/oauth/callback/gemini",
-                    gemini.callback_port
-                );
-                format!(
-                    "{}?response_type=code&client_id={}&redirect_uri={}&scope=https://www.googleapis.com/auth/generative-language&access_type=offline&prompt=consent",
-                    gemini.auth_url,
-                    gemini.client_id,
-                    urlencoding_encode(&redirect_uri),
-                )
-            } else {
-                String::new()
-            }
-        }
-        "copilot" => {
-            if let Some(ref copilot) = config.providers.copilot {
-                format!(
-                    "https://github.com/login/device/code?client_id={}&scope=copilot",
-                    copilot.client_id,
-                )
-            } else {
-                String::new()
-            }
-        }
-        _ => String::new(),
+        "claude" => config.providers.claude.is_some(),
+        "gemini" => config.providers.gemini.is_some(),
+        "copilot" => config.providers.copilot.is_some(),
+        "kiro" => config.providers.kiro.is_some(),
+        "litellm" => config.providers.litellm.is_some(),
+        _ => false,
     }
 }
-
-/// Percent-encode a string for use in URLs.
-fn urlencoding_encode(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() * 3);
-    for byte in s.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(byte as char);
-            }
-            _ => {
-                out.push('%');
-                out.push(char::from(HEX_CHARS[(byte >> 4) as usize]));
-                out.push(char::from(HEX_CHARS[(byte & 0x0f) as usize]));
-            }
-        }
-    }
-    out
-}
-
-const HEX_CHARS: [u8; 16] = *b"0123456789ABCDEF";
 
 /// Return the list of configured provider names.
 fn configured_providers(state: &AppState) -> Vec<String> {
@@ -414,6 +560,9 @@ fn configured_providers(state: &AppState) -> Vec<String> {
     if config.providers.copilot.is_some() {
         providers.push("copilot".to_string());
     }
+    // Always show Kiro as an option in the UI
+    providers.push("kiro".to_string());
+
     if config.providers.litellm.is_some() {
         providers.push("litellm".to_string());
     }
@@ -433,22 +582,6 @@ mod tests {
         assert_eq!(html_escape("<b>hi</b>"), "&lt;b&gt;hi&lt;/b&gt;");
         assert_eq!(html_escape("a&b"), "a&amp;b");
         assert_eq!(html_escape("\"quoted\""), "&quot;quoted&quot;");
-    }
-
-    #[test]
-    fn test_urlencoding_encode_basic() {
-        assert_eq!(urlencoding_encode("hello"), "hello");
-        assert_eq!(urlencoding_encode("hello world"), "hello%20world");
-        assert_eq!(
-            urlencoding_encode("http://localhost:8080/path"),
-            "http%3A%2F%2Flocalhost%3A8080%2Fpath"
-        );
-    }
-
-    #[test]
-    fn test_urlencoding_encode_safe_chars() {
-        // RFC 3986 unreserved characters should not be encoded.
-        assert_eq!(urlencoding_encode("abc-._~123"), "abc-._~123");
     }
 
     #[test]

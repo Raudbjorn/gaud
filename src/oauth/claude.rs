@@ -23,7 +23,7 @@ use super::token::TokenInfo;
 pub const PROVIDER_ID: &str = "claude";
 
 /// Default authorization URL.
-const DEFAULT_AUTH_URL: &str = "https://console.anthropic.com/oauth/authorize";
+const DEFAULT_AUTH_URL: &str = "https://claude.ai/oauth/authorize";
 
 /// Default token URL.
 const DEFAULT_TOKEN_URL: &str = "https://console.anthropic.com/v1/oauth/token";

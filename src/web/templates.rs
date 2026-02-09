@@ -643,6 +643,21 @@ pub const OAUTH: &str = r#"{% extends "layout" %}
 
     <div id="oauth-status" class="alert hidden"></div>
 
+    <!-- Copilot device code modal -->
+    <div id="copilot-device-modal" class="card mb-2 hidden">
+        <div class="card-header">Copilot Device Authorization</div>
+        <div style="text-align:center;padding:1rem;">
+            <p style="margin-bottom:1rem;">Visit the URL below and enter the code:</p>
+            <p style="margin-bottom:0.5rem;">
+                <a id="copilot-verify-url" href="" target="_blank" style="font-size:1.125rem;"></a>
+            </p>
+            <p style="margin-bottom:1rem;">
+                <code id="copilot-user-code" class="mono" style="font-size:2rem;font-weight:700;letter-spacing:0.1em;color:var(--accent);"></code>
+            </p>
+            <p class="text-muted" style="font-size:0.8125rem;">Waiting for authorization... <span id="copilot-poll-status"></span></p>
+        </div>
+    </div>
+
     <div class="card-grid" id="oauth-providers">
         <div class="card"><p class="text-muted">Loading providers...</p></div>
     </div>
@@ -653,6 +668,14 @@ pub const OAUTH: &str = r#"{% extends "layout" %}
     if (!GAUD.requireAuth()) throw new Error('Not authenticated');
 
     const PROVIDERS = {{ providers_json }};
+
+    const PROVIDER_LABELS = {
+        claude: 'Claude (Anthropic)',
+        gemini: 'Gemini (Google)',
+        copilot: 'Copilot (GitHub)',
+        kiro: 'Kiro (AWS)',
+        litellm: 'LiteLLM',
+    };
 
     function renderProviders(statuses) {
         const container = document.getElementById('oauth-providers');
@@ -665,19 +688,43 @@ pub const OAUTH: &str = r#"{% extends "layout" %}
         for (const prov of PROVIDERS) {
             const status = statuses[prov] || {};
             const authenticated = status.authenticated || false;
-            const statusBadge = authenticated
-                ? '<span class="badge badge-success">Connected</span>'
-                : '<span class="badge badge-muted">Not connected</span>';
-            const expiresInfo = status.expires_at
-                ? '<p class="text-muted mt-1" style="font-size:0.75rem;">Token expires: ' + new Date(status.expires_at * 1000).toLocaleString() + '</p>'
-                : '';
-            const btn = authenticated
-                ? '<button class="btn btn-sm" onclick="startOAuth(\'' + prov + '\')">Reconnect</button>'
-                : '<button class="btn btn-sm btn-primary" onclick="startOAuth(\'' + prov + '\')">Connect</button>';
+            const expired = status.expired || false;
+            const label = PROVIDER_LABELS[prov] || prov;
+
+            let statusBadge;
+            if (authenticated && expired) {
+                statusBadge = '<span class="badge badge-warning">Expired</span>';
+            } else if (authenticated) {
+                statusBadge = '<span class="badge badge-success">Connected</span>';
+            } else {
+                statusBadge = '<span class="badge badge-muted">Not connected</span>';
+            }
+
+            let expiresInfo = '';
+            if (status.expires_in_secs && status.expires_in_secs > 0) {
+                const hrs = Math.floor(status.expires_in_secs / 3600);
+                const mins = Math.floor((status.expires_in_secs % 3600) / 60);
+                expiresInfo = '<p class="text-muted mt-1" style="font-size:0.75rem;">Expires in: ' + hrs + 'h ' + mins + 'm</p>';
+            }
+
+            let btn;
+            if (prov === 'kiro') {
+                btn = authenticated
+                    ? '<span class="text-muted" style="font-size:0.8125rem;">Managed via config</span>'
+                    : '<span class="text-muted" style="font-size:0.8125rem;">Configure in llm-proxy.toml</span>';
+            } else if (prov === 'litellm') {
+                btn = authenticated
+                    ? '<span class="text-muted" style="font-size:0.8125rem;">Managed via config</span>'
+                    : '<span class="text-muted" style="font-size:0.8125rem;">Configure in llm-proxy.toml</span>';
+            } else if (authenticated) {
+                btn = '<button class="btn btn-sm" onclick="startOAuth(\'' + prov + '\')">Reconnect</button>';
+            } else {
+                btn = '<button class="btn btn-sm btn-primary" onclick="startOAuth(\'' + prov + '\')">Connect</button>';
+            }
 
             html += '<div class="card">' +
                 '<div class="flex justify-between items-center mb-1">' +
-                '<h3 style="font-size:1rem;font-weight:600;text-transform:capitalize;">' + prov + '</h3>' +
+                '<h3 style="font-size:1rem;font-weight:600;">' + label + '</h3>' +
                 statusBadge +
                 '</div>' +
                 expiresInfo +
@@ -704,6 +751,11 @@ pub const OAUTH: &str = r#"{% extends "layout" %}
         const statusEl = document.getElementById('oauth-status');
         statusEl.classList.add('hidden');
 
+        if (provider === 'copilot') {
+            await startCopilotDeviceFlow();
+            return;
+        }
+
         try {
             const resp = await GAUD.apiFetch('/ui/api/oauth/start/' + provider, { method: 'POST' });
             if (!resp) return;
@@ -723,18 +775,95 @@ pub const OAUTH: &str = r#"{% extends "layout" %}
                             if (s.authenticated) {
                                 clearInterval(poll);
                                 statusEl.className = 'alert alert-success';
-                                statusEl.textContent = provider + ' connected successfully!';
+                                statusEl.textContent = (PROVIDER_LABELS[provider] || provider) + ' connected successfully!';
                                 loadStatuses();
                             }
                         }
                     } catch (_) {}
                 }, 3000);
                 setTimeout(() => clearInterval(poll), 300000);
-            } else {
+            } else if (data.error) {
                 statusEl.className = 'alert alert-danger';
-                statusEl.textContent = data.error || 'Failed to start OAuth flow.';
+                statusEl.textContent = data.error;
                 statusEl.classList.remove('hidden');
             }
+        } catch (err) {
+            statusEl.className = 'alert alert-danger';
+            statusEl.textContent = 'Error: ' + err.message;
+            statusEl.classList.remove('hidden');
+        }
+    }
+
+    async function startCopilotDeviceFlow() {
+        const statusEl = document.getElementById('oauth-status');
+        const modal = document.getElementById('copilot-device-modal');
+
+        try {
+            const resp = await GAUD.apiFetch('/ui/api/oauth/copilot/device', { method: 'POST' });
+            if (!resp) return;
+            const data = await resp.json();
+
+            if (data.error) {
+                statusEl.className = 'alert alert-danger';
+                statusEl.textContent = data.error;
+                statusEl.classList.remove('hidden');
+                return;
+            }
+
+            // Show device code modal
+            document.getElementById('copilot-verify-url').href = data.verification_uri;
+            document.getElementById('copilot-verify-url').textContent = data.verification_uri;
+            document.getElementById('copilot-user-code').textContent = data.user_code;
+            document.getElementById('copilot-poll-status').textContent = '';
+            modal.classList.remove('hidden');
+
+            // Open verification URL
+            window.open(data.verification_uri, 'copilot_auth', 'width=600,height=700');
+
+            // Poll for completion
+            const interval = Math.max(data.interval || 5, 5) * 1000;
+            let attempts = 0;
+            const maxAttempts = Math.ceil(data.expires_in / (interval / 1000));
+
+            const pollTimer = setInterval(async () => {
+                attempts++;
+                document.getElementById('copilot-poll-status').textContent = '(attempt ' + attempts + ')';
+
+                if (attempts >= maxAttempts) {
+                    clearInterval(pollTimer);
+                    modal.classList.add('hidden');
+                    statusEl.className = 'alert alert-danger';
+                    statusEl.textContent = 'Device code expired. Please try again.';
+                    statusEl.classList.remove('hidden');
+                    return;
+                }
+
+                try {
+                    const pr = await GAUD.apiFetch('/ui/api/oauth/copilot/poll', {
+                        method: 'POST',
+                        body: JSON.stringify({ device_code: data.device_code }),
+                    });
+                    if (!pr) return;
+                    const result = await pr.json();
+
+                    if (result.status === 'complete') {
+                        clearInterval(pollTimer);
+                        modal.classList.add('hidden');
+                        statusEl.className = 'alert alert-success';
+                        statusEl.textContent = 'Copilot connected successfully!';
+                        statusEl.classList.remove('hidden');
+                        loadStatuses();
+                    } else if (result.status === 'error') {
+                        clearInterval(pollTimer);
+                        modal.classList.add('hidden');
+                        statusEl.className = 'alert alert-danger';
+                        statusEl.textContent = 'Copilot error: ' + (result.error || 'Unknown error');
+                        statusEl.classList.remove('hidden');
+                    }
+                    // 'pending' and 'slow_down' -- keep polling
+                } catch (_) {}
+            }, interval);
+
         } catch (err) {
             statusEl.className = 'alert alert-danger';
             statusEl.textContent = 'Error: ' + err.message;

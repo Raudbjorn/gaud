@@ -30,6 +30,7 @@ use gaud::budget::{spawn_audit_logger, BudgetTracker};
 use gaud::cache::SemanticCache;
 use gaud::config::{Config, KiroProviderConfig, LitellmProviderConfig};
 use gaud::db::Database;
+use gaud::oauth::OAuthManager;
 use gaud::providers::kiro::KiroProvider;
 use gaud::providers::litellm::{LitellmConfig, LitellmProvider};
 use gaud::providers::router::ProviderRouter;
@@ -239,10 +240,15 @@ async fn main() -> anyhow::Result<()> {
         tracing::warn!("Authentication is DISABLED -- all requests treated as admin");
     }
 
+    // 10. Create OAuth manager
+    let config_arc = Arc::new(config.clone());
+    let oauth_manager = Arc::new(OAuthManager::from_config(config_arc.clone(), db.clone()));
+    tracing::debug!("OAuth manager initialized");
+
     // 11. Build shared application state
     let cost_calculator = Arc::new(gaud::providers::cost::CostCalculator::new());
     let state = AppState {
-        config: Arc::new(config.clone()),
+        config: config_arc,
         config_path: config_path.clone(),
         db: db.clone(),
         router: provider_router,
@@ -250,12 +256,13 @@ async fn main() -> anyhow::Result<()> {
         audit_tx,
         cost_calculator,
         cache,
+        oauth_manager,
     };
 
-    // 11. Build the combined router
+    // 12. Build the combined router
     let app = build_app(state.clone());
 
-    // 12. Bind and serve
+    // 13. Bind and serve
     let listen_addr = config.listen_addr();
     let listener = TcpListener::bind(&listen_addr).await?;
     tracing::info!(addr = %listen_addr, "Listening");
@@ -267,12 +274,12 @@ async fn main() -> anyhow::Result<()> {
     println!("  Health:    http://{listen_addr}/health");
     println!();
 
-    // 13. Serve with graceful shutdown
+    // 14. Serve with graceful shutdown
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
 
-    // 14. Cleanup
+    // 15. Cleanup
     tracing::info!("Shutting down gracefully");
     // Database is dropped automatically via Arc/Mutex.
     // The audit_tx sender is dropped here, which will cause the audit logger
