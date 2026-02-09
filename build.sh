@@ -3,7 +3,7 @@
 # Gaud - Multi-user LLM Proxy Build Script
 # Pure Rust server (no Tauri, no frontend)
 
-set -e  # Exit on error
+set -eo pipefail  # Exit on error, catch pipeline failures
 
 # Script version
 SCRIPT_VERSION="1.0.0"
