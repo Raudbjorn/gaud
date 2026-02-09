@@ -355,6 +355,7 @@ impl<T: TokenStorage + 'static> GeminiProvider<T> {
                             GeminiPart::Text(text) => text_parts.push(text.clone()),
                             GeminiPart::FunctionCall { name, args } => {
                                 tool_calls.push(ToolCall {
+                                    index: None,
                                     id: format!("call_{}", uuid::Uuid::new_v4()),
                                     r#type: "function".into(),
                                     function: FunctionCall {

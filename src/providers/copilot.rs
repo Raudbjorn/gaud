@@ -265,6 +265,7 @@ impl<T: TokenStorage + 'static> CopilotProvider<T> {
                 let tool_calls = c.message.tool_calls.as_ref().map(|tcs| {
                     tcs.iter()
                         .map(|tc| ToolCall {
+                            index: None,
                             id: tc.id.clone(),
                             r#type: tc.r#type.clone(),
                             function: FunctionCall {

@@ -12,16 +12,25 @@ pub fn machine_fingerprint() -> String {
 }
 
 fn get_hostname() -> String {
-    #[cfg(unix)]
-    {
-        std::fs::read_to_string("/etc/hostname")
-            .map(|s| s.trim().to_string())
-            .unwrap_or_else(|_| "unknown".into())
+    // Try /etc/hostname first (common on Linux)
+    if let Ok(name) = std::fs::read_to_string("/etc/hostname") {
+        let name = name.trim().to_string();
+        if !name.is_empty() {
+            return name;
+        }
     }
-    #[cfg(not(unix))]
-    {
-        "unknown".into()
+
+    // Fall back to `hostname` command (works on Linux, macOS, BSDs, Windows)
+    if let Ok(output) = std::process::Command::new("hostname").output() {
+        if output.status.success() {
+            let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !name.is_empty() {
+                return name;
+            }
+        }
     }
+
+    "unknown".into()
 }
 
 fn get_username() -> String {

@@ -275,6 +275,7 @@ impl KiroProvider {
                 }
                 kiro_gateway::ResponseContentBlock::ToolUse { id, name, input } => {
                     tool_calls.push(ToolCall {
+                        index: None,
                         id: id.clone(),
                         r#type: "function".to_string(),
                         function: FunctionCall {
@@ -329,6 +330,7 @@ impl KiroProvider {
         event: kiro_gateway::StreamEvent,
         model: &str,
         response_id: &str,
+        stream_state: &mut StreamState,
     ) -> Option<ChatChunk> {
         match event {
             kiro_gateway::StreamEvent::MessageStart { .. } => {
@@ -350,6 +352,45 @@ impl KiroProvider {
                     usage: None,
                 })
             }
+            kiro_gateway::StreamEvent::ContentBlockStart {
+                content_block, ..
+            } => {
+                // When a tool_use block starts, emit the initial tool_calls chunk
+                // with the tool name and id (OpenAI streaming format).
+                if let kiro_gateway::ResponseContentBlock::ToolUse { id, name, .. } =
+                    content_block
+                {
+                    let idx = stream_state.tool_call_index;
+                    stream_state.tool_call_index += 1;
+                    stream_state.current_tool_index = Some(idx);
+
+                    return Some(ChatChunk {
+                        id: response_id.to_string(),
+                        object: "chat.completion.chunk".to_string(),
+                        created: chrono::Utc::now().timestamp(),
+                        model: model.to_string(),
+                        choices: vec![ChunkChoice {
+                            index: 0,
+                            delta: Delta {
+                                role: None,
+                                content: None,
+                                tool_calls: Some(vec![ToolCall {
+                                    index: Some(idx),
+                                    id,
+                                    r#type: "function".to_string(),
+                                    function: FunctionCall {
+                                        name,
+                                        arguments: String::new(),
+                                    },
+                                }]),
+                            },
+                            finish_reason: None,
+                        }],
+                        usage: None,
+                    });
+                }
+                None
+            }
             kiro_gateway::StreamEvent::ContentBlockDelta { delta, .. } => {
                 match delta {
                     kiro_gateway::ContentDelta::TextDelta { text } => Some(ChatChunk {
@@ -369,8 +410,10 @@ impl KiroProvider {
                         usage: None,
                     }),
                     kiro_gateway::ContentDelta::InputJsonDelta { partial_json } => {
-                        // Tool call argument deltas - we pass as content for simplicity.
-                        // Full tool_call streaming would require tracking state.
+                        // Emit as a tool_calls argument delta (OpenAI streaming format).
+                        let tool_idx =
+                            stream_state.current_tool_index.unwrap_or(0);
+
                         Some(ChatChunk {
                             id: response_id.to_string(),
                             object: "chat.completion.chunk".to_string(),
@@ -380,8 +423,16 @@ impl KiroProvider {
                                 index: 0,
                                 delta: Delta {
                                     role: None,
-                                    content: Some(partial_json),
-                                    tool_calls: None,
+                                    content: None,
+                                    tool_calls: Some(vec![ToolCall {
+                                        index: Some(tool_idx),
+                                        id: String::new(),
+                                        r#type: "function".to_string(),
+                                        function: FunctionCall {
+                                            name: String::new(),
+                                            arguments: partial_json,
+                                        },
+                                    }]),
                                 },
                                 finish_reason: None,
                             }],
@@ -427,14 +478,25 @@ impl KiroProvider {
             }
             kiro_gateway::StreamEvent::MessageStop => None,
             kiro_gateway::StreamEvent::Ping => None,
-            kiro_gateway::StreamEvent::ContentBlockStart { .. } => None,
-            kiro_gateway::StreamEvent::ContentBlockStop { .. } => None,
+            kiro_gateway::StreamEvent::ContentBlockStop { .. } => {
+                stream_state.current_tool_index = None;
+                None
+            }
             kiro_gateway::StreamEvent::Error { error } => {
                 debug!(error = %error.message, "Kiro stream error event");
                 None
             }
         }
     }
+}
+
+/// Mutable state tracked across streaming events for proper tool_calls handling.
+#[derive(Default)]
+struct StreamState {
+    /// Next tool_call index to assign (OpenAI uses sequential indices).
+    tool_call_index: u32,
+    /// Index of the tool_call currently being streamed (for InputJsonDelta).
+    current_tool_index: Option<u32>,
 }
 
 /// Parse a data URI (data:image/jpeg;base64,...) into (media_type, base64_data).
@@ -532,19 +594,20 @@ impl LlmProvider for KiroProvider {
 
             let model = request.model.clone();
             let response_id = format!("chatcmpl-kiro-{}", uuid::Uuid::new_v4());
+            let mut stream_state = StreamState::default();
 
             let event_stream = kiro_stream.filter_map(move |result| {
-                let model = model.clone();
-                let response_id = response_id.clone();
-                async move {
-                    match result {
-                        Ok(event) => {
-                            Self::convert_stream_event(event, &model, &response_id)
-                                .map(Ok)
-                        }
-                        Err(e) => Some(Err(convert_kiro_error(e))),
-                    }
-                }
+                let chunk = match result {
+                    Ok(event) => Self::convert_stream_event(
+                        event,
+                        &model,
+                        &response_id,
+                        &mut stream_state,
+                    )
+                    .map(Ok),
+                    Err(e) => Some(Err(convert_kiro_error(e))),
+                };
+                async move { chunk }
             });
 
             Ok(Box::pin(event_stream)
@@ -773,6 +836,7 @@ mod tests {
                 content: None,
                 name: None,
                 tool_calls: Some(vec![ToolCall {
+                    index: None,
                     id: "call_1".into(),
                     r#type: "function".into(),
                     function: FunctionCall {
@@ -1040,7 +1104,8 @@ mod tests {
             },
         };
 
-        let chunk = KiroProvider::convert_stream_event(event, "kiro:auto", "resp-1");
+        let mut state = StreamState::default();
+        let chunk = KiroProvider::convert_stream_event(event, "kiro:auto", "resp-1", &mut state);
         assert!(chunk.is_some());
         let chunk = chunk.unwrap();
         assert_eq!(chunk.choices[0].delta.role, Some("assistant".to_string()));
@@ -1055,7 +1120,8 @@ mod tests {
             },
         };
 
-        let chunk = KiroProvider::convert_stream_event(event, "kiro:auto", "resp-1");
+        let mut state = StreamState::default();
+        let chunk = KiroProvider::convert_stream_event(event, "kiro:auto", "resp-1", &mut state);
         assert!(chunk.is_some());
         let chunk = chunk.unwrap();
         assert_eq!(chunk.choices[0].delta.content, Some("Hello".to_string()));
@@ -1076,7 +1142,8 @@ mod tests {
             }),
         };
 
-        let chunk = KiroProvider::convert_stream_event(event, "kiro:auto", "resp-1");
+        let mut state = StreamState::default();
+        let chunk = KiroProvider::convert_stream_event(event, "kiro:auto", "resp-1", &mut state);
         assert!(chunk.is_some());
         let chunk = chunk.unwrap();
         assert_eq!(
@@ -1089,12 +1156,53 @@ mod tests {
     #[test]
     fn test_convert_stream_event_ping_returns_none() {
         let event = kiro_gateway::StreamEvent::Ping;
-        assert!(KiroProvider::convert_stream_event(event, "kiro:auto", "resp-1").is_none());
+        let mut state = StreamState::default();
+        assert!(KiroProvider::convert_stream_event(event, "kiro:auto", "resp-1", &mut state).is_none());
     }
 
     #[test]
     fn test_convert_stream_event_stop_returns_none() {
         let event = kiro_gateway::StreamEvent::MessageStop;
-        assert!(KiroProvider::convert_stream_event(event, "kiro:auto", "resp-1").is_none());
+        let mut state = StreamState::default();
+        assert!(KiroProvider::convert_stream_event(event, "kiro:auto", "resp-1", &mut state).is_none());
+    }
+
+    #[test]
+    fn test_convert_stream_event_tool_call() {
+        let mut state = StreamState::default();
+
+        // ContentBlockStart with ToolUse emits initial tool_calls chunk
+        let start_event = kiro_gateway::StreamEvent::ContentBlockStart {
+            index: 0,
+            content_block: kiro_gateway::ResponseContentBlock::ToolUse {
+                id: "toolu_1".into(),
+                name: "search".into(),
+                input: serde_json::json!({}),
+            },
+        };
+        let chunk = KiroProvider::convert_stream_event(start_event, "kiro:auto", "resp-1", &mut state);
+        assert!(chunk.is_some());
+        let chunk = chunk.unwrap();
+        let tc = chunk.choices[0].delta.tool_calls.as_ref().unwrap();
+        assert_eq!(tc[0].index, Some(0));
+        assert_eq!(tc[0].id, "toolu_1");
+        assert_eq!(tc[0].function.name, "search");
+        assert_eq!(tc[0].function.arguments, "");
+
+        // InputJsonDelta emits argument delta with correct index
+        let delta_event = kiro_gateway::StreamEvent::ContentBlockDelta {
+            index: 0,
+            delta: kiro_gateway::ContentDelta::InputJsonDelta {
+                partial_json: r#"{"q":"te"#.into(),
+            },
+        };
+        let chunk = KiroProvider::convert_stream_event(delta_event, "kiro:auto", "resp-1", &mut state);
+        assert!(chunk.is_some());
+        let chunk = chunk.unwrap();
+        // Should be in tool_calls, NOT in content
+        assert!(chunk.choices[0].delta.content.is_none());
+        let tc = chunk.choices[0].delta.tool_calls.as_ref().unwrap();
+        assert_eq!(tc[0].index, Some(0));
+        assert_eq!(tc[0].function.arguments, r#"{"q":"te"#);
     }
 }

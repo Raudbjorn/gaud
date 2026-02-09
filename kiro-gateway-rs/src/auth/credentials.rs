@@ -37,12 +37,17 @@ pub fn load_from_json_file(path: &str) -> Result<KiroTokenInfo> {
     let path = shellexpand::tilde(path);
     let path = Path::new(path.as_ref());
 
-    if !path.exists() {
-        return Err(Error::storage_io(path, "Credentials file not found"));
+    // Canonicalize to resolve symlinks and `..` components, then validate
+    let path = path
+        .canonicalize()
+        .map_err(|e| Error::storage_io(path, format!("Invalid credentials path: {}", e)))?;
+
+    if !path.is_file() {
+        return Err(Error::storage_io(&path, "Credentials file not found"));
     }
 
     let content =
-        std::fs::read_to_string(path).map_err(|e| Error::storage_io(path, e.to_string()))?;
+        std::fs::read_to_string(&path).map_err(|e| Error::storage_io(&path, e.to_string()))?;
     let data: serde_json::Value =
         serde_json::from_str(&content).map_err(|e| Error::StorageSerialization(e.to_string()))?;
 
@@ -95,6 +100,15 @@ pub fn load_from_json_file(path: &str) -> Result<KiroTokenInfo> {
 }
 
 fn load_enterprise_device_registration(token: &mut KiroTokenInfo, client_id_hash: &str) {
+    // Sanitize hash to prevent path traversal: only allow alphanumeric + hyphen + underscore
+    if !client_id_hash
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        warn!("Ignoring client_id_hash with unsafe characters");
+        return;
+    }
+
     let path = dirs::home_dir()
         .map(|h| h.join(".aws").join("sso").join("cache").join(format!("{}.json", client_id_hash)));
 
@@ -127,15 +141,20 @@ pub fn load_from_sqlite(db_path: &str) -> Result<KiroTokenInfo> {
     let path = shellexpand::tilde(db_path);
     let path = Path::new(path.as_ref());
 
-    if !path.exists() {
-        return Err(Error::storage_io(path, "SQLite database not found"));
+    // Canonicalize to resolve symlinks and `..` components
+    let path = path
+        .canonicalize()
+        .map_err(|e| Error::storage_io(path, format!("Invalid database path: {}", e)))?;
+
+    if !path.is_file() {
+        return Err(Error::storage_io(&path, "SQLite database not found"));
     }
 
     let conn = rusqlite::Connection::open_with_flags(
-        path,
+        &path,
         rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
     )
-    .map_err(|e| Error::storage_io(path, e.to_string()))?;
+    .map_err(|e| Error::storage_io(&path, e.to_string()))?;
 
     let mut token = KiroTokenInfo::new(String::new());
     token.source = CredentialSource::SqliteDb(path.display().to_string());

@@ -384,6 +384,7 @@ impl<T: TokenStorage + 'static> ClaudeProvider<T> {
                 AnthropicResponseContent::Text { text } => text_parts.push(text.clone()),
                 AnthropicResponseContent::ToolUse { id, name, input } => {
                     tool_calls.push(ToolCall {
+                        index: None,
                         id: id.clone(),
                         r#type: "function".into(),
                         function: FunctionCall {

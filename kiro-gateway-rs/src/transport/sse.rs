@@ -1,20 +1,12 @@
 //! AWS SSE binary event stream parser.
 //!
 //! Kiro uses a custom AWS event stream format (NOT standard text-based SSE).
-//! Events are JSON objects within the stream, identified by patterns like
-//! `{"content":`, `{"name":`, `{"input":`, `{"stop":`, `{"usage":`, etc.
+//! Events are JSON objects within the stream, identified by their top-level keys
+//! (e.g. `content`, `name`, `input`, `stop`, `usage`, `contextUsagePercentage`).
 
 use tracing::trace;
 
 use crate::models::kiro::KiroStreamEvent;
-
-/// Patterns that identify different event types in the stream.
-const CONTENT_PATTERN: &str = r#"{"content":"#;
-const TOOL_NAME_PATTERN: &str = r#"{"name":"#;
-const TOOL_INPUT_PATTERN: &str = r#"{"input":"#;
-const STOP_PATTERN: &str = r#"{"stop":"#;
-const USAGE_PATTERN: &str = r#"{"usage":"#;
-const CONTEXT_USAGE_PATTERN: &str = r#"{"contextUsagePercentage":"#;
 
 /// Parse a raw chunk from the Kiro SSE stream into events.
 ///
@@ -37,54 +29,55 @@ pub fn parse_chunk(chunk: &str) -> Vec<KiroStreamEvent> {
 }
 
 /// Parse a single event line from the stream.
+///
+/// Parses the line as JSON first, then inspects keys to determine event type.
+/// This is robust against key reordering in the JSON payload.
 fn parse_event_line(line: &str) -> Option<KiroStreamEvent> {
-    // Content event: {"content":"some text"}
-    if line.starts_with(CONTENT_PATTERN) {
-        return parse_content_event(line);
+    // Try bracket-style tool calls first: [{"name":"...","input":{...}}]
+    if line.starts_with('[') {
+        return parse_bracket_tool_calls(line);
     }
 
-    // Tool name (start): {"name":"tool_name","toolUseId":"..."}
-    if line.starts_with(TOOL_NAME_PATTERN) {
-        return parse_tool_start_event(line);
+    let data: serde_json::Value = match serde_json::from_str(line) {
+        Ok(v) => v,
+        Err(_) => {
+            trace!("Unparseable stream line: {}", &line[..line.len().min(100)]);
+            return None;
+        }
+    };
+
+    let obj = data.as_object()?;
+
+    // Dispatch based on which keys are present (checked in priority order)
+    if let Some(content) = obj.get("content").and_then(|v| v.as_str()) {
+        return Some(KiroStreamEvent::Content(content.to_string()));
     }
 
-    // Tool input: {"input":"partial json"}
-    if line.starts_with(TOOL_INPUT_PATTERN) {
-        return parse_tool_input_event(line);
+    if obj.contains_key("name") {
+        return parse_tool_start_from_value(&data);
     }
 
-    // Stop event: {"stop":"end_turn"}
-    if line.starts_with(STOP_PATTERN) {
+    if let Some(input) = obj.get("input").and_then(|v| v.as_str()) {
+        return Some(KiroStreamEvent::ToolInput(input.to_string()));
+    }
+
+    if obj.contains_key("stop") {
         return Some(KiroStreamEvent::ToolStop);
     }
 
-    // Usage event: {"usage":{...}}
-    if line.starts_with(USAGE_PATTERN) {
-        return parse_usage_event(line);
+    if let Some(usage) = obj.get("usage") {
+        return Some(KiroStreamEvent::Usage(usage.clone()));
     }
 
-    // Context usage: {"contextUsagePercentage":0.42}
-    if line.starts_with(CONTEXT_USAGE_PATTERN) {
-        return parse_context_usage_event(line);
-    }
-
-    // Try bracket-style tool calls: [{"name":"tool","input":{...},"toolUseId":"..."}]
-    if line.starts_with('[') {
-        return parse_bracket_tool_calls(line);
+    if let Some(pct) = obj.get("contextUsagePercentage").and_then(|v| v.as_f64()) {
+        return Some(KiroStreamEvent::ContextUsage(pct));
     }
 
     trace!("Unrecognized stream line: {}", &line[..line.len().min(100)]);
     None
 }
 
-fn parse_content_event(line: &str) -> Option<KiroStreamEvent> {
-    let data: serde_json::Value = serde_json::from_str(line).ok()?;
-    let content = data.get("content")?.as_str()?;
-    Some(KiroStreamEvent::Content(content.to_string()))
-}
-
-fn parse_tool_start_event(line: &str) -> Option<KiroStreamEvent> {
-    let data: serde_json::Value = serde_json::from_str(line).ok()?;
+fn parse_tool_start_from_value(data: &serde_json::Value) -> Option<KiroStreamEvent> {
     let name = data.get("name")?.as_str()?.to_string();
     let tool_use_id = data
         .get("toolUseId")
@@ -101,24 +94,6 @@ fn parse_tool_start_event(line: &str) -> Option<KiroStreamEvent> {
         tool_use_id,
         input,
     })
-}
-
-fn parse_tool_input_event(line: &str) -> Option<KiroStreamEvent> {
-    let data: serde_json::Value = serde_json::from_str(line).ok()?;
-    let input = data.get("input")?.as_str()?.to_string();
-    Some(KiroStreamEvent::ToolInput(input))
-}
-
-fn parse_usage_event(line: &str) -> Option<KiroStreamEvent> {
-    let data: serde_json::Value = serde_json::from_str(line).ok()?;
-    let usage = data.get("usage")?.clone();
-    Some(KiroStreamEvent::Usage(usage))
-}
-
-fn parse_context_usage_event(line: &str) -> Option<KiroStreamEvent> {
-    let data: serde_json::Value = serde_json::from_str(line).ok()?;
-    let pct = data.get("contextUsagePercentage")?.as_f64()?;
-    Some(KiroStreamEvent::ContextUsage(pct))
 }
 
 /// Parse bracket-style tool calls: `[{"name":"...","input":{...},"toolUseId":"..."}]`
@@ -166,6 +141,17 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_content_reordered_keys() {
+        // Content key is not the first key — this should still parse correctly
+        let events = parse_chunk(r#"{"extra":"ignored","content":"Hello"}"#);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            KiroStreamEvent::Content(text) => assert_eq!(text, "Hello"),
+            _ => panic!("Expected Content event"),
+        }
+    }
+
+    #[test]
     fn test_parse_tool_start() {
         let events = parse_chunk(r#"{"name":"get_weather","toolUseId":"tool_123","input":{}}"#);
         assert_eq!(events.len(), 1);
@@ -174,6 +160,16 @@ mod tests {
                 assert_eq!(name, "get_weather");
                 assert_eq!(tool_use_id, "tool_123");
             }
+            _ => panic!("Expected ToolStart event"),
+        }
+    }
+
+    #[test]
+    fn test_parse_tool_start_reordered_keys() {
+        let events = parse_chunk(r#"{"toolUseId":"tool_1","input":{},"name":"search"}"#);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            KiroStreamEvent::ToolStart { name, .. } => assert_eq!(name, "search"),
             _ => panic!("Expected ToolStart event"),
         }
     }
@@ -216,5 +212,28 @@ mod tests {
         let chunk = "\n\n{\"content\":\"Hi\"}\n\n";
         let events = parse_chunk(chunk);
         assert_eq!(events.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_stop_event() {
+        let events = parse_chunk(r#"{"stop":"end_turn"}"#);
+        assert_eq!(events.len(), 1);
+        assert!(matches!(&events[0], KiroStreamEvent::ToolStop));
+    }
+
+    #[test]
+    fn test_parse_tool_input() {
+        let events = parse_chunk(r#"{"input":"partial json"}"#);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            KiroStreamEvent::ToolInput(input) => assert_eq!(input, "partial json"),
+            _ => panic!("Expected ToolInput event"),
+        }
+    }
+
+    #[test]
+    fn test_parse_invalid_json_ignored() {
+        let events = parse_chunk("not valid json at all");
+        assert!(events.is_empty());
     }
 }
