@@ -106,7 +106,7 @@ do_install() {
     # Build as the invoking user (not root) if SUDO_USER is set
     if [ -n "$SUDO_USER" ]; then
         print_info "Building as user '$SUDO_USER'..."
-        sudo -u "$SUDO_USER" bash -c "cd '$SCRIPT_DIR' && cargo build --release"
+        sudo -u "$SUDO_USER" bash -c 'cd "$1" && cargo build --release' _ "$SCRIPT_DIR"
     else
         cd "$SCRIPT_DIR"
         cargo build --release
@@ -152,7 +152,7 @@ do_install() {
     # Step 5: Create directories
     print_step 5 "Creating directories"
 
-    install -d -m 0755 -o "$SERVICE_USER" -g "$SERVICE_GROUP" "$CONFIG_DIR"
+    install -d -m 0755 -o root -g "$SERVICE_GROUP" "$CONFIG_DIR"
     print_success "Config directory: $CONFIG_DIR"
 
     install -d -m 0750 -o "$SERVICE_USER" -g "$SERVICE_GROUP" "$DATA_DIR"
@@ -175,7 +175,7 @@ do_install() {
         fi
     else
         if [ -f "$config_src_path" ]; then
-            install -m 0640 -o "$SERVICE_USER" -g "$SERVICE_GROUP" "$config_src_path" "$CONFIG_DST"
+            install -m 0640 -o root -g "$SERVICE_GROUP" "$config_src_path" "$CONFIG_DST"
             print_success "Installed default config: $CONFIG_DST"
         else
             print_warning "No default config found at $config_src_path"
