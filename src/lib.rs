@@ -11,6 +11,7 @@ pub mod web;
 use crate::budget::BudgetTracker;
 use crate::config::Config;
 use crate::db::Database;
+use crate::oauth::OAuthManager;
 use crate::providers::router::ProviderRouter;
 
 use std::path::PathBuf;
@@ -26,4 +27,5 @@ pub struct AppState {
     pub router: Arc<RwLock<ProviderRouter>>,
     pub budget: Arc<BudgetTracker>,
     pub audit_tx: tokio::sync::mpsc::UnboundedSender<budget::AuditEntry>,
+    pub oauth_manager: Arc<OAuthManager>,
 }

@@ -238,7 +238,9 @@ pub struct ClaudeProviderConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GeminiProviderConfig {
+    #[serde(default = "default_gemini_client_id")]
     pub client_id: String,
+    #[serde(default = "default_gemini_client_secret")]
     pub client_secret: String,
     #[serde(default = "default_gemini_auth_url")]
     pub auth_url: String,
@@ -477,13 +479,16 @@ fn default_storage_backend() -> StorageBackend {
     StorageBackend::File
 }
 fn default_claude_auth_url() -> String {
-    "https://console.anthropic.com/oauth/authorize".to_string()
+    "https://claude.ai/oauth/authorize".to_string()
 }
 fn default_claude_token_url() -> String {
     "https://console.anthropic.com/v1/oauth/token".to_string()
 }
 const fn default_claude_callback_port() -> u16 {
     19284
+}
+fn default_claude_client_id() -> String {
+    "9d1c250a-e61b-44d9-88ed-5944d1962f5e".to_string()
 }
 fn default_gemini_auth_url() -> String {
     "https://accounts.google.com/o/oauth2/v2/auth".to_string()
@@ -493,6 +498,12 @@ fn default_gemini_token_url() -> String {
 }
 const fn default_gemini_callback_port() -> u16 {
     19285
+}
+fn default_gemini_client_id() -> String {
+    "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com".to_string()
+}
+fn default_gemini_client_secret() -> String {
+    "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".to_string()
 }
 fn default_copilot_client_id() -> String {
     "Iv1.b507a08c87ecfe98".to_string()
