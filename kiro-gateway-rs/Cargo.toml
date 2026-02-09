@@ -1,0 +1,53 @@
+[package]
+name = "kiro-gateway"
+version = "0.1.0"
+edition = "2021"
+description = "Rust client library for the Kiro API (Amazon Q / AWS CodeWhisperer)"
+license = "MIT"
+
+[dependencies]
+# Async
+tokio = { version = "1", features = ["sync", "time", "macros"] }
+futures = "0.3"
+async-stream = "0.3"
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# HTTP
+reqwest = { version = "0.12", features = ["json", "stream"] }
+
+# Crypto
+sha2 = "0.10"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Logging
+tracing = "0.1"
+
+# Errors
+thiserror = "2"
+
+# Text processing
+regex-lite = "0.1"
+
+# Directories
+dirs = "6"
+
+# UUID
+uuid = { version = "1", features = ["v4"] }
+
+# System keyring (optional)
+keyring = { version = "3", optional = true }
+
+# SQLite (optional)
+rusqlite = { version = "0.32", features = ["bundled"], optional = true }
+
+[features]
+default = []
+sqlite = ["dep:rusqlite"]
+keyring = ["dep:keyring"]
+full = ["sqlite", "keyring"]

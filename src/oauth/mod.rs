@@ -192,6 +192,10 @@ impl OAuthManager {
             "claude" => self.start_claude_flow(),
             "gemini" => self.start_gemini_flow(),
             "copilot" => Ok("https://github.com/login/device".to_string()),
+            "kiro" => Err(OAuthError::Other(
+                "Kiro uses internal auth (refresh token / AWS SSO); no browser OAuth flow required"
+                    .to_string(),
+            )),
             _ => Err(OAuthError::Other(format!("Unknown provider: {}", provider))),
         }
     }
@@ -436,7 +440,23 @@ impl OAuthManager {
     }
 
     /// Get the current OAuth status for a provider.
+    ///
+    /// For Kiro, auth is managed internally by the kiro-gateway client, so
+    /// we always report it as authenticated (the actual auth check happens
+    /// at request time).
     pub fn get_status(&self, provider: &str) -> Result<OAuthStatus, OAuthError> {
+        // Kiro manages its own auth -- report as authenticated if configured.
+        if provider == "kiro" {
+            let configured = self.config.providers.kiro.is_some();
+            return Ok(OAuthStatus {
+                provider: provider.to_string(),
+                authenticated: configured,
+                expired: false,
+                needs_refresh: false,
+                expires_in_secs: None,
+            });
+        }
+
         let token = self.storage.load(provider)?;
 
         match token {

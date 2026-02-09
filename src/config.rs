@@ -206,6 +206,9 @@ pub struct ProvidersConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub copilot: Option<CopilotProviderConfig>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kiro: Option<KiroProviderConfig>,
+    #[serde(default)]
     pub routing_strategy: RoutingStrategy,
     #[serde(default = "default_token_storage_dir")]
     pub token_storage_dir: PathBuf,
@@ -258,6 +261,32 @@ pub struct CopilotProviderConfig {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
+}
+
+/// Kiro provider configuration (Amazon Q / AWS CodeWhisperer).
+///
+/// Authentication is managed internally by the kiro-gateway client.
+/// Provide either a `credentials_file` path to a JSON file containing a
+/// refresh token, or a `refresh_token` directly (the env var
+/// `GAUD_KIRO_REFRESH_TOKEN` is the most convenient way).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct KiroProviderConfig {
+    /// Path to a Kiro credentials JSON file (e.g. `~/.kiro/credentials.json`).
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub credentials_file: Option<String>,
+    /// Direct refresh token (overrides credentials_file).
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<String>,
+    /// AWS region for the Kiro API (default: us-east-1).
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub region: Option<String>,
+    /// Default model to use when none is specified.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_model: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]

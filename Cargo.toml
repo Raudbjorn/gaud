@@ -35,6 +35,9 @@ hmac = "0.12"
 # HTTP Client
 reqwest = { version = "0.12", features = ["json", "stream"] }
 
+# Kiro gateway (Amazon Q / AWS CodeWhisperer)
+kiro-gateway = { path = "kiro-gateway-rs" }
+
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
