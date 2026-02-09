@@ -441,7 +441,13 @@ impl<T: TokenStorage + 'static> LlmProvider for CopilotProvider<T> {
                                     let tool_calls = c.delta.tool_calls.as_ref().map(|tcs| {
                                         tcs.iter()
                                             .filter_map(|tc| {
-                                                serde_json::from_value::<ToolCall>(tc.clone()).ok()
+                                                match serde_json::from_value::<ToolCall>(tc.clone()) {
+                                                    Ok(tool_call) => Some(tool_call),
+                                                    Err(e) => {
+                                                        debug!(error = %e, "Failed to parse tool call in Copilot SSE");
+                                                        None
+                                                    }
+                                                }
                                             })
                                             .collect()
                                     });

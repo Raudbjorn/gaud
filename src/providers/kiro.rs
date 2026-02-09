@@ -32,9 +32,6 @@ const SUPPORTED_MODELS: &[&str] = &[
     "kiro:claude-3.7-sonnet",
 ];
 
-/// Default max tokens when the request doesn't specify one.
-const DEFAULT_MAX_TOKENS: u32 = 8192;
-
 // ---------------------------------------------------------------------------
 // KiroProvider
 // ---------------------------------------------------------------------------
@@ -56,16 +53,12 @@ impl KiroProvider {
         }
     }
 
-    /// Strip the `kiro:` prefix from a model name for the kiro-gateway client.
-    fn strip_prefix(model: &str) -> &str {
-        model.strip_prefix("kiro:").unwrap_or(model)
-    }
-
     // -- OpenAI -> Anthropic Messages conversion ----------------------------
 
     fn convert_request(request: &ChatRequest) -> kiro_gateway::MessagesRequest {
-        let model = Self::strip_prefix(&request.model).to_string();
-        let max_tokens = request.max_tokens.unwrap_or(DEFAULT_MAX_TOKENS);
+        let model = strip_prefix(&request.model).to_string();
+        let full_model_name = &request.model;
+        let max_tokens = request.max_tokens.unwrap_or_else(|| max_output_tokens_for_model(full_model_name));
 
         let mut system: Option<kiro_gateway::SystemPrompt> = None;
         let mut messages: Vec<kiro_gateway::Message> = Vec::new();
@@ -338,11 +331,11 @@ impl KiroProvider {
         model: &str,
         response_id: &str,
         stream_state: &mut StreamState,
-    ) -> Option<ChatChunk> {
+    ) -> Result<Option<ChatChunk>, ProviderError> {
         match event {
             kiro_gateway::StreamEvent::MessageStart { .. } => {
                 // Emit the initial chunk with role.
-                Some(ChatChunk {
+                Ok(Some(ChatChunk {
                     id: response_id.to_string(),
                     object: "chat.completion.chunk".to_string(),
                     created: chrono::Utc::now().timestamp(),
@@ -357,7 +350,7 @@ impl KiroProvider {
                         finish_reason: None,
                     }],
                     usage: None,
-                })
+                }))
             }
             kiro_gateway::StreamEvent::ContentBlockStart {
                 content_block, ..
@@ -371,7 +364,7 @@ impl KiroProvider {
                     stream_state.tool_call_index += 1;
                     stream_state.current_tool_index = Some(idx);
 
-                    return Some(ChatChunk {
+                    return Ok(Some(ChatChunk {
                         id: response_id.to_string(),
                         object: "chat.completion.chunk".to_string(),
                         created: chrono::Utc::now().timestamp(),
@@ -394,13 +387,13 @@ impl KiroProvider {
                             finish_reason: None,
                         }],
                         usage: None,
-                    });
+                    }));
                 }
-                None
+                Ok(None)
             }
             kiro_gateway::StreamEvent::ContentBlockDelta { delta, .. } => {
                 match delta {
-                    kiro_gateway::ContentDelta::TextDelta { text } => Some(ChatChunk {
+                    kiro_gateway::ContentDelta::TextDelta { text } => Ok(Some(ChatChunk {
                         id: response_id.to_string(),
                         object: "chat.completion.chunk".to_string(),
                         created: chrono::Utc::now().timestamp(),
@@ -415,13 +408,13 @@ impl KiroProvider {
                             finish_reason: None,
                         }],
                         usage: None,
-                    }),
+                    })),
                     kiro_gateway::ContentDelta::InputJsonDelta { partial_json } => {
                         // Emit as a tool_calls argument delta (OpenAI streaming format).
                         let tool_idx =
                             stream_state.current_tool_index.unwrap_or(0);
 
-                        Some(ChatChunk {
+                        Ok(Some(ChatChunk {
                             id: response_id.to_string(),
                             object: "chat.completion.chunk".to_string(),
                             created: chrono::Utc::now().timestamp(),
@@ -444,9 +437,9 @@ impl KiroProvider {
                                 finish_reason: None,
                             }],
                             usage: None,
-                        })
+                        }))
                     }
-                    kiro_gateway::ContentDelta::ThinkingDelta { .. } => None,
+                    kiro_gateway::ContentDelta::ThinkingDelta { .. } => Ok(None),
                 }
             }
             kiro_gateway::StreamEvent::MessageDelta { delta, usage } => {
@@ -466,7 +459,7 @@ impl KiroProvider {
                     total_tokens: u.input_tokens + u.output_tokens,
                 });
 
-                Some(ChatChunk {
+                Ok(Some(ChatChunk {
                     id: response_id.to_string(),
                     object: "chat.completion.chunk".to_string(),
                     created: chrono::Utc::now().timestamp(),
@@ -481,13 +474,13 @@ impl KiroProvider {
                         finish_reason,
                     }],
                     usage,
-                })
+                }))
             }
-            kiro_gateway::StreamEvent::MessageStop => None,
-            kiro_gateway::StreamEvent::Ping => None,
+            kiro_gateway::StreamEvent::MessageStop => Ok(None),
+            kiro_gateway::StreamEvent::Ping => Ok(None),
             kiro_gateway::StreamEvent::ContentBlockStop { .. } => {
                 stream_state.current_tool_index = None;
-                None
+                Ok(None)
             }
             kiro_gateway::StreamEvent::Error { error } => {
                 tracing::warn!(
@@ -495,24 +488,10 @@ impl KiroProvider {
                     error_message = %error.message,
                     "Kiro stream error event"
                 );
-                // Propagate as a final chunk with error info so the client
-                // learns the stream had an error, rather than silently dropping.
-                Some(ChatChunk {
-                    id: response_id.to_string(),
-                    object: "chat.completion.chunk".to_string(),
-                    created: chrono::Utc::now().timestamp(),
-                    model: model.to_string(),
-                    choices: vec![ChunkChoice {
-                        index: 0,
-                        delta: Delta {
-                            role: None,
-                            content: Some(format!("[Stream error: {}]", error.message)),
-                            tool_calls: None,
-                        },
-                        finish_reason: Some("error".to_string()),
-                    }],
-                    usage: None,
-                })
+                return Err(ProviderError::Stream(format!(
+                    "{}: {}",
+                    error.error_type, error.message
+                )));
             }
         }
     }
@@ -525,6 +504,20 @@ struct StreamState {
     tool_call_index: u32,
     /// Index of the tool_call currently being streamed (for InputJsonDelta).
     current_tool_index: Option<u32>,
+}
+
+/// Strip the `kiro:` prefix from a model name for the kiro-gateway client.
+fn strip_prefix(model: &str) -> &str {
+    model.strip_prefix("kiro:").unwrap_or(model)
+}
+
+/// Look up model-specific max output tokens from the pricing database.
+///
+/// Falls back to 8192 when the model is not found in the pricing table.
+fn max_output_tokens_for_model(model: &str) -> u32 {
+    crate::providers::cost::CostDatabase::for_model(model)
+        .map(|p| p.max_output_tokens)
+        .unwrap_or(8192)
 }
 
 /// Parse a data URI (data:image/jpeg;base64,...) into (media_type, base64_data).
@@ -626,13 +619,16 @@ impl LlmProvider for KiroProvider {
 
             let event_stream = kiro_stream.filter_map(move |result| {
                 let chunk = match result {
-                    Ok(event) => Self::convert_stream_event(
+                    Ok(event) => match Self::convert_stream_event(
                         event,
                         &model,
                         &response_id,
                         &mut stream_state,
-                    )
-                    .map(Ok),
+                    ) {
+                        Ok(Some(chunk)) => Some(Ok(chunk)),
+                        Ok(None) => None,
+                        Err(e) => Some(Err(e)),
+                    },
                     Err(e) => Some(Err(convert_kiro_error(e))),
                 };
                 async move { chunk }
@@ -668,9 +664,9 @@ mod tests {
 
     #[test]
     fn test_strip_prefix() {
-        assert_eq!(KiroProvider::strip_prefix("kiro:claude-sonnet-4"), "claude-sonnet-4");
-        assert_eq!(KiroProvider::strip_prefix("claude-sonnet-4"), "claude-sonnet-4");
-        assert_eq!(KiroProvider::strip_prefix("kiro:auto"), "auto");
+        assert_eq!(strip_prefix("kiro:claude-sonnet-4"), "claude-sonnet-4");
+        assert_eq!(strip_prefix("claude-sonnet-4"), "claude-sonnet-4");
+        assert_eq!(strip_prefix("kiro:auto"), "auto");
     }
 
     #[test]
@@ -766,7 +762,8 @@ mod tests {
         };
 
         let kiro_req = KiroProvider::convert_request(&req);
-        assert_eq!(kiro_req.max_tokens, DEFAULT_MAX_TOKENS);
+        // Should use model-specific max from pricing table (kiro:auto = 64000)
+        assert_eq!(kiro_req.max_tokens, max_output_tokens_for_model("kiro:auto"));
     }
 
     #[test]
@@ -1134,8 +1131,7 @@ mod tests {
 
         let mut state = StreamState::default();
         let chunk = KiroProvider::convert_stream_event(event, "kiro:auto", "resp-1", &mut state);
-        assert!(chunk.is_some());
-        let chunk = chunk.unwrap();
+        let chunk = chunk.unwrap().unwrap();
         assert_eq!(chunk.choices[0].delta.role, Some("assistant".to_string()));
     }
 
@@ -1150,8 +1146,7 @@ mod tests {
 
         let mut state = StreamState::default();
         let chunk = KiroProvider::convert_stream_event(event, "kiro:auto", "resp-1", &mut state);
-        assert!(chunk.is_some());
-        let chunk = chunk.unwrap();
+        let chunk = chunk.unwrap().unwrap();
         assert_eq!(chunk.choices[0].delta.content, Some("Hello".to_string()));
     }
 
@@ -1172,8 +1167,7 @@ mod tests {
 
         let mut state = StreamState::default();
         let chunk = KiroProvider::convert_stream_event(event, "kiro:auto", "resp-1", &mut state);
-        assert!(chunk.is_some());
-        let chunk = chunk.unwrap();
+        let chunk = chunk.unwrap().unwrap();
         assert_eq!(
             chunk.choices[0].finish_reason,
             Some("stop".to_string())
@@ -1185,14 +1179,14 @@ mod tests {
     fn test_convert_stream_event_ping_returns_none() {
         let event = kiro_gateway::StreamEvent::Ping;
         let mut state = StreamState::default();
-        assert!(KiroProvider::convert_stream_event(event, "kiro:auto", "resp-1", &mut state).is_none());
+        assert!(KiroProvider::convert_stream_event(event, "kiro:auto", "resp-1", &mut state).unwrap().is_none());
     }
 
     #[test]
     fn test_convert_stream_event_stop_returns_none() {
         let event = kiro_gateway::StreamEvent::MessageStop;
         let mut state = StreamState::default();
-        assert!(KiroProvider::convert_stream_event(event, "kiro:auto", "resp-1", &mut state).is_none());
+        assert!(KiroProvider::convert_stream_event(event, "kiro:auto", "resp-1", &mut state).unwrap().is_none());
     }
 
     #[test]
@@ -1209,8 +1203,7 @@ mod tests {
             },
         };
         let chunk = KiroProvider::convert_stream_event(start_event, "kiro:auto", "resp-1", &mut state);
-        assert!(chunk.is_some());
-        let chunk = chunk.unwrap();
+        let chunk = chunk.unwrap().unwrap();
         let tc = chunk.choices[0].delta.tool_calls.as_ref().unwrap();
         assert_eq!(tc[0].index, Some(0));
         assert_eq!(tc[0].id, "toolu_1");
@@ -1225,8 +1218,7 @@ mod tests {
             },
         };
         let chunk = KiroProvider::convert_stream_event(delta_event, "kiro:auto", "resp-1", &mut state);
-        assert!(chunk.is_some());
-        let chunk = chunk.unwrap();
+        let chunk = chunk.unwrap().unwrap();
         // Should be in tool_calls, NOT in content
         assert!(chunk.choices[0].delta.content.is_none());
         let tc = chunk.choices[0].delta.tool_calls.as_ref().unwrap();

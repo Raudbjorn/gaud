@@ -40,6 +40,11 @@ impl FileTokenStorage {
         serde_json::from_str(&content).map_err(|e| Error::StorageSerialization(e.to_string()))
     }
 
+    /// Write token data atomically with secure permissions.
+    ///
+    /// Uses write-to-temp-then-rename to prevent corruption on crash, and
+    /// on Unix sets 0600 permissions at file creation time (not after) to
+    /// eliminate the race window where tokens are world-readable.
     fn write_all(&self, data: &HashMap<String, KiroTokenInfo>) -> Result<()> {
         if let Some(parent) = self.path.parent() {
             std::fs::create_dir_all(parent)
@@ -48,17 +53,36 @@ impl FileTokenStorage {
 
         let content =
             serde_json::to_string_pretty(data).map_err(|e| Error::StorageSerialization(e.to_string()))?;
-        std::fs::write(&self.path, &content)
-            .map_err(|e| Error::storage_io(&self.path, e.to_string()))?;
 
-        // Set 0600 permissions on Unix
+        // Write to a temp file in the same directory, then atomically rename.
+        // This prevents data loss if the process crashes mid-write.
+        let tmp_path = self.path.with_extension("tmp");
+
         #[cfg(unix)]
         {
-            use std::os::unix::fs::PermissionsExt;
-            let perms = std::fs::Permissions::from_mode(0o600);
-            std::fs::set_permissions(&self.path, perms)
-                .map_err(|e| Error::storage_io(&self.path, format!("chmod: {}", e)))?;
+            use std::io::Write;
+            use std::os::unix::fs::OpenOptionsExt;
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o600)
+                .open(&tmp_path)
+                .map_err(|e| Error::storage_io(&tmp_path, e.to_string()))?;
+            file.write_all(content.as_bytes())
+                .map_err(|e| Error::storage_io(&tmp_path, e.to_string()))?;
+            file.sync_all()
+                .map_err(|e| Error::storage_io(&tmp_path, e.to_string()))?;
         }
+
+        #[cfg(not(unix))]
+        {
+            std::fs::write(&tmp_path, &content)
+                .map_err(|e| Error::storage_io(&tmp_path, e.to_string()))?;
+        }
+
+        std::fs::rename(&tmp_path, &self.path)
+            .map_err(|e| Error::storage_io(&self.path, format!("atomic rename: {}", e)))?;
 
         debug!(path = %self.path.display(), "Token saved");
         Ok(())

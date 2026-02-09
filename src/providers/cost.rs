@@ -287,8 +287,17 @@ impl CostDatabase {
         ]
     }
 
-    // -- Kiro (subscription-based, $0 per-token) ----------------------------
+    // -- Kiro (subscription-based — see kiro_models() doc for details) -----
 
+    /// Kiro models — subscription-based pricing ($0.00 per-token).
+    ///
+    /// Kiro (Amazon Q Developer) uses a subscription model rather than per-token
+    /// billing. All models report $0.00 per million tokens, which means:
+    /// - Budget tracking will show no cost for Kiro usage (by design)
+    /// - Cost-based routing decisions will treat Kiro as "free"
+    /// - Actual cost is the monthly subscription fee, not tracked here
+    ///
+    /// If per-token billing is ever introduced, update the rates below.
     fn kiro_models() -> Vec<ModelPricing> {
         vec![
             ModelPricing {

@@ -53,7 +53,7 @@ impl std::fmt::Display for CredentialSource {
 ///
 /// Extends the generic `TokenInfo` with Kiro-specific fields like
 /// `profile_arn`, `region`, and SSO OIDC client credentials.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct KiroTokenInfo {
     /// OAuth access token.
     pub access_token: String,
@@ -85,6 +85,24 @@ pub struct KiroTokenInfo {
     /// Where credentials were loaded from.
     #[serde(skip)]
     pub source: CredentialSource,
+}
+
+impl std::fmt::Debug for KiroTokenInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KiroTokenInfo")
+            .field("access_token", &"[REDACTED]")
+            .field("refresh_token", &"[REDACTED]")
+            .field("expires_at", &self.expires_at)
+            .field("profile_arn", &self.profile_arn)
+            .field("region", &self.region)
+            .field("sso_region", &self.sso_region)
+            .field("client_id", &self.client_id.as_ref().map(|_| "[REDACTED]"))
+            .field("client_secret", &self.client_secret.as_ref().map(|_| "[REDACTED]"))
+            .field("scopes", &self.scopes)
+            .field("auth_type", &self.auth_type)
+            .field("source", &self.source)
+            .finish()
+    }
 }
 
 fn default_region() -> String {
@@ -135,7 +153,7 @@ impl KiroTokenInfo {
 }
 
 /// Response from Kiro Desktop Auth refresh endpoint.
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KiroDesktopRefreshResponse {
     pub access_token: String,
@@ -147,8 +165,19 @@ pub struct KiroDesktopRefreshResponse {
     pub profile_arn: Option<String>,
 }
 
+impl std::fmt::Debug for KiroDesktopRefreshResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KiroDesktopRefreshResponse")
+            .field("access_token", &"[REDACTED]")
+            .field("refresh_token", &self.refresh_token.as_ref().map(|_| "[REDACTED]"))
+            .field("expires_in", &self.expires_in)
+            .field("profile_arn", &self.profile_arn)
+            .finish()
+    }
+}
+
 /// Response from AWS SSO OIDC token endpoint.
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AwsSsoOidcRefreshResponse {
     pub access_token: String,
@@ -156,6 +185,16 @@ pub struct AwsSsoOidcRefreshResponse {
     pub refresh_token: Option<String>,
     #[serde(default = "default_expires_in")]
     pub expires_in: i64,
+}
+
+impl std::fmt::Debug for AwsSsoOidcRefreshResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AwsSsoOidcRefreshResponse")
+            .field("access_token", &"[REDACTED]")
+            .field("refresh_token", &self.refresh_token.as_ref().map(|_| "[REDACTED]"))
+            .field("expires_in", &self.expires_in)
+            .finish()
+    }
 }
 
 fn default_expires_in() -> i64 {

@@ -145,8 +145,8 @@ pub enum KiroStreamEvent {
     },
     /// Tool call input continuation.
     ToolInput(String),
-    /// Tool call end.
-    ToolStop,
+    /// Stream stop event with reason.
+    Stop { reason: String },
     /// Usage/metering data.
     Usage(serde_json::Value),
     /// Context usage percentage.

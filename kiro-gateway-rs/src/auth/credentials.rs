@@ -95,6 +95,15 @@ pub fn load_from_json_file(path: &str) -> Result<KiroTokenInfo> {
 }
 
 fn load_enterprise_device_registration(token: &mut KiroTokenInfo, client_id_hash: &str) {
+    // Sanitize to prevent path traversal: only allow alphanumeric, hyphens, underscores
+    if !client_id_hash
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        warn!("Invalid client_id_hash format, skipping device registration lookup");
+        return;
+    }
+
     let path = dirs::home_dir()
         .map(|h| h.join(".aws").join("sso").join("cache").join(format!("{}.json", client_id_hash)));
 

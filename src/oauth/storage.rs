@@ -192,23 +192,49 @@ impl TokenStorage for FileTokenStorage {
             OAuthError::Storage(format!("Failed to serialize token: {}", e))
         })?;
 
-        // Write to temp file first, then rename for atomicity
+        // Write to temp file first, then rename for atomicity.
+        // On Unix, set 0600 permissions at creation time to avoid a window
+        // where tokens are readable by other users.
         let temp_path = path.with_extension("tmp");
-        std::fs::write(&temp_path, &content).map_err(|e| {
-            OAuthError::Storage(format!(
-                "Failed to write temp file '{}': {}",
-                temp_path.display(),
-                e
-            ))
-        })?;
 
         #[cfg(unix)]
         {
-            use std::os::unix::fs::PermissionsExt;
-            let perms = std::fs::Permissions::from_mode(FILE_MODE);
-            std::fs::set_permissions(&temp_path, perms).map_err(|e| {
+            use std::io::Write;
+            use std::os::unix::fs::OpenOptionsExt;
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(FILE_MODE)
+                .open(&temp_path)
+                .map_err(|e| {
+                    OAuthError::Storage(format!(
+                        "Failed to create temp file '{}': {}",
+                        temp_path.display(),
+                        e
+                    ))
+                })?;
+            file.write_all(content.as_bytes()).map_err(|e| {
                 OAuthError::Storage(format!(
-                    "Failed to set file permissions on '{}': {}",
+                    "Failed to write temp file '{}': {}",
+                    temp_path.display(),
+                    e
+                ))
+            })?;
+            file.sync_all().map_err(|e| {
+                OAuthError::Storage(format!(
+                    "Failed to sync temp file '{}': {}",
+                    temp_path.display(),
+                    e
+                ))
+            })?;
+        }
+
+        #[cfg(not(unix))]
+        {
+            std::fs::write(&temp_path, &content).map_err(|e| {
+                OAuthError::Storage(format!(
+                    "Failed to write temp file '{}': {}",
                     temp_path.display(),
                     e
                 ))

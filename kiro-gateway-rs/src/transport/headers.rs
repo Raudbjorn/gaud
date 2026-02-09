@@ -61,7 +61,17 @@ pub fn kiro_api_headers(access_token: &str, fingerprint: &str) -> HeaderMap {
     headers
 }
 
-/// Build headers for streaming requests (adds Connection: close to prevent CLOSE_WAIT).
+/// Build headers for streaming requests.
+///
+/// Adds `Connection: close` to prevent TCP CLOSE_WAIT socket accumulation that
+/// was observed empirically with long-lived streaming connections to the Kiro API.
+/// This disables HTTP keep-alive for streaming requests, which means each streaming
+/// request opens a fresh TCP connection. For non-streaming requests, the default
+/// `KiroHttpClient` connection pool is used with keep-alive enabled.
+///
+/// **Tradeoff:** Slightly higher latency per streaming request (~1 RTT for TCP
+/// handshake) in exchange for reliable socket cleanup. Acceptable because streaming
+/// requests are long-lived and infrequent relative to connection setup time.
 pub fn kiro_streaming_headers(access_token: &str, fingerprint: &str) -> HeaderMap {
     let mut headers = kiro_api_headers(access_token, fingerprint);
 

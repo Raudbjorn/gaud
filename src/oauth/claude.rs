@@ -85,7 +85,7 @@ pub fn build_authorize_url(config: &ClaudeOAuthConfig, pkce: &Pkce, state: &str)
 }
 
 /// Token response from Claude's token endpoint.
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct TokenResponse {
     access_token: String,
     #[serde(default)]

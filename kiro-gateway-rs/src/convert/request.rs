@@ -2,6 +2,14 @@
 
 use uuid::Uuid;
 
+/// Filler text injected when an assistant message is needed to maintain alternation.
+/// The Kiro API requires strict user/assistant alternation. This text is chosen to
+/// be minimally disruptive to model output quality.
+const FILLER_ASSISTANT: &str = "Understood.";
+
+/// Filler text injected when a user message is needed to maintain alternation.
+const FILLER_USER: &str = "Continue.";
+
 use crate::config::{API_ORIGIN, MAX_TOOL_DESCRIPTION_LENGTH, MAX_TOOL_NAME_LENGTH};
 use crate::convert::content;
 use crate::convert::schema::sanitize_json_schema;
@@ -81,7 +89,8 @@ pub fn build_kiro_payload(
     // Build system prompt (combine explicit system + tool description overflow)
     let system_text = build_system_prompt(request.system.as_ref(), &system_overflow);
 
-    // Inject thinking tags into content if thinking is enabled
+    // Kiro API has no separate system prompt field; we prepend it to user content.
+    // See inject_thinking_tags doc comment for rationale.
     let final_content = if request.thinking.is_some() {
         inject_thinking_tags(&current_text, &system_text)
     } else if !system_text.is_empty() {
@@ -196,14 +205,23 @@ fn process_messages(messages: &[Message]) -> Vec<Message> {
     if result.last().is_some_and(|m| m.role != Role::User) {
         result.push(Message {
             role: Role::User,
-            content: crate::models::request::MessageContent::Text("Continue.".to_string()),
+            content: crate::models::request::MessageContent::Text(FILLER_USER.to_string()),
         });
     }
 
     result
 }
 
-/// Ensure messages alternate between user and assistant by inserting fillers.
+/// Ensure messages alternate between user and assistant by inserting filler messages.
+///
+/// The Kiro API (like the underlying Anthropic Messages API) requires strict
+/// alternation between user and assistant roles. When adjacent messages share
+/// the same role (e.g., two user messages after merging), this function inserts
+/// minimal filler messages ("Understood." for assistant, "Continue." for user)
+/// to satisfy the constraint.
+///
+/// **Note:** These synthetic messages may subtly influence model output. The
+/// filler text is intentionally terse to minimize impact.
 fn ensure_alternating(messages: &mut Vec<Message>) {
     let mut i = 1;
     while i < messages.len() {
@@ -214,9 +232,9 @@ fn ensure_alternating(messages: &mut Vec<Message>) {
                 Role::User
             };
             let filler_text = if filler_role == Role::Assistant {
-                "Understood."
+                FILLER_ASSISTANT
             } else {
-                "Continue."
+                FILLER_USER
             };
             messages.insert(
                 i,
@@ -305,6 +323,12 @@ fn build_system_prompt(system: Option<&SystemPrompt>, overflow: &str) -> String 
 }
 
 /// Inject thinking tags into content when extended thinking is enabled.
+///
+/// **Design note:** The Kiro API does not support a separate `system` field in
+/// its payload format (`generateAssistantResponse`). The system prompt must be
+/// prepended to the user message content. This is a known limitation -- if the
+/// Kiro API adds system prompt support in the future, this should be refactored
+/// to use the dedicated field instead.
 fn inject_thinking_tags(content: &str, system: &str) -> String {
     let mut parts = Vec::new();
 

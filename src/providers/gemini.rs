@@ -442,6 +442,13 @@ impl<T: TokenStorage + 'static> LlmProvider for GeminiProvider<T> {
     ) -> Pin<Box<dyn std::future::Future<Output = Result<ChatResponse, ProviderError>> + Send + '_>> {
         let request = request.clone();
         Box::pin(async move {
+            if !self.supports_model(&request.model) {
+                return Err(ProviderError::Other(format!(
+                    "Unsupported Gemini model: {}",
+                    request.model
+                )));
+            }
+
             let token = self.get_token().await?;
             let body = Self::convert_request(&request);
 
@@ -481,6 +488,13 @@ impl<T: TokenStorage + 'static> LlmProvider for GeminiProvider<T> {
     ) -> Pin<Box<dyn std::future::Future<Output = Result<Pin<Box<dyn Stream<Item = Result<ChatChunk, ProviderError>> + Send>>, ProviderError>> + Send + '_>> {
         let request = request.clone();
         Box::pin(async move {
+        if !self.supports_model(&request.model) {
+            return Err(ProviderError::Other(format!(
+                "Unsupported Gemini model: {}",
+                request.model
+            )));
+        }
+
         let token = self.get_token().await?;
         let body = Self::convert_request(&request);
 
@@ -727,6 +741,42 @@ mod tests {
         };
         let result = p.chat(&req).await;
         assert!(matches!(result, Err(ProviderError::NoToken(_))));
+    }
+
+    #[tokio::test]
+    async fn test_chat_rejects_unsupported_model() {
+        let p = GeminiProvider::new(Arc::new(MockTokenStorage::with_token("test")));
+        let req = ChatRequest {
+            model: "../../admin".into(),
+            messages: vec![],
+            temperature: None,
+            max_tokens: None,
+            stream: false,
+            top_p: None,
+            stop: None,
+            tools: None,
+            tool_choice: None,
+        };
+        let result = p.chat(&req).await;
+        assert!(matches!(result, Err(ProviderError::Other(_))));
+    }
+
+    #[tokio::test]
+    async fn test_stream_rejects_unsupported_model() {
+        let p = GeminiProvider::new(Arc::new(MockTokenStorage::with_token("test")));
+        let req = ChatRequest {
+            model: "gemini-evil/../hack".into(),
+            messages: vec![],
+            temperature: None,
+            max_tokens: None,
+            stream: true,
+            top_p: None,
+            stop: None,
+            tools: None,
+            tool_choice: None,
+        };
+        let result = p.stream_chat(&req).await;
+        assert!(matches!(result, Err(ProviderError::Other(_))));
     }
 
     #[test]

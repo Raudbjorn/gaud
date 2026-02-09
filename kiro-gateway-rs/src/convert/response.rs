@@ -126,6 +126,8 @@ pub struct ResponseAccumulator {
     output_tokens: u32,
     /// Context usage percentage.
     context_usage_pct: Option<f64>,
+    /// Whether we have received real usage data from the server.
+    has_real_usage: bool,
     /// Whether the stream has ended.
     finished: bool,
     /// Current content block index.
@@ -153,6 +155,7 @@ impl ResponseAccumulator {
             input_tokens: 0,
             output_tokens: 0,
             context_usage_pct: None,
+            has_real_usage: false,
             finished: false,
             block_index: 0,
             thinking_state: ThinkingState::default(),
@@ -179,7 +182,9 @@ impl ResponseAccumulator {
 
                 if !regular_text.is_empty() {
                     self.text.push_str(&regular_text);
-                    self.output_tokens += estimate_tokens(&regular_text);
+                    if !self.has_real_usage {
+                        self.output_tokens += estimate_tokens(&regular_text);
+                    }
                     events.push(StreamEvent::ContentBlockDelta {
                         index: self.block_index,
                         delta: ContentDelta::TextDelta { text: regular_text },
@@ -244,12 +249,18 @@ impl ResponseAccumulator {
                     },
                 }]
             }
-            KiroStreamEvent::ToolStop => {
-                self.finalize_current_tool();
+            KiroStreamEvent::Stop { reason } => {
+                // Only finalize tool if we were actually building one
+                if self.current_tool.is_some() {
+                    self.finalize_current_tool();
+                }
                 let events = vec![StreamEvent::ContentBlockStop {
                     index: self.block_index,
                 }];
-                self.block_index += 1;
+                // Only advance block index if this was a tool-specific stop
+                if reason != "end_turn" {
+                    self.block_index += 1;
+                }
                 events
             }
             KiroStreamEvent::Usage(usage_data) => {
@@ -259,6 +270,7 @@ impl ResponseAccumulator {
                 if let Some(output) = usage_data.get("outputTokenCount").and_then(|v| v.as_u64()) {
                     self.output_tokens = output as u32;
                 }
+                self.has_real_usage = true;
                 Vec::new()
             }
             KiroStreamEvent::ContextUsage(pct) => {
@@ -391,6 +403,7 @@ impl ResponseAccumulator {
 }
 
 /// Rough token estimation (4 chars per token).
+/// Only used as a fallback when real usage data has not been received from the server.
 fn estimate_tokens(text: &str) -> u32 {
     (text.len() / 4).max(1) as u32
 }
@@ -444,6 +457,57 @@ mod tests {
         let (thinking, regular) = state.process("This is <not> a thinking tag");
         assert_eq!(thinking, "");
         assert_eq!(regular, "This is <not> a thinking tag");
+    }
+
+    #[test]
+    fn test_thinking_state_opening_tag_almost_complete() {
+        let mut state = ThinkingState::default();
+        // Chunk ends with almost-complete opening tag
+        let (t1, r1) = state.process("hello<antThinkin");
+        assert_eq!(t1, "");
+        assert_eq!(r1, "hello");
+
+        let (t2, r2) = state.process("g>thinking content");
+        assert_eq!(t2, "thinking content");
+        assert_eq!(r2, "");
+    }
+
+    #[test]
+    fn test_thinking_state_closing_tag_split_at_angle_bracket() {
+        let mut state = ThinkingState::default();
+        state.process("<antThinking>start");
+
+        // Closing tag split exactly at the >
+        let (t1, _r1) = state.process(" more</antThinking");
+        assert_eq!(t1, " more");
+
+        let (t2, r2) = state.process(">after");
+        assert_eq!(t2, "");
+        assert_eq!(r2, "after");
+    }
+
+    #[test]
+    fn test_thinking_state_empty_chunks() {
+        let mut state = ThinkingState::default();
+        let (t, r) = state.process("");
+        assert_eq!(t, "");
+        assert_eq!(r, "");
+    }
+
+    #[test]
+    fn test_thinking_state_single_angle_bracket() {
+        let mut state = ThinkingState::default();
+        let (t, r) = state.process("text with < in it");
+        assert_eq!(t, "");
+        assert_eq!(r, "text with < in it");
+    }
+
+    #[test]
+    fn test_thinking_state_multiple_thinking_blocks() {
+        let mut state = ThinkingState::default();
+        let (t, r) = state.process("<antThinking>first</antThinking>middle<antThinking>second</antThinking>end");
+        assert_eq!(t, "firstsecond");
+        assert_eq!(r, "middleend");
     }
 
     #[test]

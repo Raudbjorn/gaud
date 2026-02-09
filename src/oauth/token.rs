@@ -28,7 +28,7 @@ const REFRESH_BUFFER_SECS: i64 = 300;
 /// Stores access token, refresh token (with optional embedded project IDs),
 /// and expiration timestamp. The composite format allows encoding project
 /// discovery results in the refresh token field for efficient storage.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct TokenInfo {
     /// The OAuth access token for API requests.
     pub access_token: String,
@@ -51,6 +51,18 @@ pub struct TokenInfo {
 
 fn default_token_type() -> String {
     "Bearer".to_string()
+}
+
+impl std::fmt::Debug for TokenInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TokenInfo")
+            .field("access_token", &"[REDACTED]")
+            .field("refresh_token", &self.refresh_token.as_ref().map(|_| "[REDACTED]"))
+            .field("expires_at", &self.expires_at)
+            .field("token_type", &self.token_type)
+            .field("provider", &self.provider)
+            .finish()
+    }
 }
 
 impl TokenInfo {
