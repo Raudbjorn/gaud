@@ -281,6 +281,7 @@ impl<T: TokenStorage + 'static> CopilotProvider<T> {
                     message: ResponseMessage {
                         role: c.message.role.clone(),
                         content: c.message.content.clone(),
+                        reasoning_content: None,
                         tool_calls,
                     },
                     finish_reason: c.finish_reason.clone(),
@@ -456,6 +457,7 @@ impl<T: TokenStorage + 'static> LlmProvider for CopilotProvider<T> {
                                         delta: Delta {
                                             role: c.delta.role.clone(),
                                             content: c.delta.content.clone(),
+                                            reasoning_content: None,
                                             tool_calls,
                                         },
                                         finish_reason: c.finish_reason.clone(),

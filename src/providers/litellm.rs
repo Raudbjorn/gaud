@@ -282,6 +282,7 @@ impl LitellmProvider {
                         message: ResponseMessage {
                             role: msg.role,
                             content: msg.content,
+                            reasoning_content: None,
                             tool_calls: msg.tool_calls.and_then(|tc| {
                                 serde_json::from_value(serde_json::Value::Array(tc)).ok()
                             }),
@@ -454,6 +455,7 @@ impl LlmProvider for LitellmProvider {
                                                     delta: Delta {
                                                         role: delta.role,
                                                         content: delta.content,
+                                                        reasoning_content: None,
                                                         tool_calls: delta
                                                             .tool_calls
                                                             .and_then(|tc| {

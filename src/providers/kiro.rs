@@ -266,6 +266,7 @@ impl KiroProvider {
         original_model: &str,
     ) -> ChatResponse {
         let mut content_text: Option<String> = None;
+        let mut reasoning_text: Option<String> = None;
         let mut tool_calls: Vec<ToolCall> = Vec::new();
 
         for block in &resp.content {
@@ -284,8 +285,10 @@ impl KiroProvider {
                         },
                     });
                 }
-                kiro_gateway::ResponseContentBlock::Thinking { .. } => {
-                    // Thinking blocks are internal; don't expose in OpenAI format.
+                kiro_gateway::ResponseContentBlock::Thinking { thinking } => {
+                    reasoning_text
+                        .get_or_insert_with(String::new)
+                        .push_str(thinking);
                 }
             }
         }
@@ -310,6 +313,7 @@ impl KiroProvider {
                 message: ResponseMessage {
                     role: "assistant".to_string(),
                     content: content_text,
+                    reasoning_content: reasoning_text,
                     tool_calls: if tool_calls.is_empty() {
                         None
                     } else {
@@ -345,6 +349,7 @@ impl KiroProvider {
                         delta: Delta {
                             role: Some("assistant".to_string()),
                             content: None,
+                            reasoning_content: None,
                             tool_calls: None,
                         },
                         finish_reason: None,
@@ -374,6 +379,7 @@ impl KiroProvider {
                             delta: Delta {
                                 role: None,
                                 content: None,
+                                reasoning_content: None,
                                 tool_calls: Some(vec![ToolCall {
                                     index: Some(idx),
                                     id,
@@ -403,6 +409,7 @@ impl KiroProvider {
                             delta: Delta {
                                 role: None,
                                 content: Some(text),
+                                reasoning_content: None,
                                 tool_calls: None,
                             },
                             finish_reason: None,
@@ -424,6 +431,7 @@ impl KiroProvider {
                                 delta: Delta {
                                     role: None,
                                     content: None,
+                                    reasoning_content: None,
                                     tool_calls: Some(vec![ToolCall {
                                         index: Some(tool_idx),
                                         id: String::new(),
@@ -439,7 +447,25 @@ impl KiroProvider {
                             usage: None,
                         }))
                     }
-                    kiro_gateway::ContentDelta::ThinkingDelta { .. } => Ok(None),
+                    kiro_gateway::ContentDelta::ThinkingDelta { thinking } => {
+                        Ok(Some(ChatChunk {
+                            id: response_id.to_string(),
+                            object: "chat.completion.chunk".to_string(),
+                            created: chrono::Utc::now().timestamp(),
+                            model: model.to_string(),
+                            choices: vec![ChunkChoice {
+                                index: 0,
+                                delta: Delta {
+                                    role: None,
+                                    content: None,
+                                    reasoning_content: Some(thinking),
+                                    tool_calls: None,
+                                },
+                                finish_reason: None,
+                            }],
+                            usage: None,
+                        }))
+                    }
                 }
             }
             kiro_gateway::StreamEvent::MessageDelta { delta, usage } => {
@@ -469,6 +495,7 @@ impl KiroProvider {
                         delta: Delta {
                             role: None,
                             content: None,
+                            reasoning_content: None,
                             tool_calls: None,
                         },
                         finish_reason,
@@ -1224,5 +1251,130 @@ mod tests {
         let tc = chunk.choices[0].delta.tool_calls.as_ref().unwrap();
         assert_eq!(tc[0].index, Some(0));
         assert_eq!(tc[0].function.arguments, r#"{"q":"te"#);
+    }
+
+    #[test]
+    fn test_convert_response_with_thinking() {
+        let resp = kiro_gateway::MessagesResponse {
+            id: "msg_think".into(),
+            response_type: "message".into(),
+            role: "assistant".into(),
+            content: vec![
+                kiro_gateway::ResponseContentBlock::Thinking {
+                    thinking: "Let me think about this...".into(),
+                },
+                kiro_gateway::ResponseContentBlock::Text {
+                    text: "The answer is 42.".into(),
+                },
+            ],
+            model: "claude-sonnet-4".into(),
+            stop_reason: Some(kiro_gateway::StopReason::EndTurn),
+            stop_sequence: None,
+            usage: kiro_gateway::Usage {
+                input_tokens: 20,
+                output_tokens: 30,
+                cache_creation_input_tokens: None,
+                cache_read_input_tokens: None,
+            },
+        };
+
+        let chat_resp = KiroProvider::convert_response(resp, "kiro:claude-sonnet-4");
+        assert_eq!(
+            chat_resp.choices[0].message.content,
+            Some("The answer is 42.".to_string())
+        );
+        assert_eq!(
+            chat_resp.choices[0].message.reasoning_content,
+            Some("Let me think about this...".to_string())
+        );
+    }
+
+    #[test]
+    fn test_convert_response_without_thinking() {
+        let resp = kiro_gateway::MessagesResponse {
+            id: "msg_nothink".into(),
+            response_type: "message".into(),
+            role: "assistant".into(),
+            content: vec![kiro_gateway::ResponseContentBlock::Text {
+                text: "Hello!".into(),
+            }],
+            model: "claude-sonnet-4".into(),
+            stop_reason: Some(kiro_gateway::StopReason::EndTurn),
+            stop_sequence: None,
+            usage: kiro_gateway::Usage::default(),
+        };
+
+        let chat_resp = KiroProvider::convert_response(resp, "kiro:auto");
+        assert_eq!(
+            chat_resp.choices[0].message.content,
+            Some("Hello!".to_string())
+        );
+        assert!(
+            chat_resp.choices[0].message.reasoning_content.is_none(),
+            "reasoning_content should be None when no Thinking blocks"
+        );
+
+        // Verify it doesn't appear in JSON when None (skip_serializing_if).
+        let json = serde_json::to_string(&chat_resp.choices[0].message).unwrap();
+        assert!(
+            !json.contains("reasoning_content"),
+            "reasoning_content should not be serialized when None: {json}"
+        );
+    }
+
+    #[test]
+    fn test_convert_stream_thinking_delta() {
+        let event = kiro_gateway::StreamEvent::ContentBlockDelta {
+            index: 0,
+            delta: kiro_gateway::ContentDelta::ThinkingDelta {
+                thinking: "Thinking step...".into(),
+            },
+        };
+
+        let mut state = StreamState::default();
+        let chunk =
+            KiroProvider::convert_stream_event(event, "kiro:auto", "resp-1", &mut state);
+        let chunk = chunk.unwrap().unwrap();
+
+        // Should be in reasoning_content, NOT in content.
+        assert!(chunk.choices[0].delta.content.is_none());
+        assert_eq!(
+            chunk.choices[0].delta.reasoning_content,
+            Some("Thinking step...".to_string())
+        );
+    }
+
+    #[test]
+    fn test_convert_response_multiple_thinking_blocks() {
+        let resp = kiro_gateway::MessagesResponse {
+            id: "msg_multi_think".into(),
+            response_type: "message".into(),
+            role: "assistant".into(),
+            content: vec![
+                kiro_gateway::ResponseContentBlock::Thinking {
+                    thinking: "First thought.".into(),
+                },
+                kiro_gateway::ResponseContentBlock::Thinking {
+                    thinking: " Second thought.".into(),
+                },
+                kiro_gateway::ResponseContentBlock::Text {
+                    text: "Final answer.".into(),
+                },
+            ],
+            model: "claude-sonnet-4".into(),
+            stop_reason: Some(kiro_gateway::StopReason::EndTurn),
+            stop_sequence: None,
+            usage: kiro_gateway::Usage::default(),
+        };
+
+        let chat_resp = KiroProvider::convert_response(resp, "kiro:auto");
+        assert_eq!(
+            chat_resp.choices[0].message.reasoning_content,
+            Some("First thought. Second thought.".to_string())
+        );
+        assert_eq!(
+            chat_resp.choices[0].message.content,
+            Some("Final answer.".to_string())
+        );
     }
 }

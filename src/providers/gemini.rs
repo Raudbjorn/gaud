@@ -396,6 +396,7 @@ impl<T: TokenStorage + 'static> GeminiProvider<T> {
                     } else {
                         Some(content)
                     },
+                    reasoning_content: None,
                     tool_calls: if tool_calls.is_empty() {
                         None
                     } else {
@@ -609,6 +610,7 @@ impl<T: TokenStorage + 'static> LlmProvider for GeminiProvider<T> {
                                             } else {
                                                 Some(text)
                                             },
+                                            reasoning_content: None,
                                             tool_calls: None,
                                         },
                                         finish_reason,

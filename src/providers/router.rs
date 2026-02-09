@@ -477,6 +477,7 @@ mod tests {
                         message: ResponseMessage {
                             role: "assistant".into(),
                             content: Some("Hello from stub".into()),
+                            reasoning_content: None,
                             tool_calls: None,
                         },
                         finish_reason: Some("stop".into()),

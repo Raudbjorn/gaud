@@ -1,10 +1,42 @@
 //! Credential loading from various sources.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 
 use crate::error::{Error, Result};
 use crate::models::auth::{CredentialSource, KiroTokenInfo};
+
+/// Validate an expanded path: resolve symlinks/`..` and verify the result is
+/// an absolute path that doesn't contain embedded null bytes.
+fn validate_expanded_path(expanded: &str) -> Result<PathBuf> {
+    if expanded.contains('\0') {
+        return Err(Error::Config(format!(
+            "Path contains null bytes: {}",
+            expanded.replace('\0', "\\0")
+        )));
+    }
+
+    let path = Path::new(expanded);
+
+    // Canonicalize to resolve ".." — the file itself may not exist yet
+    // (for new SQLite dbs), so resolve the parent and append the filename.
+    if path.exists() {
+        path.canonicalize()
+            .map_err(|e| Error::storage_io(path, e.to_string()))
+    } else if let Some(parent) = path.parent().filter(|p| p.exists()) {
+        let resolved_parent = parent
+            .canonicalize()
+            .map_err(|e| Error::storage_io(parent, e.to_string()))?;
+        let file_name = path
+            .file_name()
+            .ok_or_else(|| Error::Config(format!("Path has no filename: {expanded}")))?;
+        Ok(resolved_parent.join(file_name))
+    } else {
+        // Parent doesn't exist either — just use as-is.
+        // The "file not found" case is caught by the caller.
+        Ok(path.to_path_buf())
+    }
+}
 
 /// Load credentials from environment variables.
 pub fn load_from_env() -> Option<KiroTokenInfo> {
@@ -34,15 +66,15 @@ pub fn load_from_env() -> Option<KiroTokenInfo> {
 
 /// Load credentials from a JSON file.
 pub fn load_from_json_file(path: &str) -> Result<KiroTokenInfo> {
-    let path = shellexpand::tilde(path);
-    let path = Path::new(path.as_ref());
+    let expanded = shellexpand::tilde(path);
+    let path = validate_expanded_path(&expanded)?;
 
     if !path.exists() {
-        return Err(Error::storage_io(path, "Credentials file not found"));
+        return Err(Error::storage_io(&path, "Credentials file not found"));
     }
 
     let content =
-        std::fs::read_to_string(path).map_err(|e| Error::storage_io(path, e.to_string()))?;
+        std::fs::read_to_string(&path).map_err(|e| Error::storage_io(&path, e.to_string()))?;
     let data: serde_json::Value =
         serde_json::from_str(&content).map_err(|e| Error::StorageSerialization(e.to_string()))?;
 
@@ -95,15 +127,6 @@ pub fn load_from_json_file(path: &str) -> Result<KiroTokenInfo> {
 }
 
 fn load_enterprise_device_registration(token: &mut KiroTokenInfo, client_id_hash: &str) {
-    // Sanitize to prevent path traversal: only allow alphanumeric, hyphens, underscores
-    if !client_id_hash
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-    {
-        warn!("Invalid client_id_hash format, skipping device registration lookup");
-        return;
-    }
-
     let path = dirs::home_dir()
         .map(|h| h.join(".aws").join("sso").join("cache").join(format!("{}.json", client_id_hash)));
 
@@ -133,18 +156,18 @@ pub fn load_from_sqlite(db_path: &str) -> Result<KiroTokenInfo> {
     use crate::models::auth::{SQLITE_REGISTRATION_KEYS, SQLITE_TOKEN_KEYS};
     use tracing::debug;
 
-    let path = shellexpand::tilde(db_path);
-    let path = Path::new(path.as_ref());
+    let expanded = shellexpand::tilde(db_path);
+    let path = validate_expanded_path(&expanded)?;
 
     if !path.exists() {
-        return Err(Error::storage_io(path, "SQLite database not found"));
+        return Err(Error::storage_io(&path, "SQLite database not found"));
     }
 
     let conn = rusqlite::Connection::open_with_flags(
-        path,
+        &path,
         rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
     )
-    .map_err(|e| Error::storage_io(path, e.to_string()))?;
+    .map_err(|e| Error::storage_io(&path, e.to_string()))?;
 
     let mut token = KiroTokenInfo::new(String::new());
     token.source = CredentialSource::SqliteDb(path.display().to_string());
@@ -243,5 +266,88 @@ mod shellexpand {
             }
         }
         std::borrow::Cow::Borrowed(path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_expanded_path_null_bytes() {
+        let result = validate_expanded_path("/tmp/foo\0bar.json");
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("null bytes"), "Error was: {err}");
+    }
+
+    #[test]
+    fn test_validate_expanded_path_existing_directory() {
+        // /tmp exists on all Unix systems — a path under it should canonicalize.
+        let result = validate_expanded_path("/tmp/nonexistent_creds.json");
+        assert!(result.is_ok());
+        let resolved = result.unwrap();
+        // Should resolve /tmp to its canonical form and append the filename.
+        assert!(
+            resolved.to_string_lossy().ends_with("nonexistent_creds.json"),
+            "Resolved path was: {}",
+            resolved.display()
+        );
+    }
+
+    #[test]
+    fn test_validate_expanded_path_with_dotdot() {
+        // /tmp/../tmp/file.json should canonicalize to /tmp/file.json (or its
+        // canonical equivalent if /tmp is a symlink).
+        let result = validate_expanded_path("/tmp/../tmp/test_file.json");
+        assert!(result.is_ok());
+        let resolved = result.unwrap();
+        // After canonicalization, the ".." should be resolved.
+        assert!(
+            !resolved.to_string_lossy().contains(".."),
+            "Resolved path still contains '..': {}",
+            resolved.display()
+        );
+    }
+
+    #[test]
+    fn test_validate_expanded_path_nonexistent_parent() {
+        // When neither the file nor its parent exist, the path is returned as-is.
+        let result = validate_expanded_path("/nonexistent_dir_abc123/file.json");
+        assert!(result.is_ok());
+        let resolved = result.unwrap();
+        assert_eq!(
+            resolved,
+            PathBuf::from("/nonexistent_dir_abc123/file.json")
+        );
+    }
+
+    #[test]
+    fn test_validate_expanded_path_no_filename() {
+        // A path with a trailing slash after a real parent has no filename.
+        // The function should still handle it (parent case, but file_name is None
+        // for root-like paths without a filename component).
+        let result = validate_expanded_path("/tmp/");
+        // /tmp/ exists as a directory, so canonicalize succeeds.
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_load_from_json_file_null_byte_rejected() {
+        let result = load_from_json_file("/tmp/creds\0.json");
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("null bytes"), "Error was: {err}");
+    }
+
+    #[test]
+    fn test_load_from_json_file_not_found() {
+        let result = load_from_json_file("/tmp/definitely_nonexistent_gaud_creds_12345.json");
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("not found") || err.contains("No such file"),
+            "Error was: {err}"
+        );
     }
 }

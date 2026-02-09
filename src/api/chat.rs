@@ -291,6 +291,7 @@ mod tests {
                 delta: Delta {
                     role: None,
                     content: Some("Hello".to_string()),
+                    reasoning_content: None,
                     tool_calls: None,
                 },
                 finish_reason: None,
