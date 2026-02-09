@@ -9,6 +9,8 @@ pub mod copilot;
 pub mod cost;
 pub mod gemini;
 pub mod health;
+pub mod kiro;
+pub mod litellm;
 pub mod router;
 pub mod types;
 

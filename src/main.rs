@@ -26,9 +26,12 @@ use gaud::api;
 use gaud::auth::middleware::require_auth;
 use gaud::auth::users::bootstrap_admin;
 use gaud::budget::{spawn_audit_logger, BudgetTracker};
-use gaud::config::Config;
+use gaud::config::{Config, KiroProviderConfig, LitellmProviderConfig};
 use gaud::db::Database;
+use gaud::providers::kiro::KiroProvider;
+use gaud::providers::litellm::{LitellmConfig, LitellmProvider};
 use gaud::providers::router::ProviderRouter;
+use gaud::providers::LlmProvider;
 use gaud::web;
 use gaud::AppState;
 
@@ -148,7 +151,35 @@ async fn main() -> anyhow::Result<()> {
     //    storage and are constructed asynchronously, we create an empty router
     //    here and let it be populated once the OAuth/token infrastructure is
     //    ready. The router is behind an Arc<RwLock<>> so it can be updated.
-    let provider_router = ProviderRouter::new();
+    let mut provider_router = ProviderRouter::new();
+
+    // Register Kiro provider if configured.
+    if let Some(ref kiro_config) = config.providers.kiro {
+        match build_kiro_provider(kiro_config).await {
+            Ok(provider) => {
+                provider_router.register(Arc::new(provider));
+                tracing::info!("Kiro provider registered");
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to initialize Kiro provider, skipping");
+            }
+        }
+    }
+
+    // Register LiteLLM provider if configured.
+    if let Some(ref litellm_config) = config.providers.litellm {
+        match build_litellm_provider(litellm_config).await {
+            Ok(provider) => {
+                let model_count = provider.models().len();
+                provider_router.register(Arc::new(provider));
+                tracing::info!(models = model_count, "LiteLLM provider registered");
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to initialize LiteLLM provider, skipping");
+            }
+        }
+    }
+
     let provider_router = Arc::new(RwLock::new(provider_router));
 
     // 7. Create budget tracker
@@ -203,6 +234,59 @@ async fn main() -> anyhow::Result<()> {
     // to drain remaining entries and exit.
 
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Kiro provider builder
+// ---------------------------------------------------------------------------
+
+/// Build a [`KiroProvider`] from the configuration.
+///
+/// The kiro-gateway client is constructed via its builder, picking up
+/// credentials from the config (refresh token, credentials file, or env vars).
+async fn build_kiro_provider(kiro_config: &KiroProviderConfig) -> anyhow::Result<KiroProvider> {
+    let mut builder = kiro_gateway::KiroClientBuilder::new();
+
+    if let Some(ref token) = kiro_config.refresh_token {
+        builder = builder.refresh_token(token.clone());
+    }
+
+    if let Some(ref path) = kiro_config.credentials_file {
+        builder = builder.credentials_file(path);
+    }
+
+    if let Some(ref region) = kiro_config.region {
+        builder = builder.region(region.clone());
+    }
+
+    let client = builder.build().await?;
+    Ok(KiroProvider::new(client))
+}
+
+// ---------------------------------------------------------------------------
+// LiteLLM provider builder
+// ---------------------------------------------------------------------------
+
+/// Build a [`LitellmProvider`] from the configuration.
+///
+/// The provider connects to the LiteLLM proxy at the configured URL and
+/// optionally discovers available models from its `/v1/models` endpoint.
+async fn build_litellm_provider(
+    config: &LitellmProviderConfig,
+) -> anyhow::Result<LitellmProvider> {
+    let litellm_config = LitellmConfig {
+        url: config.url.clone(),
+        api_key: config.api_key.clone(),
+        discover_models: config.discover_models,
+        models: config.models.clone(),
+        timeout_secs: config.timeout_secs,
+    };
+
+    let provider = LitellmProvider::new(litellm_config)
+        .await
+        .map_err(|e| anyhow::anyhow!("LiteLLM provider init failed: {e}"))?;
+
+    Ok(provider)
 }
 
 // ---------------------------------------------------------------------------

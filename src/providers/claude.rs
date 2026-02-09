@@ -384,6 +384,7 @@ impl<T: TokenStorage + 'static> ClaudeProvider<T> {
                 AnthropicResponseContent::Text { text } => text_parts.push(text.clone()),
                 AnthropicResponseContent::ToolUse { id, name, input } => {
                     tool_calls.push(ToolCall {
+                        index: None,
                         id: id.clone(),
                         r#type: "function".into(),
                         function: FunctionCall {
@@ -418,6 +419,7 @@ impl<T: TokenStorage + 'static> ClaudeProvider<T> {
                     } else {
                         Some(content)
                     },
+                    reasoning_content: None,
                     tool_calls: if tool_calls.is_empty() {
                         None
                     } else {
@@ -592,6 +594,7 @@ impl<T: TokenStorage + 'static> LlmProvider for ClaudeProvider<T> {
                                                 delta: Delta {
                                                     role: None,
                                                     content: Some(text),
+                                                    reasoning_content: None,
                                                     tool_calls: None,
                                                 },
                                                 finish_reason: None,
@@ -622,6 +625,7 @@ impl<T: TokenStorage + 'static> LlmProvider for ClaudeProvider<T> {
                                             delta: Delta {
                                                 role: None,
                                                 content: None,
+                                                reasoning_content: None,
                                                 tool_calls: None,
                                             },
                                             finish_reason,

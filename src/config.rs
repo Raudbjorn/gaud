@@ -206,6 +206,12 @@ pub struct ProvidersConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub copilot: Option<CopilotProviderConfig>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kiro: Option<KiroProviderConfig>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub litellm: Option<LitellmProviderConfig>,
+    #[serde(default)]
     pub routing_strategy: RoutingStrategy,
     #[serde(default = "default_token_storage_dir")]
     pub token_storage_dir: PathBuf,
@@ -258,6 +264,83 @@ pub struct CopilotProviderConfig {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
+}
+
+/// Kiro provider configuration (Amazon Q / AWS CodeWhisperer).
+///
+/// Authentication is managed internally by the kiro-gateway client.
+/// Provide either a `credentials_file` path to a JSON file containing a
+/// refresh token, or a `refresh_token` directly (the env var
+/// `GAUD_KIRO_REFRESH_TOKEN` is the most convenient way).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct KiroProviderConfig {
+    /// Path to a Kiro credentials JSON file (e.g. `~/.kiro/credentials.json`).
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub credentials_file: Option<String>,
+    /// Direct refresh token (overrides credentials_file).
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<String>,
+    /// AWS region for the Kiro API (default: us-east-1).
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub region: Option<String>,
+    /// Default model to use when none is specified.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_model: Option<String>,
+
+    /// Cached result of env var credential check (evaluated once at startup).
+    #[serde(skip)]
+    pub env_credentials_available: bool,
+}
+
+impl KiroProviderConfig {
+    /// Check env vars once and cache the result.
+    pub fn resolve_env_credentials(&mut self) {
+        self.env_credentials_available = std::env::var("KIRO_REFRESH_TOKEN").is_ok()
+            || std::env::var("GAUD_KIRO_REFRESH_TOKEN").is_ok();
+    }
+
+    /// Returns true if any credential source is configured.
+    /// Env var availability is cached at startup via resolve_env_credentials().
+    pub fn has_credentials(&self) -> bool {
+        self.credentials_file.is_some()
+            || self.refresh_token.is_some()
+            || self.env_credentials_available
+    }
+}
+
+/// LiteLLM proxy provider configuration.
+///
+/// Connects gaud to a running LiteLLM instance via its OpenAI-compatible API.
+/// LiteLLM supports 100+ LLM providers and offers its own routing, budgets,
+/// and virtual key management. Gaud treats it as a single upstream provider.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct LitellmProviderConfig {
+    /// Base URL of the LiteLLM proxy (e.g. `http://localhost:4000`).
+    pub url: String,
+    /// API key (master key or virtual key) for authenticating to LiteLLM.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
+    /// When true, gaud fetches available models from LiteLLM's
+    /// `GET /v1/models` endpoint at startup and exposes them with a
+    /// `litellm:` prefix.
+    #[serde(default = "default_true")]
+    pub discover_models: bool,
+    /// Manually listed model names (always available even if discovery is off
+    /// or fails). Use the `litellm:` prefix (e.g. `litellm:gpt-4o`).
+    #[serde(default)]
+    pub models: Vec<String>,
+    /// Request timeout in seconds for chat completions.
+    #[serde(default = "default_litellm_timeout")]
+    pub timeout_secs: u64,
+}
+
+const fn default_litellm_timeout() -> u64 {
+    120
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
@@ -598,6 +681,44 @@ impl Config {
             self.logging.log_content
         );
 
+        if let Some(ref mut kiro) = self.providers.kiro {
+            kiro.resolve_env_credentials();
+        }
+
+        // -- LiteLLM Provider (auto-create from env if URL is set) --
+        if let Ok(url) = std::env::var("GAUD_LITELLM_URL") {
+            let litellm = self.providers.litellm.get_or_insert(LitellmProviderConfig {
+                url: String::new(),
+                api_key: None,
+                discover_models: true,
+                models: Vec::new(),
+                timeout_secs: default_litellm_timeout(),
+            });
+            litellm.url = url;
+            ov.record("providers.litellm.url", "GAUD_LITELLM_URL");
+        }
+        if let Ok(key) = std::env::var("GAUD_LITELLM_API_KEY") {
+            if let Some(ref mut litellm) = self.providers.litellm {
+                litellm.api_key = if key.is_empty() { None } else { Some(key) };
+                ov.record("providers.litellm.api_key", "GAUD_LITELLM_API_KEY");
+            }
+        }
+        if let Ok(val) = std::env::var("GAUD_LITELLM_DISCOVER") {
+            if let Some(ref mut litellm) = self.providers.litellm {
+                litellm.discover_models =
+                    matches!(val.to_lowercase().as_str(), "1" | "true" | "yes" | "on");
+                ov.record("providers.litellm.discover_models", "GAUD_LITELLM_DISCOVER");
+            }
+        }
+        if let Ok(val) = std::env::var("GAUD_LITELLM_TIMEOUT") {
+            if let Some(ref mut litellm) = self.providers.litellm {
+                if let Ok(secs) = val.parse() {
+                    litellm.timeout_secs = secs;
+                    ov.record("providers.litellm.timeout_secs", "GAUD_LITELLM_TIMEOUT");
+                }
+            }
+        }
+
         self.env_overrides = ov;
     }
 
@@ -664,6 +785,31 @@ impl Config {
                 ]);
                 e
             },
+            // -- LiteLLM --
+            se(
+                "providers.litellm.url",
+                "LiteLLM",
+                "LiteLLM URL",
+                serde_json::json!(self.providers.litellm.as_ref().map(|l| l.url.as_str()).unwrap_or("")),
+                "GAUD_LITELLM_URL",
+                "text",
+            ),
+            se(
+                "providers.litellm.discover_models",
+                "LiteLLM",
+                "Auto-Discover Models",
+                serde_json::json!(self.providers.litellm.as_ref().map(|l| l.discover_models).unwrap_or(true)),
+                "GAUD_LITELLM_DISCOVER",
+                "bool",
+            ),
+            se(
+                "providers.litellm.timeout_secs",
+                "LiteLLM",
+                "Request Timeout (seconds)",
+                serde_json::json!(self.providers.litellm.as_ref().map(|l| l.timeout_secs).unwrap_or(default_litellm_timeout())),
+                "GAUD_LITELLM_TIMEOUT",
+                "number",
+            ),
             // -- Budget --
             se("budget.enabled", "Budget", "Budget Tracking Enabled", serde_json::json!(self.budget.enabled), "GAUD_BUDGET_ENABLED", "bool"),
             se("budget.warning_threshold_percent", "Budget", "Warning Threshold (%)", serde_json::json!(self.budget.warning_threshold_percent), "GAUD_BUDGET_WARNING_THRESHOLD", "number"),
@@ -682,6 +828,26 @@ impl Config {
             se("logging.json", "Logging", "JSON Log Format", serde_json::json!(self.logging.json), "GAUD_LOG_JSON", "bool"),
             se("logging.log_content", "Logging", "Log Request Content", serde_json::json!(self.logging.log_content), "GAUD_LOG_CONTENT", "bool"),
         ];
+
+        // Mark litellm api_key as sensitive.
+        let mut lk = se(
+            "providers.litellm.api_key",
+            "LiteLLM",
+            "API Key",
+            serde_json::json!(self.providers.litellm.as_ref()
+                .and_then(|l| l.api_key.as_deref())
+                .map(|_| "********")
+                .unwrap_or("")),
+            "GAUD_LITELLM_API_KEY",
+            "text",
+        );
+        lk.sensitive = true;
+        // Insert after the LiteLLM URL entry.
+        if let Some(pos) = entries.iter().position(|e| e.key == "providers.litellm.url") {
+            entries.insert(pos + 1, lk);
+        } else {
+            entries.push(lk);
+        }
 
         // Mark bootstrap_key as sensitive.
         let mut bk = se(
@@ -789,6 +955,44 @@ impl Config {
             }
             "logging.log_content" => {
                 self.logging.log_content = value.as_bool().ok_or("Expected boolean")?;
+            }
+            "providers.litellm.url" => {
+                let url = value.as_str().ok_or("Expected string")?.to_string();
+                if url.is_empty() {
+                    // Clear the LiteLLM config when URL is emptied.
+                    self.providers.litellm = None;
+                } else {
+                    let litellm = self.providers.litellm.get_or_insert(LitellmProviderConfig {
+                        url: String::new(),
+                        api_key: None,
+                        discover_models: true,
+                        models: Vec::new(),
+                        timeout_secs: default_litellm_timeout(),
+                    });
+                    litellm.url = url;
+                }
+            }
+            "providers.litellm.api_key" => {
+                let s = value.as_str().ok_or("Expected string")?;
+                if let Some(ref mut litellm) = self.providers.litellm {
+                    litellm.api_key = if s.is_empty() || s == "********" {
+                        litellm.api_key.clone()
+                    } else {
+                        Some(s.to_string())
+                    };
+                }
+            }
+            "providers.litellm.discover_models" => {
+                if let Some(ref mut litellm) = self.providers.litellm {
+                    litellm.discover_models = value.as_bool().ok_or("Expected boolean")?;
+                }
+            }
+            "providers.litellm.timeout_secs" => {
+                if let Some(ref mut litellm) = self.providers.litellm {
+                    litellm.timeout_secs = value
+                        .as_u64()
+                        .ok_or("Expected number")?;
+                }
             }
             _ => return Err(format!("Unknown setting key: {key}")),
         }

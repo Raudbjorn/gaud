@@ -78,7 +78,7 @@ pub struct DeviceCodeResponse {
 }
 
 /// Response from the token polling endpoint.
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct TokenPollResponse {
     #[serde(default)]
     access_token: Option<String>,

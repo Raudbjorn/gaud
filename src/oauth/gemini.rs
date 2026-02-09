@@ -32,7 +32,7 @@ const DEFAULT_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const DEFAULT_SCOPES: &[&str] = &["https://www.googleapis.com/auth/cloud-platform"];
 
 /// Configuration for the Gemini OAuth flow.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct GeminiOAuthConfig {
     pub client_id: String,
     pub client_secret: String,
@@ -40,6 +40,19 @@ pub struct GeminiOAuthConfig {
     pub token_url: String,
     pub redirect_uri: String,
     pub scopes: Vec<String>,
+}
+
+impl std::fmt::Debug for GeminiOAuthConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GeminiOAuthConfig")
+            .field("client_id", &self.client_id)
+            .field("client_secret", &"[REDACTED]")
+            .field("auth_url", &self.auth_url)
+            .field("token_url", &self.token_url)
+            .field("redirect_uri", &self.redirect_uri)
+            .field("scopes", &self.scopes)
+            .finish()
+    }
 }
 
 impl GeminiOAuthConfig {
@@ -92,7 +105,7 @@ pub fn build_authorize_url(config: &GeminiOAuthConfig, pkce: &Pkce, state: &str)
 }
 
 /// Token response from Google's token endpoint.
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct TokenResponse {
     access_token: String,
     #[serde(default)]

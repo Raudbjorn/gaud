@@ -265,6 +265,7 @@ impl<T: TokenStorage + 'static> CopilotProvider<T> {
                 let tool_calls = c.message.tool_calls.as_ref().map(|tcs| {
                     tcs.iter()
                         .map(|tc| ToolCall {
+                            index: None,
                             id: tc.id.clone(),
                             r#type: tc.r#type.clone(),
                             function: FunctionCall {
@@ -280,6 +281,7 @@ impl<T: TokenStorage + 'static> CopilotProvider<T> {
                     message: ResponseMessage {
                         role: c.message.role.clone(),
                         content: c.message.content.clone(),
+                        reasoning_content: None,
                         tool_calls,
                     },
                     finish_reason: c.finish_reason.clone(),
@@ -440,7 +442,13 @@ impl<T: TokenStorage + 'static> LlmProvider for CopilotProvider<T> {
                                     let tool_calls = c.delta.tool_calls.as_ref().map(|tcs| {
                                         tcs.iter()
                                             .filter_map(|tc| {
-                                                serde_json::from_value::<ToolCall>(tc.clone()).ok()
+                                                match serde_json::from_value::<ToolCall>(tc.clone()) {
+                                                    Ok(tool_call) => Some(tool_call),
+                                                    Err(e) => {
+                                                        debug!(error = %e, "Failed to parse tool call in Copilot SSE");
+                                                        None
+                                                    }
+                                                }
                                             })
                                             .collect()
                                     });
@@ -449,6 +457,7 @@ impl<T: TokenStorage + 'static> LlmProvider for CopilotProvider<T> {
                                         delta: Delta {
                                             role: c.delta.role.clone(),
                                             content: c.delta.content.clone(),
+                                            reasoning_content: None,
                                             tool_calls,
                                         },
                                         finish_reason: c.finish_reason.clone(),

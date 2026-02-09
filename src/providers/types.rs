@@ -111,6 +111,8 @@ pub struct ResponseMessage {
     pub role: String,
     pub content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
 }
 
@@ -148,6 +150,8 @@ pub struct Delta {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
 }
 
@@ -169,6 +173,9 @@ pub struct FunctionDef {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCall {
+    /// Index of the tool call in the delta array (used in streaming chunks).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index: Option<u32>,
     pub id: String,
     pub r#type: String,
     pub function: FunctionCall,

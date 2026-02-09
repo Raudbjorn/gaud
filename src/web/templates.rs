@@ -1329,7 +1329,7 @@ pub const SETTINGS: &str = r#"{% extends "layout" %}
 <script>
     if (!GAUD.requireAuth()) throw new Error('Not authenticated');
 
-    const SECTION_ORDER = ['Server', 'Database', 'Authentication', 'Providers', 'Budget', 'Logging'];
+    const SECTION_ORDER = ['Server', 'Database', 'Authentication', 'Providers', 'LiteLLM', 'Budget', 'Logging'];
     let allSettings = [];
     let changedKeys = new Set();
 

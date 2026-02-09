@@ -9,18 +9,39 @@ Gaud routes requests to LLM providers based on the model name in the request. Ea
 | Claude (Anthropic) | `claude` | PKCE Authorization Code | Anthropic Messages API | `claude-sonnet-4-20250514`, `claude-haiku-3-5-20241022`, `claude-opus-4-20250514` |
 | Gemini (Google) | `gemini` | PKCE + Client Secret | Google Generative AI | `gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-2.0-flash` |
 | GitHub Copilot | `copilot` | Device Code (RFC 8628) | GitHub Copilot Chat API | `gpt-4o`, `gpt-4-turbo`, `o1`, `o3-mini` |
+| Kiro (AWS) | `kiro` | Kiro Gateway (refresh token) | Amazon Q / CodeWhisperer | `kiro:auto`, `kiro:claude-sonnet-4`, `kiro:claude-sonnet-4.5`, `kiro:claude-haiku-4.5`, `kiro:claude-opus-4.5`, `kiro:claude-3.7-sonnet` |
 
 ## Model Name Routing
 
-Gaud uses prefix matching to route requests to the correct provider:
+All requests go through a single endpoint (`POST /v1/chat/completions`). Gaud uses the `model` field in the request to determine which provider handles it via prefix matching:
 
-| Model Prefix | Provider |
-|---|---|
-| `claude-*` | Claude |
-| `gemini-*` | Gemini |
-| `gpt-*`, `o1*`, `o3*` | Copilot |
+| Model Prefix | Provider | Example |
+|---|---|---|
+| `kiro:*` | Kiro | `kiro:claude-sonnet-4`, `kiro:auto` |
+| `claude-*` | Claude | `claude-sonnet-4-20250514` |
+| `gemini-*` | Gemini | `gemini-2.5-flash` |
+| `gpt-*`, `o1*`, `o3*` | Copilot | `gpt-4o`, `o3-mini` |
 
 If no prefix matches, Gaud falls back to any registered provider whose `supports_model()` method returns true.
+
+### Model Overlap and Disambiguation
+
+Several providers may offer access to the same underlying model family (e.g., Claude models are available through both the direct Anthropic API and through Kiro/AWS). Gaud handles this through **namespace prefixes**:
+
+- **Direct access** uses the provider's native model IDs: `claude-sonnet-4-20250514`
+- **Kiro-routed access** uses the `kiro:` prefix: `kiro:claude-sonnet-4`
+
+These are treated as **distinct model identifiers** by the router. A request for `claude-sonnet-4-20250514` always routes to the `claude` provider, while `kiro:claude-sonnet-4` always routes to the `kiro` provider. There is no ambiguity.
+
+When multiple providers _do_ register the same model ID (e.g., a backup provider), the router builds a candidate list:
+
+1. **Primary provider** (from prefix matching) is tried first
+2. **Fallback providers** (any other provider whose `supports_model()` returns true) are tried in order
+3. The candidate list is then reordered according to the active [routing strategy](#routing-strategies)
+4. For non-streaming requests, providers are tried in order until one succeeds
+5. For streaming requests, only the first candidate is used (streams cannot be spliced mid-response)
+
+The `GET /v1/models` endpoint lists all available models with their `owned_by` field indicating which provider serves each one, making it easy for clients to discover and select the right model identifier.
 
 ## Claude (Anthropic)
 
@@ -149,6 +170,54 @@ Models accessed through Copilot are subscription-based with no per-token charges
 | gpt-4-turbo | $0.00 | $0.00 |
 | o1 | $0.00 | $0.00 |
 | o3-mini | $0.00 | $0.00 |
+
+## Kiro (AWS)
+
+### Setup
+
+Kiro connects through the [kiro-gateway](https://github.com/anthropics/kiro-gateway) client using an AWS refresh token. Authentication is managed internally by the gateway client.
+
+Configure in `llm-proxy.toml`:
+
+```toml
+[providers.kiro]
+# Option 1: Path to Kiro credentials JSON file
+credentials_file = "~/.kiro/credentials.json"
+
+# Option 2: Direct refresh token (overrides credentials_file)
+# refresh_token = "YOUR_KIRO_REFRESH_TOKEN"
+
+# AWS region (default: us-east-1)
+# region = "us-east-1"
+```
+
+The most convenient method is the environment variable:
+
+```bash
+export GAUD_KIRO_REFRESH_TOKEN="your-refresh-token"
+```
+
+### Authentication
+
+Kiro uses an AWS-based refresh token flow managed by the kiro-gateway client library. No browser-based OAuth flow is needed. The client automatically handles token refresh.
+
+Credential sources are checked in this order:
+1. `refresh_token` in config (or `GAUD_KIRO_REFRESH_TOKEN` env var)
+2. `credentials_file` path
+3. `KIRO_REFRESH_TOKEN` env var (kiro-gateway native)
+
+### API Translation
+
+Kiro's API is similar to Anthropic's but routed through AWS infrastructure:
+
+- The `kiro:` prefix is stripped before sending to the Kiro API (e.g., `kiro:claude-sonnet-4` becomes `claude-sonnet-4`)
+- `kiro:auto` lets the Kiro gateway select the best model automatically
+- Request/response format follows the Anthropic Messages API pattern
+- Streaming uses SSE with Anthropic-style event types
+
+### Pricing
+
+Models accessed through Kiro are billed through your AWS account. Pricing varies by region and agreement.
 
 ## Routing Strategies
 

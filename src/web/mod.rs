@@ -414,6 +414,9 @@ fn configured_providers(state: &AppState) -> Vec<String> {
     if config.providers.copilot.is_some() {
         providers.push("copilot".to_string());
     }
+    if config.providers.litellm.is_some() {
+        providers.push("litellm".to_string());
+    }
     providers
 }
 

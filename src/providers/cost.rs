@@ -33,13 +33,14 @@ impl CostDatabase {
 
     /// Return pricing for every known model across all providers.
     pub fn all() -> Vec<ModelPricing> {
-        let mut v = Vec::with_capacity(40);
+        let mut v = Vec::with_capacity(48);
         v.extend(Self::claude_models());
         v.extend(Self::gemini_models());
         v.extend(Self::copilot_models());
         v.extend(Self::openai_models());
         v.extend(Self::deepseek_models());
         v.extend(Self::mistral_models());
+        v.extend(Self::kiro_models());
         v
     }
 
@@ -286,6 +287,70 @@ impl CostDatabase {
         ]
     }
 
+    // -- Kiro (subscription-based — see kiro_models() doc for details) -----
+
+    /// Kiro models — subscription-based pricing ($0.00 per-token).
+    ///
+    /// Kiro (Amazon Q Developer) uses a subscription model rather than per-token
+    /// billing. All models report $0.00 per million tokens, which means:
+    /// - Budget tracking will show no cost for Kiro usage (by design)
+    /// - Cost-based routing decisions will treat Kiro as "free"
+    /// - Actual cost is the monthly subscription fee, not tracked here
+    ///
+    /// If per-token billing is ever introduced, update the rates below.
+    fn kiro_models() -> Vec<ModelPricing> {
+        vec![
+            ModelPricing {
+                model: "kiro:auto".into(),
+                provider: "kiro".into(),
+                input_cost_per_million: 0.0,
+                output_cost_per_million: 0.0,
+                context_window: 200_000,
+                max_output_tokens: 64_000,
+            },
+            ModelPricing {
+                model: "kiro:claude-sonnet-4".into(),
+                provider: "kiro".into(),
+                input_cost_per_million: 0.0,
+                output_cost_per_million: 0.0,
+                context_window: 200_000,
+                max_output_tokens: 64_000,
+            },
+            ModelPricing {
+                model: "kiro:claude-sonnet-4.5".into(),
+                provider: "kiro".into(),
+                input_cost_per_million: 0.0,
+                output_cost_per_million: 0.0,
+                context_window: 200_000,
+                max_output_tokens: 64_000,
+            },
+            ModelPricing {
+                model: "kiro:claude-haiku-4.5".into(),
+                provider: "kiro".into(),
+                input_cost_per_million: 0.0,
+                output_cost_per_million: 0.0,
+                context_window: 200_000,
+                max_output_tokens: 8_192,
+            },
+            ModelPricing {
+                model: "kiro:claude-opus-4.5".into(),
+                provider: "kiro".into(),
+                input_cost_per_million: 0.0,
+                output_cost_per_million: 0.0,
+                context_window: 200_000,
+                max_output_tokens: 32_000,
+            },
+            ModelPricing {
+                model: "kiro:claude-3.7-sonnet".into(),
+                provider: "kiro".into(),
+                input_cost_per_million: 0.0,
+                output_cost_per_million: 0.0,
+                context_window: 200_000,
+                max_output_tokens: 8_192,
+            },
+        ]
+    }
+
     // -- Mistral -------------------------------------------------------------
 
     fn mistral_models() -> Vec<ModelPricing> {
@@ -453,6 +518,21 @@ mod tests {
         assert_eq!(p.input_cost_per_million, 15.0);
         assert_eq!(p.output_cost_per_million, 75.0);
         assert_eq!(p.context_window, 200_000);
+    }
+
+    #[test]
+    fn test_kiro_models_free() {
+        let p = CostDatabase::for_model("kiro:auto").unwrap();
+        assert_eq!(p.provider, "kiro");
+        assert_eq!(p.input_cost_per_million, 0.0);
+        assert_eq!(p.output_cost_per_million, 0.0);
+    }
+
+    #[test]
+    fn test_kiro_sonnet_present() {
+        let p = CostDatabase::for_model("kiro:claude-sonnet-4").unwrap();
+        assert_eq!(p.provider, "kiro");
+        assert_eq!(p.input_cost_per_million, 0.0);
     }
 
     #[test]
