@@ -186,41 +186,53 @@ async fn oauth_callback(
             .unwrap_or("Unknown error");
         let message = format!("OAuth flow failed for {provider}: {error} - {description}");
         warn!(%provider, %error, "OAuth callback error");
-        return render(
-            "oauth_callback",
-            context! {
-                success => false,
-                provider => &provider,
-                error => &message,
-            },
-        );
+        return (
+            StatusCode::BAD_REQUEST,
+            render(
+                "oauth_callback",
+                context! {
+                    success => false,
+                    provider => &provider,
+                    error => &message,
+                },
+            ),
+        )
+            .into_response();
     }
 
     let code = match &params.code {
         Some(c) => c.clone(),
         None => {
-            return render(
-                "oauth_callback",
-                context! {
-                    success => false,
-                    provider => &provider,
-                    error => "No authorization code received.",
-                },
-            );
+            return (
+                StatusCode::BAD_REQUEST,
+                render(
+                    "oauth_callback",
+                    context! {
+                        success => false,
+                        provider => &provider,
+                        error => "No authorization code received.",
+                    },
+                ),
+            )
+                .into_response();
         }
     };
 
     let state_token = match &params.state {
         Some(s) => s.clone(),
         None => {
-            return render(
-                "oauth_callback",
-                context! {
-                    success => false,
-                    provider => &provider,
-                    error => "Missing state parameter. Possible CSRF attack or expired flow.",
-                },
-            );
+            return (
+                StatusCode::BAD_REQUEST,
+                render(
+                    "oauth_callback",
+                    context! {
+                        success => false,
+                        provider => &provider,
+                        error => "Missing state parameter. Possible CSRF attack or expired flow.",
+                    },
+                ),
+            )
+                .into_response();
         }
     };
 
@@ -238,14 +250,18 @@ async fn oauth_callback(
         }
         Err(err) => {
             warn!(%provider, error = %err, "OAuth token exchange failed");
-            render(
-                "oauth_callback",
-                context! {
-                    success => false,
-                    provider => &provider,
-                    error => format!("Token exchange failed: {err}"),
-                },
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                render(
+                    "oauth_callback",
+                    context! {
+                        success => false,
+                        provider => &provider,
+                        error => format!("Token exchange failed: {err}"),
+                    },
+                ),
             )
+                .into_response()
         }
     }
 }
@@ -730,5 +746,52 @@ mod tests {
             html.contains(r#"href="/ui/settings"#),
             "Template 'oauth' is missing Settings nav link"
         );
+    }
+
+    #[test]
+    fn test_is_provider_configured() {
+        let mut config = crate::config::Config::default();
+
+        // Initially none are configured (default config has all providers as None)
+        assert!(!is_provider_configured("claude", &config));
+        assert!(!is_provider_configured("gemini", &config));
+
+        // Configure Claude
+        config.providers.claude = Some(crate::config::ClaudeProviderConfig {
+            client_id: "test".to_string(),
+            auth_url: "test".to_string(),
+            token_url: "test".to_string(),
+            callback_port: 1234,
+            default_model: None,
+            max_tokens: None,
+        });
+        assert!(is_provider_configured("claude", &config));
+        assert!(!is_provider_configured("gemini", &config));
+    }
+
+    #[test]
+    fn test_configured_providers_always_includes_kiro() {
+        let db = crate::db::Database::open_in_memory().unwrap();
+        let config = crate::config::Config::default();
+        let (audit_tx, _) = tokio::sync::mpsc::unbounded_channel();
+        let state = AppState {
+            config: std::sync::Arc::new(config),
+            config_path: std::path::PathBuf::from("test.toml"),
+            db: db.clone(),
+            router: std::sync::Arc::new(tokio::sync::RwLock::new(crate::providers::router::ProviderRouter::new())),
+            budget: std::sync::Arc::new(crate::budget::BudgetTracker::new(db.clone())),
+            audit_tx,
+            cost_calculator: std::sync::Arc::new(crate::providers::cost::CostCalculator::new()),
+            cache: None,
+            oauth_manager: std::sync::Arc::new(crate::oauth::OAuthManager::from_config(
+                std::sync::Arc::new(crate::config::Config::default()),
+                db,
+            )),
+        };
+
+        let providers = configured_providers(&state);
+        assert!(providers.contains(&"kiro".to_string()));
+        // By default, only Kiro is returned because it's "always show"
+        assert_eq!(providers.len(), 1);
     }
 }

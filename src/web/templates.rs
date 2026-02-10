@@ -649,7 +649,7 @@ pub const OAUTH: &str = r#"{% extends "layout" %}
         <div style="text-align:center;padding:1rem;">
             <p style="margin-bottom:1rem;">Visit the URL below and enter the code:</p>
             <p style="margin-bottom:0.5rem;">
-                <a id="copilot-verify-url" href="" target="_blank" style="font-size:1.125rem;"></a>
+                <a id="copilot-verify-url" href="" target="_blank" rel="noopener noreferrer" style="font-size:1.125rem;"></a>
             </p>
             <p style="margin-bottom:1rem;">
                 <code id="copilot-user-code" class="mono" style="font-size:2rem;font-weight:700;letter-spacing:0.1em;color:var(--accent);"></code>
@@ -708,11 +708,8 @@ pub const OAUTH: &str = r#"{% extends "layout" %}
             }
 
             let btn;
-            if (prov === 'kiro') {
-                btn = authenticated
-                    ? '<span class="text-muted" style="font-size:0.8125rem;">Managed via config</span>'
-                    : '<span class="text-muted" style="font-size:0.8125rem;">Configure in llm-proxy.toml</span>';
-            } else if (prov === 'litellm') {
+            const isConfigManaged = (prov === 'kiro' || prov === 'litellm');
+            if (isConfigManaged) {
                 btn = authenticated
                     ? '<span class="text-muted" style="font-size:0.8125rem;">Managed via config</span>'
                     : '<span class="text-muted" style="font-size:0.8125rem;">Configure in llm-proxy.toml</span>';
@@ -761,7 +758,10 @@ pub const OAUTH: &str = r#"{% extends "layout" %}
             if (!resp) return;
             const data = await resp.json();
             if (data.auth_url) {
-                window.open(data.auth_url, 'oauth_' + provider, 'width=600,height=700');
+                const authWin = window.open(data.auth_url, 'oauth_' + provider, 'width=600,height=700,noopener,noreferrer');
+                if (authWin) {
+                    authWin.opener = null;
+                }
                 statusEl.className = 'alert alert-info';
                 statusEl.textContent = 'OAuth flow started for ' + provider + '. Complete authorization in the popup window.';
                 statusEl.classList.remove('hidden');
@@ -818,12 +818,16 @@ pub const OAUTH: &str = r#"{% extends "layout" %}
             modal.classList.remove('hidden');
 
             // Open verification URL
-            window.open(data.verification_uri, 'copilot_auth', 'width=600,height=700');
+            const authWin = window.open(data.verification_uri, 'copilot_auth', 'width=600,height=700,noopener,noreferrer');
+            if (authWin) {
+                authWin.opener = null;
+            }
 
             // Poll for completion
             const interval = Math.max(data.interval || 5, 5) * 1000;
             let attempts = 0;
-            const maxAttempts = Math.ceil(data.expires_in / (interval / 1000));
+            const expiresIn = data.expires_in || 900;
+            const maxAttempts = Math.ceil(expiresIn / (interval / 1000));
 
             const pollTimer = setInterval(async () => {
                 attempts++;
