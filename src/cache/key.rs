@@ -165,6 +165,11 @@ pub fn semantic_text(request: &ChatRequest) -> String {
 // ---------------------------------------------------------------------------
 
 /// Flatten `MessageContent` (Text or Parts) into a single plain-text string.
+///
+/// **Trimming contract:** This function does NOT trim whitespace. Callers that
+/// need whitespace-normalized strings (e.g. `exact_hash`, `system_prompt_hash`)
+/// must call `.trim()` on the result. `semantic_text` intentionally preserves
+/// spacing because embeddings can be sensitive to whitespace layout.
 pub(crate) fn flatten_content(content: &MessageContent) -> String {
     match content {
         MessageContent::Text(s) => s.clone(),

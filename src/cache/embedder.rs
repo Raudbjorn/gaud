@@ -3,14 +3,19 @@ use url::Url;
 use std::net::IpAddr;
 
 /// Call an OpenAI-compatible `/v1/embeddings` endpoint and return the vector.
+///
+/// When `allow_local` is `true`, the SSRF protection is bypassed so that
+/// local embedding servers (e.g. Ollama on `localhost:11434`, a vLLM
+/// instance on `192.168.x.x`) can be used.
 pub async fn embed(
     url: &str,
     model: &str,
     text: &str,
     api_key: Option<&str>,
+    allow_local: bool,
 ) -> Result<Vec<f32>, CacheError> {
     // SSRF Protection: Validate URL before making request
-    ensure_safe_url(url).await?;
+    ensure_safe_url(url, allow_local).await?;
 
     let client = reqwest::Client::new();
 
@@ -51,7 +56,15 @@ pub async fn embed(
 }
 
 /// Validate that the URL does not point to a local or private network address (SSRF protection).
-async fn ensure_safe_url(url_str: &str) -> Result<(), CacheError> {
+///
+/// When `allow_local` is `true` the check is skipped entirely, allowing
+/// users to point at self-hosted embedding servers on localhost or private
+/// networks (e.g. Ollama, vLLM, TEI).
+async fn ensure_safe_url(url_str: &str, allow_local: bool) -> Result<(), CacheError> {
+    if allow_local {
+        return Ok(());
+    }
+
     let url = Url::parse(url_str)
         .map_err(|e| CacheError::InvalidConfig(format!("Invalid embedding URL: {e}")))?;
 
@@ -78,20 +91,9 @@ async fn ensure_safe_url(url_str: &str) -> Result<(), CacheError> {
 fn is_public_ip(addr: &IpAddr) -> bool {
     match addr {
         IpAddr::V4(ipv4) => {
-            // Check for private ranges
-            // 10.0.0.0/8
-            // 172.16.0.0/12
-            // 192.168.0.0/16
-            // 127.0.0.0/8 (Loopback)
-            // 169.254.0.0/16 (Link-local)
-            let octets = ipv4.octets();
             !ipv4.is_private()
             && !ipv4.is_loopback()
             && !ipv4.is_link_local()
-            // Manual private check if is_private() is not stable or sufficient in MSRV
-            && !(octets[0] == 10)
-            && !(octets[0] == 172 && octets[1] >= 16 && octets[1] <= 31)
-            && !(octets[0] == 192 && octets[1] == 168)
         }
         IpAddr::V6(ipv6) => {
             !ipv6.is_loopback() && !ipv6.is_unique_local() && !ipv6.is_unicast_link_local()
@@ -118,17 +120,24 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_ensure_safe_url() {
-        // Safe public URLs
-        assert!(ensure_safe_url("https://api.openai.com/v1/embeddings").await.is_ok());
-        assert!(ensure_safe_url("https://www.google.com").await.is_ok());
+    async fn test_ensure_safe_url_blocks_private() {
+        // Safe public URLs (allow_local = false)
+        assert!(ensure_safe_url("https://api.openai.com/v1/embeddings", false).await.is_ok());
+        assert!(ensure_safe_url("https://www.google.com", false).await.is_ok());
 
-        // Unsafe local/private URLs
-        // Note: These rely on local DNS resolving localhost/127.0.0.1 correctly
-        assert!(ensure_safe_url("http://localhost:8080").await.is_err());
-        assert!(ensure_safe_url("http://127.0.0.1:8080").await.is_err());
-        assert!(ensure_safe_url("http://10.0.0.5:8080").await.is_err());
-        assert!(ensure_safe_url("http://192.168.1.1:8080").await.is_err());
+        // Unsafe local/private URLs (allow_local = false)
+        assert!(ensure_safe_url("http://localhost:8080", false).await.is_err());
+        assert!(ensure_safe_url("http://127.0.0.1:8080", false).await.is_err());
+        assert!(ensure_safe_url("http://10.0.0.5:8080", false).await.is_err());
+        assert!(ensure_safe_url("http://192.168.1.1:8080", false).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_ensure_safe_url_allow_local() {
+        // When allow_local is true, local addresses should be accepted
+        assert!(ensure_safe_url("http://localhost:11434", true).await.is_ok());
+        assert!(ensure_safe_url("http://127.0.0.1:8080", true).await.is_ok());
+        assert!(ensure_safe_url("http://192.168.1.50:8080", true).await.is_ok());
     }
 
     #[test]

@@ -42,7 +42,7 @@ pub struct CacheHitInfo {
 #[serde(rename_all = "snake_case")]
 pub enum CacheHitKind {
     Exact,
-    Approximate,
+    Semantic,
 }
 
 /// Metadata attached to cached entries for validation and analysis.
@@ -74,7 +74,7 @@ impl CacheLookupResult {
         match self {
             Self::Hit(_, info) => match info.kind {
                 CacheHitKind::Exact => Some("exact"),
-                CacheHitKind::Approximate => Some("approximate"),
+                CacheHitKind::Semantic => Some("semantic"),
             },
             Self::Miss => None,
         }
