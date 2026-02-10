@@ -63,6 +63,19 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Global caching support
+setup_global_cache() {
+    if command_exists sccache; then
+        export RUSTC_WRAPPER=sccache
+        print_info "Global caching enabled via sccache"
+    else
+        print_warning "sccache not found - global caching disabled"
+    fi
+}
+
+# Initialize global cache
+setup_global_cache
+
 interrupt_handler() {
     echo ""
     print_warning "Interrupted by user (Ctrl+C)"
@@ -357,11 +370,11 @@ run_tests() {
     print_section "Running Tests"
     cd "$PROJECT_ROOT"
 
-    local verbose_flag=""
-    [ "$VERBOSE" = true ] && verbose_flag="--verbose"
+    local cargo_args=()
+    [ "$VERBOSE" = true ] && cargo_args+=(--verbose)
 
     print_info "Running all tests (including kiro-gateway-rs)..."
-    cargo test --workspace ${verbose_flag}
+    cargo test --workspace "${cargo_args[@]}"
 
     print_success "All tests passed"
 }
@@ -370,10 +383,10 @@ run_check() {
     print_section "Running Checks"
     cd "$PROJECT_ROOT"
 
-    local verbose_flag=""
-    [ "$VERBOSE" = true ] && verbose_flag="--verbose"
+    local cargo_args=()
+    [ "$VERBOSE" = true ] && cargo_args+=(--verbose)
 
-    cargo check --workspace ${verbose_flag}
+    cargo check --workspace "${cargo_args[@]}"
 
     print_success "Checks completed"
 }
@@ -483,10 +496,10 @@ run_lint() {
     print_section "Running Clippy Lints"
     cd "$PROJECT_ROOT"
 
-    local verbose_flag=""
-    [ "$VERBOSE" = true ] && verbose_flag="--verbose"
+    local cargo_args=()
+    [ "$VERBOSE" = true ] && cargo_args+=(--verbose)
 
-    cargo clippy --workspace ${verbose_flag} -- -D warnings
+    cargo clippy --workspace "${cargo_args[@]}" -- -D warnings
 
     print_success "Linting passed"
 }

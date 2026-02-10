@@ -33,6 +33,8 @@ const DEFAULT_SCOPES: &[&str] = &[
     "https://www.googleapis.com/auth/cloud-platform",
     "https://www.googleapis.com/auth/userinfo.email",
     "https://www.googleapis.com/auth/userinfo.profile",
+    "https://www.googleapis.com/auth/cclog",
+    "https://www.googleapis.com/auth/experimentsandconfigs",
 ];
 
 /// Configuration for the Gemini OAuth flow.
@@ -331,7 +333,7 @@ mod tests {
         assert_eq!(config.client_secret, "my-secret");
         assert_eq!(config.auth_url, "https://custom.auth.url");
         assert_eq!(config.token_url, "https://custom.token.url");
-        assert_eq!(config.redirect_uri, "http://localhost:8080/oauth/callback/gemini");
+        assert_eq!(config.redirect_uri, "http://127.0.0.1:8080/oauth/callback/gemini");
     }
 
     #[test]
@@ -345,6 +347,6 @@ mod tests {
     fn test_redirect_uri_uses_callback_port() {
         let config = GeminiOAuthConfig::new("my-client", "my-secret", 9999);
         assert!(config.redirect_uri.contains("9999"));
-        assert!(config.redirect_uri.contains("localhost"));
+        assert!(config.redirect_uri.contains("127.0.0.1"));
     }
 }

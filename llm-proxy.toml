@@ -7,7 +7,7 @@ cors_origins = []
 path = "gaud.db"
 
 [auth]
-enabled = false
+enabled = true
 default_admin_name = "admin"
 
 [auth.tls_client_cert]

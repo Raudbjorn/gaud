@@ -1,3 +1,229 @@
+[workspace]
+members = [
+    ".",
+    "kiro-gateway-rs",
+    "surrealdb",
+    "surrealdb/core",
+    "surrealdb/server",
+    "surrealdb/types",
+    "surrealdb/types/derive",
+    "surrealml/core",
+    "surrealism",
+    "surrealism/macros",
+    "surrealism/runtime",
+    "surrealism/types",
+]
+
+[workspace.package]
+authors = ["Tobie Morgan Hitchcock <tobie@surrealdb.com>"]
+edition = "2024"
+license-file = "LICENSE"
+publish = false
+version = "3.0.0-beta"
+description = "A scalable, distributed, collaborative, document-graph database, for the realtime web"
+repository = "https://github.com/surrealdb/surrealdb"
+homepage = "https://github.com/surrealdb/surrealdb"
+keywords = [
+    "database",
+    "embedded-database",
+    "key-value",
+    "key-value-store",
+    "kv-store",
+]
+categories = ["database-implementations", "data-structures", "embedded"]
+
+[workspace.dependencies]
+# SurrealDB crates
+surrealdb = { version = "3.0.0-beta", path = "surrealdb" }
+surrealdb-core = { version = "3.0.0-beta", path = "surrealdb/core", default-features = false }
+surrealdb-server = { version = "3.0.0-beta", path = "surrealdb/server", default-features = false }
+surrealdb-types = { version = "3.0.0-beta", path = "surrealdb/types" }
+surrealdb-types-derive = { version = "3.0.0-beta", path = "surrealdb/types/derive" }
+# SurrealML crates
+surrealml-core = { version = "0.1", path = "surrealml/core" }
+# Surrealism crates
+surrealism = { version = "0.1", path = "surrealism" }
+surrealism-macros = { version = "0.1", path = "surrealism/macros", default-features = false }
+surrealism-runtime = { version = "0.1", path = "surrealism/runtime" }
+surrealism-types = { version = "0.1", path = "surrealism/types", default-features = false }
+
+# External surreal crates
+affinitypool = "0.4.0"
+dmp = "0.2.3"
+indxdb = "0.11.0"
+lexicmp = "0.2.0"
+revision = { version = "0.17.0", features = [
+    "bytes",
+    "chrono",
+    "geo",
+    "roaring",
+    "regex",
+    "rust_decimal",
+    "specialised-vectors",
+    "uuid",
+] }
+storekey = { version = "0.11.0", features = ["bytes", "uuid"] }
+surrealkv = "0.18.0"
+surrealmx = "0.15.0"
+trice = "0.4.0"
+vart = "0.9.3"
+js = { version = "0.11.0", package = "rquickjs", features = ["rust-alloc"] }
+reblessive = "0.4.3"
+
+# External KV stores
+rocksdb = { version = "0.24.0-surreal.1", package = "surrealdb-rocksdb", features = ["lz4", "snappy"] }
+tikv = { version = "0.3.0-surreal.4", default-features = false, package = "surrealdb-tikv-client" }
+
+# Other crates
+addr = { version = "0.15.6", default-features = false, features = ["std"] }
+ahash = "0.8.12"
+ammonia = "4.1.2"
+anyhow = "1.0.100"
+arbitrary = "1.4.2"
+arc-swap = "1.8.0"
+argon2 = "0.5.3"
+arrayvec = "0.7.6"
+async-channel = "2.5.0"
+async-executor = "1.13.3"
+async-graphql = { version = "7.2.0", default-features = false, features = ["custom-error-conversion"] }
+async-graphql-axum = "7.2.0"
+async-trait = "0.1.89"
+base64 = "0.22.1"
+bcrypt = "0.18.0"
+blake3 = "1.8.3"
+boxcar = "0.2.14"
+bytes = "1.11.1"
+castaway = "0.2.4"
+chrono = "0.4.43"
+ciborium = "0.2.2"
+clap = "4.5.54"
+dashmap = "6.1.0"
+deunicode = "1.6.2"
+ext-sort = "^0.1.5"
+fastnum = "0.7.4"
+flatbuffers = { version = "25.12.19", features = ["serde"] }
+fst = "0.4.7"
+futures = "0.3.31"
+futures-util = "0.3.31"
+fuzzy-matcher = "0.3.7"
+geo = { version = "0.32.0", default-features = false }
+geo-types = "0.7.18"
+getrandom = "0.3.4"
+hex = "0.4.3"
+http = "1.4.0"
+hyper = "1.8"
+humantime = "2.3.0"
+indexmap = "2.13.0"
+ipnet = "2.11.0"
+jemallocator = { version = "0.6.1", package = "tikv-jemallocator" }
+jsonwebtoken = { version = "10.3.0", default-features = false, features = ["use_pem"] }
+md-5 = "0.10.6"
+mimalloc = "0.1.48"
+nanoid = "0.4.0"
+native-tls = "0.2.14"
+ndarray = "0.17.2"
+ndarray-stats = "0.7.0"
+nix = { version = "0.30.1", default-features = false }
+num-traits = "0.2.19"
+num_cpus = "1.17.0"
+object_store = "0.13.0"
+papaya = "0.2.3"
+parking_lot = "0.12.5"
+paste = "1.0.15"
+path-clean = "1.0.1"
+pbkdf2 = "0.12.2"
+phf = "0.13.1"
+pin-project-lite = "0.2.16"
+pprof = "0.15.0"
+priority-lfu = { version = "0.2.0" }
+radix_trie = "0.3.0"
+rand = "0.8.5"
+rayon = "1.11.0"
+regex = "1.12.2"
+regex-syntax = "0.8.8"
+reqwest = { version = "0.13.1", default-features = false }
+ring = "0.17.14"
+roaring = "0.11.3"
+rustls = { version = "0.23.36", default-features = false, features = ["logging", "std", "tls12"] }
+rust_decimal = "1.40.0"
+rust-stemmers = "1.2.0"
+scrypt = "0.11.0"
+semver = "1.0.27"
+serde = "1.0.228"
+serde_json = "1.0.149"
+sha1 = "0.10.6"
+sha2 = "0.10.9"
+snap = "1.1.1"
+strsim = "0.11.1"
+subtle = "2.6"
+surrealdb-protocol = { version = "0.8.3", default-features = false }
+sysinfo = "0.37.2"
+tempfile = "3.24.0"
+thiserror = "2.0.17"
+tokio = { version = "1.49.0", default-features = false }
+tokio-stream = "0.1"
+tokio-tungstenite = "0.28.0"
+tokio-tungstenite-wasm = "0.8.1"
+tokio-util = "0.7.18"
+tracing = { version = "0.1.44", features = ["release_max_level_debug"] }
+ulid = "1.2.1"
+unicase = "2.9.0"
+url = "2.5.8"
+uuid = "1.19.0"
+wasm-bindgen-futures = "0.4.58"
+wasmtimer = { version = "0.4.3", default-features = false }
+
+# Dev dependencies
+criterion = "0.8.1"
+env_logger = "0.11.8"
+flate2 = "1.1.8"
+rstest = "0.26.1"
+serial_test = "3.3.1"
+temp-dir = "0.1.16"
+test-log = "0.2.19"
+time = "0.3.47"
+tracing-subscriber = "0.3.22"
+wiremock = "0.6.5"
+
+# SurrealML specific dependencies
+ort = { version = "2.0.0-rc.11", features = ["cuda", "ndarray"] }
+
+# Surrealism specific dependencies
+tar = "0.4.44"
+toml = "0.9.11"
+walrus = "0.24.4"
+wasm-opt = "0.116.1"
+wasmtime = { version = "41.0.0", default-features = false, features = ["cranelift", "winch", "runtime", "std", "wat"] }
+wasmtime-wasi = { version = "41.0.0", features = ["p1"] }
+zstd = "0.13.3"
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(docker)',
+    'cfg(storage)',
+] }
+
+[workspace.lints.clippy]
+allow_attributes = "allow"
+assigning_clones = "warn"
+bool_assert_comparison = "allow"
+cloned_instead_of_copied = "warn"
+debug_assert_with_mut_call = "warn"
+disallowed_methods = "warn"
+explicit_into_iter_loop = "warn"
+fallible_impl_from = "warn"
+get_unwrap = "warn"
+implicit_clone = "warn"
+inefficient_to_string = "warn"
+large_types_passed_by_value = "warn"
+lossy_float_literal = "warn"
+option_as_ref_cloned = "warn"
+redundant_clone = "warn"
+set_contains_or_insert = "warn"
+unnecessary_to_owned = "warn"
+unused_async = "allow"
+unwrap_used = "warn"
+
 [package]
 name = "gaud"
 version = "0.1.0"
@@ -39,8 +265,8 @@ reqwest = { version = "0.12", features = ["json", "stream"] }
 kiro-gateway = { path = "kiro-gateway-rs" }
 
 # Embedded SurrealDB for semantic cache (HNSW vector index)
-surrealdb-core = { path = "/home/svnbjrn/projects/surrealdb-cache/surrealdb/core", default-features = false, features = ["kv-mem"] }
-surrealdb-types = { path = "/home/svnbjrn/projects/surrealdb-cache/surrealdb/types" }
+surrealdb-core = { workspace = true, features = ["kv-mem"] }
+surrealdb-types = { workspace = true }
 
 # Logging
 tracing = "0.1"
