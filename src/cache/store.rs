@@ -142,7 +142,7 @@ impl CacheStore {
                 score: 1.0,
                 threshold,
                 metadata: metadata.clone(),
-                hash_version: self.hash_version.clone(),
+                hash_version: entry.hash_version.clone(),
             };
             return Ok(CacheLookupResult::Hit(entry, info));
         }
@@ -155,7 +155,7 @@ impl CacheStore {
                     score,
                     threshold,
                     metadata: metadata.clone(),
-                    hash_version: self.hash_version.clone(),
+                    hash_version: entry.hash_version.clone(),
                 };
                 return Ok(CacheLookupResult::Hit(entry, info));
             }
