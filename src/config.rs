@@ -497,6 +497,9 @@ pub struct CacheConfig {
     /// Cache matching mode: "exact", "semantic", or "both".
     #[serde(default)]
     pub mode: CacheMode,
+    /// Path to the cache database (for persistent mode).
+    #[serde(default = "default_cache_path")]
+    pub path: PathBuf,
 
     /// Cosine similarity threshold for semantic matches (0.0 – 1.0).
     #[serde(default = "default_similarity_threshold")]
@@ -514,6 +517,14 @@ pub struct CacheConfig {
     /// Embedding vector dimension.
     #[serde(default = "default_embedding_dim")]
     pub embedding_dimension: u16,
+    /// Allow the embedding URL to resolve to local/private addresses.
+    ///
+    /// Set this to `true` when running a self-hosted embedding server
+    /// (e.g. Ollama, vLLM, text-embeddings-inference) on localhost or a
+    /// private network. When `false` (the default), SSRF protection
+    /// blocks requests to private/loopback addresses.
+    #[serde(default)]
+    pub embedding_allow_local: bool,
 
     /// HNSW M parameter (max connections per layer).
     #[serde(default = "default_hnsw_m")]
@@ -542,11 +553,13 @@ impl Default for CacheConfig {
         Self {
             enabled: false,
             mode: CacheMode::default(),
+            path: default_cache_path(),
             similarity_threshold: default_similarity_threshold(),
             embedding_url: None,
             embedding_model: None,
             embedding_api_key: None,
             embedding_dimension: default_embedding_dim(),
+            embedding_allow_local: false,
             hnsw_m: default_hnsw_m(),
             hnsw_ef_construction: default_hnsw_efc(),
             max_entries: default_max_entries(),
@@ -555,6 +568,13 @@ impl Default for CacheConfig {
             skip_models: Vec::new(),
         }
     }
+}
+
+fn default_cache_path() -> PathBuf {
+    dirs::data_local_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("gaud")
+        .join("cache")
 }
 
 const fn default_similarity_threshold() -> f32 {
@@ -848,10 +868,20 @@ impl Config {
             "GAUD_CACHE_MAX_ENTRIES",
             self.cache.max_entries
         );
+        env_path!(
+            "cache.path",
+            "GAUD_CACHE_PATH",
+            self.cache.path
+        );
         env_bool!(
             "cache.skip_tool_requests",
             "GAUD_CACHE_SKIP_TOOLS",
             self.cache.skip_tool_requests
+        );
+        env_bool!(
+            "cache.embedding_allow_local",
+            "GAUD_CACHE_EMBEDDING_ALLOW_LOCAL",
+            self.cache.embedding_allow_local
         );
 
         if let Some(ref mut kiro) = self.providers.kiro {
@@ -1009,6 +1039,7 @@ impl Config {
             e.options = Some(vec!["exact".to_string(), "semantic".to_string(), "both".to_string()]);
             e
         });
+        entries.push(se("cache.path", "Cache", "Cache Database Path", serde_json::json!(self.cache.path.display().to_string()), "GAUD_CACHE_PATH", "text"));
         entries.push(se("cache.similarity_threshold", "Cache", "Similarity Threshold", serde_json::json!(self.cache.similarity_threshold), "GAUD_CACHE_SIMILARITY_THRESHOLD", "number"));
         entries.push(se("cache.embedding_url", "Cache", "Embedding URL", serde_json::json!(self.cache.embedding_url.as_deref().unwrap_or("")), "GAUD_CACHE_EMBEDDING_URL", "text"));
         entries.push(se("cache.embedding_model", "Cache", "Embedding Model", serde_json::json!(self.cache.embedding_model.as_deref().unwrap_or("")), "GAUD_CACHE_EMBEDDING_MODEL", "text"));
@@ -1016,6 +1047,7 @@ impl Config {
         entries.push(se("cache.ttl_secs", "Cache", "TTL (seconds)", serde_json::json!(self.cache.ttl_secs), "GAUD_CACHE_TTL", "number"));
         entries.push(se("cache.max_entries", "Cache", "Max Entries", serde_json::json!(self.cache.max_entries), "GAUD_CACHE_MAX_ENTRIES", "number"));
         entries.push(se("cache.skip_tool_requests", "Cache", "Skip Tool Requests", serde_json::json!(self.cache.skip_tool_requests), "GAUD_CACHE_SKIP_TOOLS", "bool"));
+        entries.push(se("cache.embedding_allow_local", "Cache", "Allow Local Embedding Server", serde_json::json!(self.cache.embedding_allow_local), "GAUD_CACHE_EMBEDDING_ALLOW_LOCAL", "bool"));
 
         // Mark cache embedding API key as sensitive.
         {
@@ -1197,6 +1229,9 @@ impl Config {
             "cache.mode" => {
                 let s = value.as_str().ok_or("Expected string")?;
                 self.cache.mode = s.parse().map_err(|e: String| e)?;
+            }
+            "cache.path" => {
+                self.cache.path = PathBuf::from(value.as_str().ok_or("Expected string")?);
             }
             "cache.similarity_threshold" => {
                 self.cache.similarity_threshold = value
