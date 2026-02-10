@@ -1,4 +1,5 @@
 use std::pin::Pin;
+use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Instant;
 
@@ -7,14 +8,14 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::Extension;
 use axum::Json;
-use futures::StreamExt;
 use tokio_stream::Stream;
 use uuid::Uuid;
 
 use crate::auth::AuthUser;
 use crate::budget::AuditEntry;
 use crate::error::AppError;
-use crate::providers::types::ChatRequest;
+use crate::providers::cost::CostCalculator;
+use crate::providers::types::{ChatChunk, ChatRequest, Usage, UsageTokenDetails};
 use crate::AppState;
 
 /// POST /v1/chat/completions
@@ -53,6 +54,51 @@ async fn handle_non_streaming(
     let start = Instant::now();
     let model = request.model.clone();
 
+    // -- Cache lookup --
+    if let Some(ref cache) = state.cache {
+        if cache.should_check(&request) {
+            match cache.lookup(&request).await {
+                Ok(hit) if hit.is_hit() => {
+                    let kind = hit.hit_kind().unwrap_or("unknown");
+                    let entry = hit.into_entry().unwrap();
+
+                    match serde_json::from_str::<crate::providers::types::ChatResponse>(
+                        &entry.response_json,
+                    ) {
+                        Ok(cached_response) => {
+                            let latency_ms = start.elapsed().as_millis() as u64;
+                            let _ = state.audit_tx.send(AuditEntry {
+                                user_id: user.user_id,
+                                request_id,
+                                provider: "cache".to_string(),
+                                model,
+                                input_tokens: 0,
+                                output_tokens: 0,
+                                cost: 0.0,
+                                latency_ms,
+                                status: format!("cache_hit_{kind}"),
+                            });
+                            tracing::info!(
+                                cache_hit = kind,
+                                latency_ms = latency_ms,
+                                "Served from cache"
+                            );
+                            return Ok(Json(cached_response).into_response());
+                        }
+                        Err(e) => {
+                            tracing::warn!(error = %e, "Failed to deserialize cached response");
+                        }
+                    }
+                }
+                Ok(_) => {} // Miss, proceed normally
+                Err(e) => {
+                    tracing::warn!(error = %e, "Cache lookup failed");
+                }
+            }
+        }
+    }
+
+    // -- Forward to provider --
     let mut router = state.router.write().await;
     let result = router.chat(&request).await;
     drop(router);
@@ -60,19 +106,33 @@ async fn handle_non_streaming(
     match result {
         Ok(response) => {
             let latency_ms = start.elapsed().as_millis() as u64;
+            let cost = state.cost_calculator.calculate_cost(&model, &response.usage);
 
-            // Send audit entry asynchronously.
             let _ = state.audit_tx.send(AuditEntry {
-                user_id: user.user_id,
+                user_id: user.user_id.clone(),
                 request_id,
                 provider: response.model.clone(),
-                model: model.clone(),
+                model,
                 input_tokens: response.usage.prompt_tokens,
                 output_tokens: response.usage.completion_tokens,
-                cost: 0.0, // Cost is calculated by the audit logger or a separate cost module.
+                cost,
                 latency_ms,
                 status: "success".to_string(),
             });
+
+            // -- Cache store (background, non-blocking) --
+            if let Some(ref cache) = state.cache {
+                if cache.should_check(&request) {
+                    let cache = Arc::clone(cache);
+                    let req = request.clone();
+                    let resp = response.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = cache.store(&req, &resp).await {
+                            tracing::warn!(error = %e, "Failed to store in cache");
+                        }
+                    });
+                }
+            }
 
             Ok(Json(response).into_response())
         }
@@ -91,7 +151,7 @@ async fn handle_non_streaming(
                 status: format!("error: {e}"),
             });
 
-            Err(AppError::Provider(e.to_string()))
+            Err(AppError::from(e))
         }
     }
 }
@@ -125,90 +185,139 @@ async fn handle_streaming(
                 latency_ms,
                 status: format!("error: {e}"),
             });
-            return Err(AppError::Provider(e.to_string()));
+            return Err(AppError::from(e));
         }
     };
 
-    // Wrap the provider stream into an SSE event stream, tracking tokens
-    // and sending the audit entry once the stream finishes.
-    let audit_tx = state.audit_tx.clone();
-    let sse_stream = build_sse_stream(chunk_stream, user, model, request_id, start, audit_tx);
+    let sse_stream = AuditingStream::new(
+        chunk_stream,
+        user.user_id,
+        model,
+        request_id,
+        start,
+        state.audit_tx.clone(),
+        Arc::clone(&state.cost_calculator),
+    );
 
     Ok(Sse::new(sse_stream)
         .keep_alive(KeepAlive::default())
         .into_response())
 }
 
-/// Transform a stream of `ChatChunk` values into SSE `Event` items,
-/// followed by the `[DONE]` sentinel.  When the inner stream completes
-/// an `AuditEntry` is sent through the channel.
-fn build_sse_stream(
-    chunk_stream: Pin<
-        Box<dyn futures::Stream<Item = Result<crate::providers::types::ChatChunk, crate::providers::ProviderError>> + Send>,
-    >,
-    user: AuthUser,
-    model: String,
-    request_id: String,
-    start: Instant,
-    audit_tx: tokio::sync::mpsc::UnboundedSender<AuditEntry>,
-) -> impl Stream<Item = Result<Event, std::convert::Infallible>> + Send {
-    // Shared state captured into the AuditingStream for post-stream audit.
-    let user_id = user.user_id.clone();
-    let model_clone = model.clone();
-    let request_id_clone = request_id.clone();
+// ---------------------------------------------------------------------------
+// AuditingStream
+// ---------------------------------------------------------------------------
 
-    // Map provider chunks to SSE events.
-    let mapped = chunk_stream.map(|result| match result {
-        Ok(chunk) => {
-            let json = serde_json::to_string(&chunk).unwrap_or_default();
-            Ok(Event::default().data(json))
-        }
-        Err(e) => {
-            tracing::error!(error = %e, "Stream chunk error");
-            let error_json = serde_json::json!({
-                "error": {
-                    "message": e.to_string(),
-                    "type": "stream_error",
-                }
-            });
-            Ok(Event::default().data(error_json.to_string()))
-        }
-    });
-
-    // Append the [DONE] sentinel after all real chunks.
-    let done_stream = futures::stream::once(async {
-        Ok::<Event, std::convert::Infallible>(Event::default().data("[DONE]"))
-    });
-
-    let full_stream = mapped.chain(done_stream);
-
-    // Wrap in our custom stream that fires the audit entry on completion.
-    AuditingStream {
-        inner: Box::pin(full_stream),
-        audit_tx: Some(audit_tx),
-        user_id,
-        request_id: request_id_clone,
-        model: model_clone,
-        start,
-        input_tokens: 0,
-        output_tokens: 0,
-        errored: false,
-        finished: false,
-    }
-}
-
-/// A wrapper stream that emits an `AuditEntry` when the inner stream completes.
+/// Wraps a `ChatChunk` stream, converting to SSE events while accumulating
+/// token usage. Emits an `AuditEntry` with computed cost when the stream ends.
+/// Wraps a `ChatChunk` stream, converting to SSE events while accumulating
+/// token usage. Emits an `AuditEntry` with computed cost when the stream ends.
 struct AuditingStream {
-    inner: Pin<Box<dyn Stream<Item = Result<Event, std::convert::Infallible>> + Send>>,
+    /// The underlying provider chunk stream.
+    inner: Pin<Box<dyn futures::Stream<Item = Result<ChatChunk, crate::providers::ProviderError>> + Send>>,
+    /// Whether the inner stream has finished (we still need to emit [DONE]).
+    inner_done: bool,
+    /// Whether the [DONE] sentinel has been sent.
+    done_sent: bool,
+
+    // Audit state
     audit_tx: Option<tokio::sync::mpsc::UnboundedSender<AuditEntry>>,
+    cost_calculator: Arc<CostCalculator>,
     user_id: String,
     request_id: String,
     model: String,
     start: Instant,
+
+    // Accumulated token counts from stream chunks.
     input_tokens: u32,
     output_tokens: u32,
+    cached_tokens: Option<u32>,
     errored: bool,
-    finished: bool,
+}
+
+impl AuditingStream {
+    fn new(
+        chunk_stream: Pin<Box<dyn futures::Stream<Item = Result<ChatChunk, crate::providers::ProviderError>> + Send>>,
+        user_id: String,
+        model: String,
+        request_id: String,
+        start: Instant,
+        audit_tx: tokio::sync::mpsc::UnboundedSender<AuditEntry>,
+        cost_calculator: Arc<CostCalculator>,
+    ) -> Self {
+        Self {
+            inner: chunk_stream,
+            inner_done: false,
+            done_sent: false,
+            audit_tx: Some(audit_tx),
+            cost_calculator,
+            user_id,
+            request_id,
+            model,
+            start,
+            input_tokens: 0,
+            output_tokens: 0,
+            cached_tokens: None,
+            errored: false,
+        }
+    }
+
+    /// Extract and accumulate token usage from a chunk.
+    fn accumulate_usage(&mut self, chunk: &ChatChunk) {
+        if let Some(ref usage) = chunk.usage {
+            // Take the maximum of seen tokens (providers report cumulative or
+            // final usage in different chunks).
+            if usage.prompt_tokens > self.input_tokens {
+                self.input_tokens = usage.prompt_tokens;
+            }
+            if usage.completion_tokens > self.output_tokens {
+                self.output_tokens = usage.completion_tokens;
+            }
+            
+            // Track cached tokens for proper cost calculation
+            if let Some(ref details) = usage.prompt_tokens_details {
+                if let Some(cached) = details.cached_tokens {
+                    self.cached_tokens = Some(cached.max(self.cached_tokens.unwrap_or(0)));
+                }
+            }
+        }
+    }
+
+    /// Send the audit entry with accumulated tokens and computed cost.
+    fn emit_audit(&mut self) {
+        if let Some(tx) = self.audit_tx.take() {
+            let latency_ms = self.start.elapsed().as_millis() as u64;
+            let status = if self.errored {
+                "error".to_string()
+            } else {
+                "success".to_string()
+            };
+
+            let usage = Usage {
+                prompt_tokens: self.input_tokens,
+                completion_tokens: self.output_tokens,
+                total_tokens: self.input_tokens + self.output_tokens,
+                prompt_tokens_details: self.cached_tokens.map(|cached| UsageTokenDetails {
+                    cached_tokens: Some(cached),
+                    reasoning_tokens: None,
+                }),
+                completion_tokens_details: None,
+            };
+            let cost = self.cost_calculator.calculate_cost(&self.model, &usage);
+
+            let _ = tx.send(AuditEntry {
+                user_id: self.user_id.clone(),
+                request_id: self.request_id.clone(),
+                provider: String::new(),
+                model: self.model.clone(),
+                input_tokens: self.input_tokens,
+                output_tokens: self.output_tokens,
+                cost,
+                latency_ms,
+                status,
+            });
+        }
+    }
 }
 
 impl Stream for AuditingStream {
@@ -217,48 +326,49 @@ impl Stream for AuditingStream {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
 
-        if this.finished {
-            return Poll::Ready(None);
-        }
-
-        match this.inner.as_mut().poll_next(cx) {
-            Poll::Ready(Some(item)) => Poll::Ready(Some(item)),
-            Poll::Ready(None) => {
-                this.finished = true;
-
-                // Emit the audit entry.
-                if let Some(tx) = this.audit_tx.take() {
-                    let latency_ms = this.start.elapsed().as_millis() as u64;
-                    let status = if this.errored {
-                        "error".to_string()
-                    } else {
-                        "success".to_string()
-                    };
-
-                    let _ = tx.send(AuditEntry {
-                        user_id: this.user_id.clone(),
-                        request_id: this.request_id.clone(),
-                        provider: String::new(),
-                        model: this.model.clone(),
-                        input_tokens: this.input_tokens,
-                        output_tokens: this.output_tokens,
-                        cost: 0.0,
-                        latency_ms,
-                        status,
-                    });
+        // Phase 1: drain the inner chunk stream.
+        if !this.inner_done {
+            match this.inner.as_mut().poll_next(cx) {
+                Poll::Ready(Some(Ok(chunk))) => {
+                    this.accumulate_usage(&chunk);
+                    let json = serde_json::to_string(&chunk).unwrap_or_default();
+                    return Poll::Ready(Some(Ok(Event::default().data(json))));
                 }
-
-                Poll::Ready(None)
+                Poll::Ready(Some(Err(e))) => {
+                    this.errored = true;
+                    tracing::error!(error = %e, "Stream chunk error");
+                    let error_json = serde_json::json!({
+                        "error": {
+                            "message": e.to_string(),
+                            "type": "stream_error",
+                        }
+                    });
+                    return Poll::Ready(Some(Ok(Event::default().data(error_json.to_string()))));
+                }
+                Poll::Ready(None) => {
+                    this.inner_done = true;
+                    // Fall through to emit [DONE].
+                }
+                Poll::Pending => return Poll::Pending,
             }
-            Poll::Pending => Poll::Pending,
         }
+
+        // Phase 2: send the [DONE] sentinel.
+        if !this.done_sent {
+            this.done_sent = true;
+            this.emit_audit();
+            return Poll::Ready(Some(Ok(Event::default().data("[DONE]"))));
+        }
+
+        // Phase 3: stream is finished.
+        Poll::Ready(None)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::types::{ChatChunk, ChunkChoice, Delta, Usage};
+    use crate::providers::types::{ChunkChoice, Delta};
 
     #[test]
     fn test_audit_entry_creation() {
@@ -316,6 +426,8 @@ mod tests {
                 prompt_tokens: 100,
                 completion_tokens: 50,
                 total_tokens: 150,
+                prompt_tokens_details: None,
+                completion_tokens_details: None,
             }),
         };
 
@@ -328,5 +440,132 @@ mod tests {
     fn test_done_event_format() {
         let done = "[DONE]";
         assert_eq!(done, "[DONE]");
+    }
+
+    #[test]
+    fn test_accumulate_usage() {
+        let cost_calc = Arc::new(CostCalculator::new());
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let stream = futures::stream::empty();
+        let mut auditing = AuditingStream::new(
+            Box::pin(stream),
+            "user1".into(),
+            "claude-sonnet-4-20250514".into(),
+            "req1".into(),
+            Instant::now(),
+            tx,
+            cost_calc,
+        );
+
+        // First chunk has partial usage.
+        let chunk1 = ChatChunk {
+            id: "c1".into(),
+            object: "chat.completion.chunk".into(),
+            created: 0,
+            model: "test".into(),
+            choices: vec![],
+            usage: Some(Usage {
+                prompt_tokens: 100,
+                completion_tokens: 10,
+                total_tokens: 110,
+                prompt_tokens_details: None,
+                completion_tokens_details: None,
+            }),
+        };
+        auditing.accumulate_usage(&chunk1);
+        assert_eq!(auditing.input_tokens, 100);
+        assert_eq!(auditing.output_tokens, 10);
+
+        // Second chunk with final usage (higher values win).
+        let chunk2 = ChatChunk {
+            id: "c2".into(),
+            object: "chat.completion.chunk".into(),
+            created: 0,
+            model: "test".into(),
+            choices: vec![],
+            usage: Some(Usage {
+                prompt_tokens: 100,
+                completion_tokens: 50,
+                total_tokens: 150,
+                prompt_tokens_details: None,
+                completion_tokens_details: None,
+            }),
+        };
+        auditing.accumulate_usage(&chunk2);
+        assert_eq!(auditing.input_tokens, 100);
+        assert_eq!(auditing.output_tokens, 50);
+
+        // Chunk without usage doesn't change accumulation.
+        let chunk3 = ChatChunk {
+            id: "c3".into(),
+            object: "chat.completion.chunk".into(),
+            created: 0,
+            model: "test".into(),
+            choices: vec![],
+            usage: None,
+        };
+        auditing.accumulate_usage(&chunk3);
+        assert_eq!(auditing.input_tokens, 100);
+        assert_eq!(auditing.output_tokens, 50);
+    }
+
+    #[test]
+    fn test_accumulate_cached_tokens() {
+        let cost_calc = Arc::new(CostCalculator::new());
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let stream = futures::stream::empty();
+        let mut auditing = AuditingStream::new(
+            Box::pin(stream),
+            "user1".into(),
+            "claude-sonnet-4-20250514".into(),
+            "req1".into(),
+            Instant::now(),
+            tx,
+            cost_calc,
+        );
+
+        // Chunk with cached tokens
+        let chunk = ChatChunk {
+            id: "c1".into(),
+            object: "chat.completion.chunk".into(),
+            created: 0,
+            model: "test".into(),
+            choices: vec![],
+            usage: Some(Usage {
+                prompt_tokens: 1000,
+                completion_tokens: 50,
+                total_tokens: 1050,
+                prompt_tokens_details: Some(UsageTokenDetails {
+                    cached_tokens: Some(800),
+                    reasoning_tokens: None,
+                }),
+                completion_tokens_details: None,
+            }),
+        };
+        auditing.accumulate_usage(&chunk);
+        assert_eq!(auditing.input_tokens, 1000);
+        assert_eq!(auditing.output_tokens, 50);
+        assert_eq!(auditing.cached_tokens, Some(800));
+
+        // Second chunk with higher cached token count
+        let chunk2 = ChatChunk {
+            id: "c2".into(),
+            object: "chat.completion.chunk".into(),
+            created: 0,
+            model: "test".into(),
+            choices: vec![],
+            usage: Some(Usage {
+                prompt_tokens: 1000,
+                completion_tokens: 100,
+                total_tokens: 1100,
+                prompt_tokens_details: Some(UsageTokenDetails {
+                    cached_tokens: Some(900),
+                    reasoning_tokens: None,
+                }),
+                completion_tokens_details: None,
+            }),
+        };
+        auditing.accumulate_usage(&chunk2);
+        assert_eq!(auditing.cached_tokens, Some(900));
     }
 }

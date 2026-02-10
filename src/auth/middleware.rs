@@ -168,6 +168,8 @@ mod tests {
             router: std::sync::Arc::new(tokio::sync::RwLock::new(router)),
             budget: std::sync::Arc::new(budget),
             audit_tx,
+            cost_calculator: std::sync::Arc::new(crate::providers::cost::CostCalculator::new()),
+            cache: None,
         }
     }
 

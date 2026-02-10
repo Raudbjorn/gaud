@@ -1,549 +1,407 @@
-//! Embedded Pricing Database and Cost Calculation
+//! Cost calculation for LLM API requests.
 //!
-//! Contains per-model pricing data for all supported providers and a simple
-//! cost calculator:
-//!
-//!   cost = (input_tokens / 1_000_000 * input_rate)
-//!        + (output_tokens / 1_000_000 * output_rate)
+//! Calculates the cost of API requests based on token usage and model pricing.
+//! Supports both token-based and cached token pricing.
 
-use crate::providers::types::{ModelPricing, TokenUsage};
+use super::pricing::{ModelPricing, PricingDatabase};
+use super::types::{Usage, UsageTokenDetails};
+use anyhow::{Context, Result};
+use tracing::{debug, warn};
 
-// ---------------------------------------------------------------------------
-// CostDatabase
-// ---------------------------------------------------------------------------
+// MARK: - Cost Calculator
 
-/// Embedded, read-only pricing database. Call [`CostDatabase::all()`] to get
-/// every known model or [`CostDatabase::for_model()`] to look up a single
-/// model by its identifier.
-pub struct CostDatabase;
+/// Calculator for LLM API request costs.
+pub struct CostCalculator {
+    pricing_db: PricingDatabase,
+}
 
-impl CostDatabase {
-    /// Calculate cost in USD for the given token usage and pricing.
-    pub fn calculate_cost(usage: &TokenUsage, pricing: &ModelPricing) -> f64 {
-        let input = usage.input_tokens as f64 / 1_000_000.0 * pricing.input_cost_per_million;
-        let output = usage.output_tokens as f64 / 1_000_000.0 * pricing.output_cost_per_million;
-        input + output
+impl CostCalculator {
+    /// Create a new cost calculator with the default pricing database.
+    pub fn new() -> Self {
+        Self {
+            pricing_db: PricingDatabase::new(),
+        }
     }
 
-    /// Look up pricing for a model by its identifier string. Returns `None`
-    /// if the model is not in the embedded database.
-    pub fn for_model(model: &str) -> Option<ModelPricing> {
-        Self::all().into_iter().find(|p| p.model == model)
+    /// Create a cost calculator with a custom pricing database.
+    pub fn with_pricing_db(pricing_db: PricingDatabase) -> Self {
+        Self { pricing_db }
     }
 
-    /// Return pricing for every known model across all providers.
+    /// Calculate the cost of a request based on usage and model.
+    ///
+    /// Returns the cost in USD. If pricing is not available for the model,
+    /// returns 0.0 and logs a warning.
+    pub fn calculate_cost(&self, model: &str, usage: &Usage) -> f64 {
+        match self.try_calculate_cost(model, usage) {
+            Ok(cost) => cost,
+            Err(e) => {
+                warn!(
+                    model = %model,
+                    error = %e,
+                    "Failed to calculate cost, returning 0.0"
+                );
+                0.0
+            }
+        }
+    }
+
+    /// Calculate the cost of a request, returning an error if pricing is unavailable.
+    pub fn try_calculate_cost(&self, model: &str, usage: &Usage) -> Result<f64> {
+        let pricing = self
+            .pricing_db
+            .get(model)
+            .context(format!("No pricing data for model: {}", model))?;
+
+        let cost = self.calculate_cost_with_pricing(pricing, usage);
+
+        debug!(
+            model = %model,
+            input_tokens = usage.prompt_tokens,
+            output_tokens = usage.completion_tokens,
+            cost_usd = %format!("${:.6}", cost),
+            "Calculated request cost"
+        );
+
+        Ok(cost)
+    }
+
+    /// Calculate cost using specific pricing information.
+    fn calculate_cost_with_pricing(&self, pricing: &ModelPricing, usage: &Usage) -> f64 {
+        // Calculate input cost (regular + cached if available)
+        let cached_tokens = usage
+            .prompt_tokens_details
+            .as_ref()
+            .and_then(|d| d.cached_tokens);
+
+        let input_cost = if let Some(cached) = cached_tokens {
+            let regular_tokens = usage.prompt_tokens.saturating_sub(cached);
+            let regular_cost = (regular_tokens as f64 / 1_000_000.0)
+                * pricing.input_cost_per_million;
+
+            let cached_cost = if let Some(cached_price) = pricing.cached_input_cost_per_million {
+                (cached as f64 / 1_000_000.0) * cached_price
+            } else {
+                // If no cached pricing, use regular pricing
+                (cached as f64 / 1_000_000.0) * pricing.input_cost_per_million
+            };
+
+            regular_cost + cached_cost
+        } else {
+            (usage.prompt_tokens as f64 / 1_000_000.0) * pricing.input_cost_per_million
+        };
+
+        // Calculate output cost
+        let output_cost =
+            (usage.completion_tokens as f64 / 1_000_000.0) * pricing.output_cost_per_million;
+
+        input_cost + output_cost
+    }
+
+    /// Get pricing information for a model.
+    pub fn get_pricing(&self, model: &str) -> Option<&ModelPricing> {
+        self.pricing_db.get(model)
+    }
+
+    /// Check if pricing is available for a model.
+    pub fn has_pricing(&self, model: &str) -> bool {
+        self.pricing_db.has_pricing(model)
+    }
+
+    /// Get all available pricing information.
+    pub fn all_pricing(&self) -> Vec<&ModelPricing> {
+        self.pricing_db.all()
+    }
+
+    /// Get all pricing information (static method for backward compatibility).
     pub fn all() -> Vec<ModelPricing> {
-        let mut v = Vec::with_capacity(48);
-        v.extend(Self::claude_models());
-        v.extend(Self::gemini_models());
-        v.extend(Self::copilot_models());
-        v.extend(Self::openai_models());
-        v.extend(Self::deepseek_models());
-        v.extend(Self::mistral_models());
-        v.extend(Self::kiro_models());
-        v
-    }
-
-    // -- Claude / Anthropic --------------------------------------------------
-
-    fn claude_models() -> Vec<ModelPricing> {
-        vec![
-            ModelPricing {
-                model: "claude-opus-4-20250514".into(),
-                provider: "claude".into(),
-                input_cost_per_million: 15.0,
-                output_cost_per_million: 75.0,
-                context_window: 200_000,
-                max_output_tokens: 32_000,
-            },
-            ModelPricing {
-                model: "claude-sonnet-4-20250514".into(),
-                provider: "claude".into(),
-                input_cost_per_million: 3.0,
-                output_cost_per_million: 15.0,
-                context_window: 200_000,
-                max_output_tokens: 64_000,
-            },
-            ModelPricing {
-                model: "claude-haiku-3-5-20241022".into(),
-                provider: "claude".into(),
-                input_cost_per_million: 0.80,
-                output_cost_per_million: 4.0,
-                context_window: 200_000,
-                max_output_tokens: 8_192,
-            },
-            ModelPricing {
-                model: "claude-3-5-sonnet-20241022".into(),
-                provider: "claude".into(),
-                input_cost_per_million: 3.0,
-                output_cost_per_million: 15.0,
-                context_window: 200_000,
-                max_output_tokens: 8_192,
-            },
-            ModelPricing {
-                model: "claude-3-haiku-20240307".into(),
-                provider: "claude".into(),
-                input_cost_per_million: 0.25,
-                output_cost_per_million: 1.25,
-                context_window: 200_000,
-                max_output_tokens: 4_096,
-            },
-            ModelPricing {
-                model: "claude-3-opus-20240229".into(),
-                provider: "claude".into(),
-                input_cost_per_million: 15.0,
-                output_cost_per_million: 75.0,
-                context_window: 200_000,
-                max_output_tokens: 4_096,
-            },
-        ]
-    }
-
-    // -- Gemini / Google -----------------------------------------------------
-
-    fn gemini_models() -> Vec<ModelPricing> {
-        vec![
-            ModelPricing {
-                model: "gemini-2.5-pro".into(),
-                provider: "gemini".into(),
-                input_cost_per_million: 1.25,
-                output_cost_per_million: 10.0,
-                context_window: 1_000_000,
-                max_output_tokens: 65_536,
-            },
-            ModelPricing {
-                model: "gemini-2.5-flash".into(),
-                provider: "gemini".into(),
-                input_cost_per_million: 0.15,
-                output_cost_per_million: 0.60,
-                context_window: 1_000_000,
-                max_output_tokens: 65_536,
-            },
-            ModelPricing {
-                model: "gemini-2.0-flash".into(),
-                provider: "gemini".into(),
-                input_cost_per_million: 0.10,
-                output_cost_per_million: 0.40,
-                context_window: 1_000_000,
-                max_output_tokens: 8_192,
-            },
-            ModelPricing {
-                model: "gemini-1.5-pro".into(),
-                provider: "gemini".into(),
-                input_cost_per_million: 1.25,
-                output_cost_per_million: 5.0,
-                context_window: 2_000_000,
-                max_output_tokens: 8_192,
-            },
-            ModelPricing {
-                model: "gemini-1.5-flash".into(),
-                provider: "gemini".into(),
-                input_cost_per_million: 0.075,
-                output_cost_per_million: 0.30,
-                context_window: 1_000_000,
-                max_output_tokens: 8_192,
-            },
-        ]
-    }
-
-    // -- Copilot (subscription-based, $0 per-token) --------------------------
-
-    fn copilot_models() -> Vec<ModelPricing> {
-        vec![
-            ModelPricing {
-                model: "gpt-4o".into(),
-                provider: "copilot".into(),
-                input_cost_per_million: 0.0,
-                output_cost_per_million: 0.0,
-                context_window: 128_000,
-                max_output_tokens: 16_384,
-            },
-            ModelPricing {
-                model: "gpt-4-turbo".into(),
-                provider: "copilot".into(),
-                input_cost_per_million: 0.0,
-                output_cost_per_million: 0.0,
-                context_window: 128_000,
-                max_output_tokens: 4_096,
-            },
-            ModelPricing {
-                model: "o1".into(),
-                provider: "copilot".into(),
-                input_cost_per_million: 0.0,
-                output_cost_per_million: 0.0,
-                context_window: 200_000,
-                max_output_tokens: 100_000,
-            },
-            ModelPricing {
-                model: "o3-mini".into(),
-                provider: "copilot".into(),
-                input_cost_per_million: 0.0,
-                output_cost_per_million: 0.0,
-                context_window: 200_000,
-                max_output_tokens: 100_000,
-            },
-        ]
-    }
-
-    // -- OpenAI (direct, not via Copilot) ------------------------------------
-
-    fn openai_models() -> Vec<ModelPricing> {
-        vec![
-            ModelPricing {
-                model: "gpt-4o-direct".into(),
-                provider: "openai".into(),
-                input_cost_per_million: 2.50,
-                output_cost_per_million: 10.0,
-                context_window: 128_000,
-                max_output_tokens: 16_384,
-            },
-            ModelPricing {
-                model: "gpt-4o-mini".into(),
-                provider: "openai".into(),
-                input_cost_per_million: 0.15,
-                output_cost_per_million: 0.60,
-                context_window: 128_000,
-                max_output_tokens: 16_384,
-            },
-            ModelPricing {
-                model: "gpt-4-turbo-direct".into(),
-                provider: "openai".into(),
-                input_cost_per_million: 10.0,
-                output_cost_per_million: 30.0,
-                context_window: 128_000,
-                max_output_tokens: 4_096,
-            },
-            ModelPricing {
-                model: "o1-preview".into(),
-                provider: "openai".into(),
-                input_cost_per_million: 15.0,
-                output_cost_per_million: 60.0,
-                context_window: 128_000,
-                max_output_tokens: 32_768,
-            },
-            ModelPricing {
-                model: "o1-mini".into(),
-                provider: "openai".into(),
-                input_cost_per_million: 3.0,
-                output_cost_per_million: 12.0,
-                context_window: 128_000,
-                max_output_tokens: 65_536,
-            },
-            ModelPricing {
-                model: "o1-direct".into(),
-                provider: "openai".into(),
-                input_cost_per_million: 15.0,
-                output_cost_per_million: 60.0,
-                context_window: 200_000,
-                max_output_tokens: 100_000,
-            },
-            ModelPricing {
-                model: "o3-mini-direct".into(),
-                provider: "openai".into(),
-                input_cost_per_million: 1.10,
-                output_cost_per_million: 4.40,
-                context_window: 200_000,
-                max_output_tokens: 100_000,
-            },
-            ModelPricing {
-                model: "gpt-3.5-turbo".into(),
-                provider: "openai".into(),
-                input_cost_per_million: 0.50,
-                output_cost_per_million: 1.50,
-                context_window: 16_385,
-                max_output_tokens: 4_096,
-            },
-        ]
-    }
-
-    // -- DeepSeek ------------------------------------------------------------
-
-    fn deepseek_models() -> Vec<ModelPricing> {
-        vec![
-            ModelPricing {
-                model: "deepseek-chat".into(),
-                provider: "deepseek".into(),
-                input_cost_per_million: 0.14,
-                output_cost_per_million: 0.28,
-                context_window: 64_000,
-                max_output_tokens: 4_096,
-            },
-            ModelPricing {
-                model: "deepseek-coder".into(),
-                provider: "deepseek".into(),
-                input_cost_per_million: 0.14,
-                output_cost_per_million: 0.28,
-                context_window: 128_000,
-                max_output_tokens: 4_096,
-            },
-            ModelPricing {
-                model: "deepseek-reasoner".into(),
-                provider: "deepseek".into(),
-                input_cost_per_million: 0.55,
-                output_cost_per_million: 2.19,
-                context_window: 64_000,
-                max_output_tokens: 8_192,
-            },
-        ]
-    }
-
-    // -- Kiro (subscription-based — see kiro_models() doc for details) -----
-
-    /// Kiro models — subscription-based pricing ($0.00 per-token).
-    ///
-    /// Kiro (Amazon Q Developer) uses a subscription model rather than per-token
-    /// billing. All models report $0.00 per million tokens, which means:
-    /// - Budget tracking will show no cost for Kiro usage (by design)
-    /// - Cost-based routing decisions will treat Kiro as "free"
-    /// - Actual cost is the monthly subscription fee, not tracked here
-    ///
-    /// If per-token billing is ever introduced, update the rates below.
-    fn kiro_models() -> Vec<ModelPricing> {
-        vec![
-            ModelPricing {
-                model: "kiro:auto".into(),
-                provider: "kiro".into(),
-                input_cost_per_million: 0.0,
-                output_cost_per_million: 0.0,
-                context_window: 200_000,
-                max_output_tokens: 64_000,
-            },
-            ModelPricing {
-                model: "kiro:claude-sonnet-4".into(),
-                provider: "kiro".into(),
-                input_cost_per_million: 0.0,
-                output_cost_per_million: 0.0,
-                context_window: 200_000,
-                max_output_tokens: 64_000,
-            },
-            ModelPricing {
-                model: "kiro:claude-sonnet-4.5".into(),
-                provider: "kiro".into(),
-                input_cost_per_million: 0.0,
-                output_cost_per_million: 0.0,
-                context_window: 200_000,
-                max_output_tokens: 64_000,
-            },
-            ModelPricing {
-                model: "kiro:claude-haiku-4.5".into(),
-                provider: "kiro".into(),
-                input_cost_per_million: 0.0,
-                output_cost_per_million: 0.0,
-                context_window: 200_000,
-                max_output_tokens: 8_192,
-            },
-            ModelPricing {
-                model: "kiro:claude-opus-4.5".into(),
-                provider: "kiro".into(),
-                input_cost_per_million: 0.0,
-                output_cost_per_million: 0.0,
-                context_window: 200_000,
-                max_output_tokens: 32_000,
-            },
-            ModelPricing {
-                model: "kiro:claude-3.7-sonnet".into(),
-                provider: "kiro".into(),
-                input_cost_per_million: 0.0,
-                output_cost_per_million: 0.0,
-                context_window: 200_000,
-                max_output_tokens: 8_192,
-            },
-        ]
-    }
-
-    // -- Mistral -------------------------------------------------------------
-
-    fn mistral_models() -> Vec<ModelPricing> {
-        vec![
-            ModelPricing {
-                model: "mistral-large".into(),
-                provider: "mistral".into(),
-                input_cost_per_million: 2.0,
-                output_cost_per_million: 6.0,
-                context_window: 128_000,
-                max_output_tokens: 128_000,
-            },
-            ModelPricing {
-                model: "mistral-medium".into(),
-                provider: "mistral".into(),
-                input_cost_per_million: 2.7,
-                output_cost_per_million: 8.1,
-                context_window: 32_000,
-                max_output_tokens: 32_000,
-            },
-            ModelPricing {
-                model: "mistral-small".into(),
-                provider: "mistral".into(),
-                input_cost_per_million: 0.2,
-                output_cost_per_million: 0.6,
-                context_window: 32_000,
-                max_output_tokens: 32_000,
-            },
-            ModelPricing {
-                model: "codestral".into(),
-                provider: "mistral".into(),
-                input_cost_per_million: 0.2,
-                output_cost_per_million: 0.6,
-                context_window: 32_000,
-                max_output_tokens: 32_000,
-            },
-            ModelPricing {
-                model: "mistral-nemo".into(),
-                provider: "mistral".into(),
-                input_cost_per_million: 0.15,
-                output_cost_per_million: 0.15,
-                context_window: 128_000,
-                max_output_tokens: 128_000,
-            },
-        ]
+        PricingDatabase::new().all().into_iter().cloned().collect()
     }
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+impl Default for CostCalculator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// MARK: - Tests
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_calculate_cost_basic() {
-        let usage = TokenUsage {
-            input_tokens: 1_000,
-            output_tokens: 500,
+    fn test_calculate_cost_claude() {
+        let calculator = CostCalculator::new();
+
+        let usage = Usage {
+            prompt_tokens: 1000,
+            completion_tokens: 500,
+            total_tokens: 1500,
+            prompt_tokens_details: None,
+            completion_tokens_details: None,
         };
-        let pricing = ModelPricing {
-            model: "test".into(),
-            provider: "test".into(),
-            input_cost_per_million: 3.0,
-            output_cost_per_million: 15.0,
-            context_window: 200_000,
-            max_output_tokens: 8_192,
-        };
-        // (1000/1M * 3.0) + (500/1M * 15.0) = 0.003 + 0.0075 = 0.0105
-        let cost = CostDatabase::calculate_cost(&usage, &pricing);
+
+        let cost = calculator.calculate_cost("claude-sonnet-4-20250514", &usage);
+
+        // Expected: (1000/1M * $3) + (500/1M * $15) = $0.003 + $0.0075 = $0.0105
         assert!((cost - 0.0105).abs() < 0.0001);
     }
 
     #[test]
-    fn test_calculate_cost_zero_tokens() {
-        let usage = TokenUsage {
-            input_tokens: 0,
-            output_tokens: 0,
+    fn test_calculate_cost_with_caching() {
+        let calculator = CostCalculator::new();
+
+        let usage = Usage {
+            prompt_tokens: 1000,
+            completion_tokens: 500,
+            total_tokens: 1500,
+            prompt_tokens_details: Some(UsageTokenDetails {
+                cached_tokens: Some(800), // 800 cached, 200 regular
+                reasoning_tokens: None,
+            }),
+            completion_tokens_details: None,
         };
-        let pricing = ModelPricing {
-            model: "test".into(),
-            provider: "test".into(),
-            input_cost_per_million: 3.0,
-            output_cost_per_million: 15.0,
-            context_window: 200_000,
-            max_output_tokens: 8_192,
+
+        let cost = calculator.calculate_cost("claude-sonnet-4-20250514", &usage);
+
+        // Expected:
+        // Regular input: (200/1M * $3) = $0.0006
+        // Cached input: (800/1M * $0.30) = $0.00024
+        // Output: (500/1M * $15) = $0.0075
+        // Total: $0.00834
+        assert!((cost - 0.00834).abs() < 0.0001);
+    }
+
+    #[test]
+    fn test_calculate_cost_gemini() {
+        let calculator = CostCalculator::new();
+
+        let usage = Usage {
+            prompt_tokens: 10000,
+            completion_tokens: 2000,
+            total_tokens: 12000,
+            prompt_tokens_details: None,
+            completion_tokens_details: None,
         };
-        assert_eq!(CostDatabase::calculate_cost(&usage, &pricing), 0.0);
+
+        let cost = calculator.calculate_cost("gemini-2.5-flash", &usage);
+
+        // Expected: (10000/1M * $0.075) + (2000/1M * $0.30) = $0.00075 + $0.0006 = $0.00135
+        assert!((cost - 0.00135).abs() < 0.0001);
     }
 
     #[test]
-    fn test_calculate_cost_free_model() {
-        let usage = TokenUsage {
-            input_tokens: 100_000,
-            output_tokens: 50_000,
+    fn test_calculate_cost_copilot() {
+        let calculator = CostCalculator::new();
+
+        let usage = Usage {
+            prompt_tokens: 5000,
+            completion_tokens: 1000,
+            total_tokens: 6000,
+            prompt_tokens_details: None,
+            completion_tokens_details: None,
         };
-        let pricing = ModelPricing {
-            model: "gpt-4o".into(),
-            provider: "copilot".into(),
-            input_cost_per_million: 0.0,
-            output_cost_per_million: 0.0,
-            context_window: 128_000,
-            max_output_tokens: 16_384,
+
+        let cost = calculator.calculate_cost("gpt-4o", &usage);
+
+        // Expected: (5000/1M * $2.50) + (1000/1M * $10.00) = $0.0125 + $0.01 = $0.0225
+        assert!((cost - 0.0225).abs() < 0.0001);
+    }
+
+    #[test]
+    fn test_calculate_cost_unknown_model() {
+        let calculator = CostCalculator::new();
+
+        let usage = Usage {
+            prompt_tokens: 1000,
+            completion_tokens: 500,
+            total_tokens: 1500,
+            prompt_tokens_details: None,
+            completion_tokens_details: None,
         };
-        assert_eq!(CostDatabase::calculate_cost(&usage, &pricing), 0.0);
+
+        // Should return 0.0 for unknown models
+        let cost = calculator.calculate_cost("unknown-model", &usage);
+        assert_eq!(cost, 0.0);
     }
 
     #[test]
-    fn test_for_model_found() {
-        let pricing = CostDatabase::for_model("claude-sonnet-4-20250514");
-        assert!(pricing.is_some());
-        let p = pricing.unwrap();
-        assert_eq!(p.provider, "claude");
-        assert_eq!(p.input_cost_per_million, 3.0);
-        assert_eq!(p.output_cost_per_million, 15.0);
+    fn test_has_pricing() {
+        let calculator = CostCalculator::new();
+        assert!(calculator.has_pricing("claude-sonnet-4-20250514"));
+        assert!(calculator.has_pricing("gemini-2.5-flash"));
+        assert!(calculator.has_pricing("gpt-4o"));
+        assert!(!calculator.has_pricing("unknown-model"));
+    }
+}
+
+// MARK: - Property-Based Tests
+
+#[cfg(test)]
+mod property_tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    /// Generate arbitrary Usage instances for property testing.
+    fn usage_strategy() -> impl Strategy<Value = Usage> {
+        (
+            0u32..1_000_000,  // prompt_tokens (0 to 1M)
+            0u32..1_000_000,  // completion_tokens (0 to 1M)
+            prop::option::of(0u32..1_000_000),  // cached_tokens (optional)
+        )
+            .prop_map(|(prompt_tokens, completion_tokens, cached_tokens)| {
+                let total_tokens = prompt_tokens + completion_tokens;
+                let prompt_tokens_details = cached_tokens.map(|cached| {
+                    // Ensure cached tokens don't exceed prompt tokens
+                    let cached = cached.min(prompt_tokens);
+                    UsageTokenDetails {
+                        cached_tokens: Some(cached),
+                        reasoning_tokens: None,
+                    }
+                });
+
+                Usage {
+                    prompt_tokens,
+                    completion_tokens,
+                    total_tokens,
+                    prompt_tokens_details,
+                    completion_tokens_details: None,
+                }
+            })
     }
 
-    #[test]
-    fn test_for_model_not_found() {
-        assert!(CostDatabase::for_model("nonexistent-model-xyz").is_none());
+    /// Generate model names that have pricing data.
+    fn known_model_strategy() -> impl Strategy<Value = String> {
+        prop::sample::select(vec![
+            "claude-sonnet-4-20250514".to_string(),
+            "claude-opus-4-20250514".to_string(),
+            "claude-haiku-3-5-20241022".to_string(),
+            "gemini-2.5-flash".to_string(),
+            "gemini-2.5-pro".to_string(),
+            "gemini-2.0-flash".to_string(),
+            "gpt-4o".to_string(),
+            "gpt-4-turbo".to_string(),
+            "o1".to_string(),
+            "o3-mini".to_string(),
+        ])
     }
 
-    #[test]
-    fn test_all_returns_many_models() {
-        let all = CostDatabase::all();
-        assert!(all.len() >= 30, "Expected 30+ models, got {}", all.len());
-    }
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(100))]
 
-    #[test]
-    fn test_gemini_models_present() {
-        let p = CostDatabase::for_model("gemini-2.5-flash");
-        assert!(p.is_some());
-        let p = p.unwrap();
-        assert_eq!(p.provider, "gemini");
-        assert_eq!(p.input_cost_per_million, 0.15);
-    }
+        /// **Validates: Requirements 2.1, 2.2, 2.5**
+        ///
+        /// Feature: litellm-integration-completion, Property 1: Cost Calculation for Successful Requests
+        ///
+        /// For any successful chat request (streaming or non-streaming), the audit entry should contain
+        /// a calculated cost greater than or equal to 0.0, where the cost is computed from the usage
+        /// information and model pricing.
+        ///
+        /// This property verifies that:
+        /// 1. Cost is always non-negative for known models
+        /// 2. Cost is proportional to token usage (more tokens = higher cost)
+        /// 3. Cost calculation never panics or returns invalid values
+        #[test]
+        fn prop_cost_calculation_for_successful_requests(
+            model in known_model_strategy(),
+            usage in usage_strategy()
+        ) {
+            let calculator = CostCalculator::new();
 
-    #[test]
-    fn test_copilot_models_free() {
-        let p = CostDatabase::for_model("gpt-4o").unwrap();
-        assert_eq!(p.provider, "copilot");
-        assert_eq!(p.input_cost_per_million, 0.0);
-        assert_eq!(p.output_cost_per_million, 0.0);
-    }
+            // Calculate cost for the given model and usage
+            let cost = calculator.calculate_cost(&model, &usage);
 
-    #[test]
-    fn test_deepseek_models_present() {
-        let p = CostDatabase::for_model("deepseek-chat").unwrap();
-        assert_eq!(p.provider, "deepseek");
-        assert_eq!(p.input_cost_per_million, 0.14);
-    }
+            // Property 1: Cost must be non-negative
+            prop_assert!(cost >= 0.0, "Cost must be non-negative, got: {}", cost);
 
-    #[test]
-    fn test_mistral_models_present() {
-        let p = CostDatabase::for_model("mistral-large").unwrap();
-        assert_eq!(p.provider, "mistral");
-        assert_eq!(p.input_cost_per_million, 2.0);
-    }
+            // Property 2: Cost must be finite (not NaN or infinity)
+            prop_assert!(cost.is_finite(), "Cost must be finite, got: {}", cost);
 
-    #[test]
-    fn test_claude_opus_pricing() {
-        let p = CostDatabase::for_model("claude-opus-4-20250514").unwrap();
-        assert_eq!(p.input_cost_per_million, 15.0);
-        assert_eq!(p.output_cost_per_million, 75.0);
-        assert_eq!(p.context_window, 200_000);
-    }
+            // Property 3: If there are tokens, cost should be positive (for known models)
+            if usage.prompt_tokens > 0 || usage.completion_tokens > 0 {
+                prop_assert!(cost > 0.0, "Cost should be positive when tokens are used, got: {}", cost);
+            }
 
-    #[test]
-    fn test_kiro_models_free() {
-        let p = CostDatabase::for_model("kiro:auto").unwrap();
-        assert_eq!(p.provider, "kiro");
-        assert_eq!(p.input_cost_per_million, 0.0);
-        assert_eq!(p.output_cost_per_million, 0.0);
-    }
+            // Property 4: Cost should be proportional to token count
+            // More tokens should never result in less cost
+            if usage.prompt_tokens > 0 || usage.completion_tokens > 0 {
+                let double_usage = Usage {
+                    prompt_tokens: usage.prompt_tokens * 2,
+                    completion_tokens: usage.completion_tokens * 2,
+                    total_tokens: usage.total_tokens * 2,
+                    prompt_tokens_details: usage.prompt_tokens_details.as_ref().map(|details| {
+                        UsageTokenDetails {
+                            cached_tokens: details.cached_tokens.map(|c| c * 2),
+                            reasoning_tokens: details.reasoning_tokens,
+                        }
+                    }),
+                    completion_tokens_details: None,
+                };
+                let double_cost = calculator.calculate_cost(&model, &double_usage);
+                
+                // Double the tokens should result in approximately double the cost
+                // Allow for small floating point errors
+                let ratio = double_cost / cost;
+                prop_assert!(
+                    (ratio - 2.0).abs() < 0.01,
+                    "Double tokens should result in ~double cost. Original: {}, Double: {}, Ratio: {}",
+                    cost, double_cost, ratio
+                );
+            }
 
-    #[test]
-    fn test_kiro_sonnet_present() {
-        let p = CostDatabase::for_model("kiro:claude-sonnet-4").unwrap();
-        assert_eq!(p.provider, "kiro");
-        assert_eq!(p.input_cost_per_million, 0.0);
-    }
+            // Property 5: Zero tokens should result in zero cost
+            let zero_usage = Usage {
+                prompt_tokens: 0,
+                completion_tokens: 0,
+                total_tokens: 0,
+                prompt_tokens_details: None,
+                completion_tokens_details: None,
+            };
+            let zero_cost = calculator.calculate_cost(&model, &zero_usage);
+            prop_assert_eq!(zero_cost, 0.0, "Zero tokens should result in zero cost");
+        }
 
-    #[test]
-    fn test_large_token_cost() {
-        let usage = TokenUsage {
-            input_tokens: 1_000_000,
-            output_tokens: 500_000,
-        };
-        let pricing = CostDatabase::for_model("claude-sonnet-4-20250514").unwrap();
-        // (1M/1M * 3.0) + (500K/1M * 15.0) = 3.0 + 7.5 = 10.5
-        let cost = CostDatabase::calculate_cost(&usage, &pricing);
-        assert!((cost - 10.5).abs() < 0.0001);
+        /// **Validates: Requirements 2.1, 2.2, 2.5**
+        ///
+        /// Additional property: Cost calculation should be consistent and deterministic.
+        /// Calling calculate_cost multiple times with the same inputs should always
+        /// return the same result.
+        #[test]
+        fn prop_cost_calculation_is_deterministic(
+            model in known_model_strategy(),
+            usage in usage_strategy()
+        ) {
+            let calculator = CostCalculator::new();
+
+            let cost1 = calculator.calculate_cost(&model, &usage);
+            let cost2 = calculator.calculate_cost(&model, &usage);
+            let cost3 = calculator.calculate_cost(&model, &usage);
+
+            prop_assert_eq!(cost1, cost2, "Cost calculation should be deterministic");
+            prop_assert_eq!(cost2, cost3, "Cost calculation should be deterministic");
+        }
+
+        /// **Validates: Requirements 2.3**
+        ///
+        /// Property: Unknown models should return 0.0 cost without panicking.
+        #[test]
+        fn prop_unknown_model_returns_zero(
+            unknown_model in "[a-z]{5,15}-[0-9]{1,3}",
+            usage in usage_strategy()
+        ) {
+            let calculator = CostCalculator::new();
+
+            // Skip if the random model happens to be a known one
+            if calculator.has_pricing(&unknown_model) {
+                return Ok(());
+            }
+
+            let cost = calculator.calculate_cost(&unknown_model, &usage);
+
+            prop_assert_eq!(cost, 0.0, "Unknown model should return 0.0 cost");
+            prop_assert!(cost.is_finite(), "Cost should be finite even for unknown models");
+        }
     }
 }

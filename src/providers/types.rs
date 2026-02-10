@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// OpenAI-compatible chat completion request.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatRequest {
     pub model: String,
     pub messages: Vec<ChatMessage>,
@@ -19,6 +19,15 @@ pub struct ChatRequest {
     pub tools: Option<Vec<Tool>>,
     #[serde(default)]
     pub tool_choice: Option<serde_json::Value>,
+    #[serde(default)]
+    pub stream_options: Option<StreamOptions>,
+}
+
+/// Options for streaming responses.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct StreamOptions {
+    #[serde(default)]
+    pub include_usage: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,7 +98,7 @@ pub enum MessageRole {
 }
 
 /// OpenAI-compatible chat completion response.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatResponse {
     pub id: String,
     pub object: String,
@@ -99,14 +108,14 @@ pub struct ChatResponse {
     pub usage: Usage,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Choice {
     pub index: u32,
     pub message: ResponseMessage,
     pub finish_reason: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResponseMessage {
     pub role: String,
     pub content: Option<String>,
@@ -116,12 +125,25 @@ pub struct ResponseMessage {
     pub tool_calls: Option<Vec<ToolCall>>,
 }
 
+/// Detailed token usage breakdown (e.g., cached tokens, reasoning tokens).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UsageTokenDetails {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cached_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_tokens: Option<u32>,
+}
+
 /// Token usage information.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Usage {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
     pub total_tokens: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens_details: Option<UsageTokenDetails>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completion_tokens_details: Option<UsageTokenDetails>,
 }
 
 /// Streaming chunk (SSE format).
@@ -256,13 +278,5 @@ pub struct ProviderStatus {
     pub latency_ms: Option<u64>,
 }
 
-/// Provider pricing info per model.
-#[derive(Debug, Clone)]
-pub struct ModelPricing {
-    pub model: String,
-    pub provider: String,
-    pub input_cost_per_million: f64,
-    pub output_cost_per_million: f64,
-    pub context_window: u32,
-    pub max_output_tokens: u32,
-}
+// ModelPricing moved to pricing module
+

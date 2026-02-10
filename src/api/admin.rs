@@ -325,6 +325,75 @@ pub async fn query_usage(
 }
 
 // ---------------------------------------------------------------------------
+// Cache management
+// ---------------------------------------------------------------------------
+
+/// GET /admin/cache/stats
+pub async fn cache_stats(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthUser>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_admin(&user)?;
+
+    let cache = state
+        .cache
+        .as_ref()
+        .ok_or_else(|| AppError::NotFound("Cache is not enabled".to_string()))?;
+
+    let stats = cache.stats();
+    let entries = cache.count().await.unwrap_or(0);
+
+    Ok(Json(serde_json::json!({
+        "entries": entries,
+        "hits_exact": stats.hits_exact,
+        "hits_semantic": stats.hits_semantic,
+        "misses": stats.misses,
+        "hit_rate": stats.hit_rate,
+    })))
+}
+
+/// DELETE /admin/cache
+pub async fn flush_cache(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthUser>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_admin(&user)?;
+
+    let cache = state
+        .cache
+        .as_ref()
+        .ok_or_else(|| AppError::NotFound("Cache is not enabled".to_string()))?;
+
+    cache
+        .flush_all()
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    Ok(Json(serde_json::json!({ "flushed": true })))
+}
+
+/// DELETE /admin/cache/:model
+pub async fn flush_cache_model(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthUser>,
+    Path(model): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_admin(&user)?;
+
+    let cache = state
+        .cache
+        .as_ref()
+        .ok_or_else(|| AppError::NotFound("Cache is not enabled".to_string()))?;
+
+    cache
+        .flush_model(&model)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    Ok(Json(serde_json::json!({ "flushed": true, "model": model })))
+}
+
+// ---------------------------------------------------------------------------
 // Settings management
 // ---------------------------------------------------------------------------
 

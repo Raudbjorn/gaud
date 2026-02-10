@@ -28,6 +28,9 @@ use crate::AppState;
 /// /admin/usage                   GET    (admin)
 /// /admin/settings                GET    (admin)
 /// /admin/settings                PUT    (admin)
+/// /admin/cache/stats             GET    (admin)
+/// /admin/cache                   DELETE (admin)
+/// /admin/cache/:model            DELETE (admin)
 /// ```
 pub fn build_api_router() -> Router<AppState> {
     let admin_routes = Router::new()
@@ -41,7 +44,10 @@ pub fn build_api_router() -> Router<AppState> {
         .route("/budgets/{user_id}", get(admin::get_budget))
         .route("/usage", get(admin::query_usage))
         .route("/settings", get(admin::get_settings))
-        .route("/settings", put(admin::update_settings));
+        .route("/settings", put(admin::update_settings))
+        .route("/cache/stats", get(admin::cache_stats))
+        .route("/cache", delete(admin::flush_cache))
+        .route("/cache/{model}", delete(admin::flush_cache_model));
 
     Router::new()
         .route("/health", get(health::health_check))
