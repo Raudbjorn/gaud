@@ -71,8 +71,10 @@ pub fn exact_hash(request: &ChatRequest) -> String {
 
     // Tool definitions
     if let Some(ref tools) = request.tools {
-        let tools_json = serde_json::to_string(tools).unwrap_or_default();
-        hasher.update(tools_json.as_bytes());
+        match serde_json::to_string(tools) {
+            Ok(tools_json) => hasher.update(tools_json.as_bytes()),
+            Err(_) => hasher.update(b"<tools-serialization-error>"),
+        }
     }
     hasher.update(b"|");
 
@@ -106,8 +108,10 @@ pub fn system_prompt_hash(request: &ChatRequest) -> String {
 pub fn tool_definitions_hash(request: &ChatRequest) -> String {
     let mut hasher = Sha256::new();
     if let Some(ref tools) = request.tools {
-        let tools_json = serde_json::to_string(tools).unwrap_or_default();
-        hasher.update(tools_json.as_bytes());
+        match serde_json::to_string(tools) {
+            Ok(tools_json) => hasher.update(tools_json.as_bytes()),
+            Err(_) => hasher.update(b"<tools-serialization-error>"),
+        }
     }
     format!("{:x}", hasher.finalize())
 }

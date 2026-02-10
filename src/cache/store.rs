@@ -4,12 +4,11 @@ use surrealdb::engine::local::RocksDb;
 #[cfg(feature = "cache-ephemeral")]
 use surrealdb::engine::local::Mem;
 use surrealdb::Surreal;
-use chrono::Utc;
-use serde_json;
 
 use crate::cache::types::{
     CacheEntry, CacheError, CacheHitInfo, CacheHitKind, CacheLookupResult, CacheMetadata,
 };
+use surrealdb::types::SurrealValue;
 
 /// A thin, vector-aware cache layer over an embedded SurrealDB instance.
 ///
@@ -104,18 +103,25 @@ impl CacheStore {
 
     /// Synthetic ANN query to eager-load the HNSW index.
     async fn warmup(&self) -> Result<(), CacheError> {
-        let count: Option<u64> = self.db.query("SELECT count() FROM cache GROUP ALL")
+        let mut response = self.db.query("SELECT count() FROM cache GROUP ALL")
             .await
-            .map_err(|e| CacheError::LookupFailed(e.to_string()))?
-            .take(0)
-            .map(|v: serde_json::Value| v["count"].as_u64().unwrap_or(0));
+            .map_err(|e| CacheError::LookupFailed(e.to_string()))?;
 
-        if count.unwrap_or(0) > 0 {
+        let count: u64 = response
+            .take::<Option<surrealdb::types::Value>>(0usize)
+            .map_err(|e| CacheError::LookupFailed(e.to_string()))?
+            .and_then(|v| match v.get("count") {
+                surrealdb::types::Value::Number(n) => n.to_int().map(|i| i as u64),
+                _ => None,
+            })
+            .unwrap_or(0);
+
+        if count > 0 {
             let mut dummy = vec![0.0f32; self.dimension as usize];
             dummy[0] = 1.0; // Random unit-ish vector
             
             let _ = self.db.query("SELECT * FROM cache WHERE embedding <|1, COSINE|> $vec LIMIT 1")
-                .bind(("vec", &dummy))
+                .bind(("vec", dummy))
                 .await;
             
             tracing::info!("HNSW index warmup complete");
@@ -162,14 +168,13 @@ impl CacheStore {
     }
 
     async fn lookup_exact(&self, hash: &str, ttl_secs: u64) -> Result<Option<CacheEntry>, CacheError> {
-        let sql = "SELECT * FROM cache WHERE exact_hash = $hash AND created_at > time::now() - $ttl LIMIT 1";
+        let sql = format!("SELECT * FROM cache WHERE exact_hash = $hash AND created_at > time::now() - {}s LIMIT 1", ttl_secs);
         let mut response = self.db.query(sql)
-            .bind(("hash", hash))
-            .bind(("ttl", format!("{}s", ttl_secs)))
+            .bind(("hash", hash.to_string()))
             .await
             .map_err(|e| CacheError::LookupFailed(e.to_string()))?;
         
-        Ok(response.take(0).map_err(|e| CacheError::LookupFailed(e.to_string()))?)
+        Ok(response.take(0usize).map_err(|e| CacheError::LookupFailed(e.to_string()))?)
     }
 
     async fn lookup_approximate(
@@ -179,30 +184,35 @@ impl CacheStore {
         threshold: f32,
         ttl_secs: u64,
     ) -> Result<Option<(CacheEntry, f32)>, CacheError> {
-        let sql = "SELECT *, vector::similarity::cosine(embedding, $vec) AS score 
+        let sql = format!(
+            "SELECT *, vector::similarity::cosine(embedding, $vec) AS score 
                    FROM cache 
                    WHERE embedding <|10, COSINE|> $vec 
                      AND model = $model 
                      AND system_prompt_hash = $sys_hash
                      AND tool_definitions_hash = $tool_hash
-                     AND created_at > time::now() - $ttl 
-                   ORDER BY score DESC LIMIT 1";
+                     AND created_at > time::now() - {}s 
+                   ORDER BY score DESC LIMIT 1",
+            ttl_secs
+        );
 
         let mut response = self.db.query(sql)
-            .bind(("vec", embedding))
-            .bind(("model", &metadata.model))
-            .bind(("sys_hash", &metadata.system_prompt_hash))
-            .bind(("tool_hash", &metadata.tool_definitions_hash))
-            .bind(("ttl", format!("{}s", ttl_secs)))
+            .bind(("vec", embedding.to_vec()))
+            .bind(("model", metadata.model.clone()))
+            .bind(("sys_hash", metadata.system_prompt_hash.clone()))
+            .bind(("tool_hash", metadata.tool_definitions_hash.clone()))
             .await
             .map_err(|e| CacheError::LookupFailed(e.to_string()))?;
 
-        let entry_with_score: Option<serde_json::Value> = response.take(0).map_err(|e| CacheError::LookupFailed(e.to_string()))?;
+        let entry_with_score: Option<surrealdb::types::Value> = response.take(0usize).map_err(|e| CacheError::LookupFailed(e.to_string()))?;
         
         if let Some(val) = entry_with_score {
-            let score = val["score"].as_f64().unwrap_or(0.0) as f32;
+            let score = match val.get("score") {
+                surrealdb::types::Value::Number(n) => n.to_f64().unwrap_or(0.0) as f32,
+                _ => 0.0,
+            };
             if score >= threshold {
-                let entry: CacheEntry = serde_json::from_value(val).map_err(|e| CacheError::Serialization(e.to_string()))?;
+                let entry: CacheEntry = CacheEntry::from_value(val).map_err(|e| CacheError::Serialization(e.to_string()))?;
                 return Ok(Some((entry, score)));
             }
         }
@@ -230,19 +240,18 @@ impl CacheStore {
         } ON DUPLICATE KEY UPDATE 
             response_json = $input.response_json,
             embedding = $input.embedding,
-            created_at = time::now(),
-            hit_count = 0";
+            hit_count += 1";
 
         self.db.query(sql)
-            .bind(("exact_hash", &entry.exact_hash))
-            .bind(("model", &entry.model))
-            .bind(("sys_hash", &metadata.system_prompt_hash))
-            .bind(("tool_hash", &metadata.tool_definitions_hash))
-            .bind(("sem_text", &entry.semantic_text))
-            .bind(("emb", &entry.embedding))
-            .bind(("req_json", &entry.request_json))
-            .bind(("resp_json", &entry.response_json))
-            .bind(("hash_ver", &self.hash_version))
+            .bind(("exact_hash", entry.exact_hash.clone()))
+            .bind(("model", entry.model.clone()))
+            .bind(("sys_hash", metadata.system_prompt_hash.clone()))
+            .bind(("tool_hash", metadata.tool_definitions_hash.clone()))
+            .bind(("sem_text", entry.semantic_text.clone()))
+            .bind(("emb", entry.embedding.clone()))
+            .bind(("req_json", entry.request_json.clone()))
+            .bind(("resp_json", entry.response_json.clone()))
+            .bind(("hash_ver", self.hash_version.clone()))
             .bind(("temp", metadata.temperature))
             .bind(("conf", metadata.confidence))
             .await
@@ -275,27 +284,33 @@ impl CacheStore {
     pub async fn record_hit(&self, exact_hash: &str) -> Result<(), CacheError> {
         let sql = "UPDATE cache SET hit_count += 1, last_hit = time::now() WHERE exact_hash = $hash";
         self.db.query(sql)
-            .bind(("hash", exact_hash))
+            .bind(("hash", exact_hash.to_string()))
             .await
             .map_err(|e| CacheError::LookupFailed(e.to_string()))?;
         Ok(())
     }
 
     pub async fn evict_expired(&self, ttl_secs: u64) -> Result<u64, CacheError> {
-        let sql = "DELETE FROM cache WHERE created_at < time::now() - $ttl RETURN BEFORE";
+        let sql = format!("DELETE FROM cache WHERE created_at < time::now() - {}s RETURN BEFORE", ttl_secs);
         let mut response = self.db.query(sql)
-            .bind(("ttl", format!("{}s", ttl_secs)))
             .await
             .map_err(|e| CacheError::LookupFailed(e.to_string()))?;
         
-        let removed: Vec<CacheEntry> = response.take(0).map_err(|e| CacheError::LookupFailed(e.to_string()))?;
+        let removed: Vec<CacheEntry> = response.take(0usize).map_err(|e| CacheError::LookupFailed(e.to_string()))?;
         Ok(removed.len() as u64)
     }
 
     pub async fn evict_lru(&self, max_entries: usize) -> Result<u64, CacheError> {
         let count_sql = "SELECT count() FROM cache GROUP ALL";
         let mut response = self.db.query(count_sql).await.map_err(|e| CacheError::LookupFailed(e.to_string()))?;
-        let total = response.take(0).map(|v: serde_json::Value| v["count"].as_u64().unwrap_or(0)).unwrap_or(0);
+        let total: u64 = response
+            .take::<Option<surrealdb::types::Value>>(0usize)
+            .map_err(|e| CacheError::LookupFailed(e.to_string()))?
+            .and_then(|v| match v.get("count") {
+                surrealdb::types::Value::Number(n) => n.to_int().map(|i| i as u64),
+                _ => None,
+            })
+            .unwrap_or(0);
 
         if total <= max_entries as u64 {
             return Ok(0);
@@ -308,7 +323,7 @@ impl CacheStore {
             .await
             .map_err(|e| CacheError::LookupFailed(e.to_string()))?;
         
-        let removed: Vec<CacheEntry> = response.take(0).map_err(|e| CacheError::LookupFailed(e.to_string()))?;
+        let removed: Vec<CacheEntry> = response.take(0usize).map_err(|e| CacheError::LookupFailed(e.to_string()))?;
         Ok(removed.len() as u64)
     }
 
@@ -319,19 +334,26 @@ impl CacheStore {
 
     pub async fn flush_model(&self, model: &str) -> Result<(), CacheError> {
         self.db.query("DELETE FROM cache WHERE model = $model")
-            .bind(("model", model))
+            .bind(("model", model.to_string()))
             .await
             .map_err(|e| CacheError::LookupFailed(e.to_string()))?;
         Ok(())
     }
 
-        pub async fn count(&self) -> Result<u64, CacheError> {
+    pub async fn count(&self) -> Result<u64, CacheError> {
+        let mut response = self.db.query("SELECT count() FROM cache GROUP ALL")
+            .await
+            .map_err(|e| CacheError::LookupFailed(e.to_string()))?;
 
-            let mut response = self.db.query("SELECT count() FROM cache GROUP ALL").await.map_err(|e| CacheError::LookupFailed(e.to_string()))?;
-
-            Ok(response.take(0).map(|v: serde_json::Value| v["count"].as_u64().unwrap_or(0)).unwrap_or(0))
-
-        }
+        Ok(response
+            .take::<Option<surrealdb::types::Value>>(0usize)
+            .map_err(|e| CacheError::LookupFailed(e.to_string()))?
+            .and_then(|v| match v.get("count") {
+                surrealdb::types::Value::Number(n) => n.to_int().map(|i| i as u64),
+                _ => None,
+            })
+            .unwrap_or(0))
+    }
 
     }
 
@@ -373,7 +395,7 @@ impl CacheStore {
 
     
 
-            let mut embedding = vec![1.0, 0.0, 0.0]; // Normalized
+            let embedding = vec![1.0, 0.0, 0.0]; // Normalized
 
             let entry = CacheEntry {
 
@@ -391,11 +413,11 @@ impl CacheStore {
 
                 request_json: "{}".into(),
 
-                response_json: "{\"result\": \"ok\"}".into(),
+                                response_json: "{\"result\": \"ok\"}".into(),
 
-                created_at: "".into(),
+                                created_at: surrealdb::types::Datetime::now(),
 
-                hit_count: 0,
+                                hit_count: 0,
 
                 last_hit: None,
 
@@ -419,11 +441,23 @@ impl CacheStore {
 
     
 
-            // Semantic hit
+                        // Semantic hit
 
-            let query_embedding = vec![0.99, 0.01, 0.0]; // Very close
+    
 
-            let res = store.lookup("different-hash", Some(&query_embedding), &metadata, 0.9, 3600).await?;
+                        let query_embedding = vec![0.99, 0.01, 0.0]; // Very close
+
+    
+
+                        let mag = query_embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
+
+    
+
+                        let query_embedding: Vec<f32> = query_embedding.into_iter().map(|x| x / mag).collect();
+
+    
+
+                        let res = store.lookup("different-hash", Some(&query_embedding), &metadata, 0.9, 3600).await?;
 
             assert!(res.is_hit());
 
@@ -501,19 +535,19 @@ impl CacheStore {
 
                 tool_definitions_hash: "t1".into(),
 
-                semantic_text: "text".into(),
+                                semantic_text: "text".into(),
 
-                embedding: Some(vec![1.0, 2.0]), // Wrong dimension
+                                embedding: Some(vec![1.0, 2.0]), // Wrong dimension
 
-                request_json: "{}".into(),
+                                request_json: "{}".into(),
 
-                response_json: "{}".into(),
+                                response_json: "{}".into(),
 
-                created_at: "".into(),
+                                created_at: surrealdb::types::Datetime::now(),
 
-                hit_count: 0,
+                                hit_count: 0,
 
-                last_hit: None,
+                                last_hit: None,
 
                 hash_version: "v1".into(),
 
