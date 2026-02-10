@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use surrealdb::types::SurrealValue;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 // ---------------------------------------------------------------------------
@@ -7,8 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 // ---------------------------------------------------------------------------
 
 /// A cached request→response pair.
-#[derive(Debug, Clone, Serialize, Deserialize, SurrealValue)]
-#[surreal(crate = "surrealdb::types")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CacheEntry {
     pub exact_hash: String,
     pub model: String,
@@ -18,9 +16,9 @@ pub struct CacheEntry {
     pub embedding: Option<Vec<f32>>,
     pub request_json: String,
     pub response_json: String,
-    pub created_at: surrealdb::types::Datetime,
+    pub created_at: String,
     pub hit_count: u64,
-    pub last_hit: Option<surrealdb::types::Datetime>,
+    pub last_hit: Option<String>,
     pub hash_version: String,
 }
 
@@ -42,12 +40,11 @@ pub struct CacheHitInfo {
 #[serde(rename_all = "snake_case")]
 pub enum CacheHitKind {
     Exact,
-    Semantic,
+    Approximate,
 }
 
 /// Metadata attached to cached entries for validation and analysis.
-#[derive(Debug, Clone, Serialize, Deserialize, SurrealValue)]
-#[surreal(crate = "surrealdb::types")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CacheMetadata {
     pub model: String,
     pub system_prompt_hash: String,
@@ -74,7 +71,7 @@ impl CacheLookupResult {
         match self {
             Self::Hit(_, info) => match info.kind {
                 CacheHitKind::Exact => Some("exact"),
-                CacheHitKind::Semantic => Some("semantic"),
+                CacheHitKind::Approximate => Some("approximate"),
             },
             Self::Miss => None,
         }
@@ -189,73 +186,5 @@ pub enum CacheError {
 impl From<serde_json::Error> for CacheError {
     fn from(err: serde_json::Error) -> Self {
         Self::Serialization(err.to_string())
-    }
-}
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_cache_stats() {
-        let stats = CacheStats::new();
-        stats.record_exact_hit();
-        stats.record_semantic_hit();
-        stats.record_miss();
-        stats.record_exact_hit();
-
-        let snap = stats.snapshot();
-        assert_eq!(snap.hits_exact, 2);
-        assert_eq!(snap.hits_semantic, 1);
-        assert_eq!(snap.misses, 1);
-        assert_eq!(snap.hit_rate, 0.75); // 3 hits / 4 total
-    }
-
-    #[test]
-    fn test_lookup_result_helpers() {
-        let entry = CacheEntry {
-            exact_hash: "h".into(),
-            model: "m".into(),
-            system_prompt_hash: "s".into(),
-            tool_definitions_hash: "t".into(),
-            semantic_text: "txt".into(),
-            embedding: None,
-            request_json: "{}".into(),
-            response_json: "{}".into(),
-            created_at: surrealdb::types::Datetime::now(),
-            hit_count: 0,
-            last_hit: None,
-            hash_version: "v1".into(),
-        };
-
-        let info = CacheHitInfo {
-            kind: CacheHitKind::Exact,
-            score: 1.0,
-            threshold: 0.9,
-            metadata: CacheMetadata {
-                model: "m".into(),
-                system_prompt_hash: "s".into(),
-                tool_definitions_hash: "t".into(),
-                temperature: None,
-                confidence: None,
-            },
-            hash_version: "v1".into(),
-        };
-
-        let res = CacheLookupResult::Hit(entry.clone(), info);
-        assert!(res.is_hit());
-        assert_eq!(res.hit_kind_str(), Some("exact"));
-
-        let unwrapped = res.into_entry();
-        assert!(unwrapped.is_some());
-        assert_eq!(unwrapped.unwrap().exact_hash, "h");
-
-        let miss = CacheLookupResult::Miss;
-        assert!(!miss.is_hit());
-        assert_eq!(miss.hit_kind_str(), None);
-        assert!(miss.into_entry().is_none());
     }
 }

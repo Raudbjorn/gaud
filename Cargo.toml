@@ -34,7 +34,6 @@ categories = ["database-implementations", "data-structures", "embedded"]
 
 [workspace.dependencies]
 # SurrealDB crates
-# WARNING: Using beta version in production. API breakage possible between point releases.
 surrealdb = { version = "3.0.0-beta", path = "surrealdb" }
 surrealdb-core = { version = "3.0.0-beta", path = "surrealdb/core", default-features = false }
 surrealdb-server = { version = "3.0.0-beta", path = "surrealdb/server", default-features = false }
@@ -292,24 +291,24 @@ minijinja = { version = "2", features = ["builtins"] }
 tempfile = "3"
 proptest = "1.4"
 
-
 [features]
+
 default = ["system-keyring", "cache-persistent"]
 
 system-keyring = ["dep:keyring"]
 
-# Mutually exclusive: do not enable both.
 cache-persistent = ["surrealdb/kv-rocksdb"]
+
 cache-ephemeral = ["surrealdb/kv-mem"]
 
 
 
-
 [profile.release]
+
 lto = true
+
 strip = true
+
 codegen-units = 1
-# Note: Abort on panic prevents unwinding, meaning Drop impls won't run.
-# This is acceptable for a service where crash-restart is the recovery strategy,
-# but be aware of potential resource leaks (e.g. temporary files) if the process crashes.
+
 panic = "abort"

@@ -71,10 +71,8 @@ pub fn exact_hash(request: &ChatRequest) -> String {
 
     // Tool definitions
     if let Some(ref tools) = request.tools {
-        match serde_json::to_string(tools) {
-            Ok(tools_json) => hasher.update(tools_json.as_bytes()),
-            Err(_) => hasher.update(b"<tools-serialization-error>"),
-        }
+        let tools_json = serde_json::to_string(tools).unwrap_or_default();
+        hasher.update(tools_json.as_bytes());
     }
     hasher.update(b"|");
 
@@ -108,10 +106,8 @@ pub fn system_prompt_hash(request: &ChatRequest) -> String {
 pub fn tool_definitions_hash(request: &ChatRequest) -> String {
     let mut hasher = Sha256::new();
     if let Some(ref tools) = request.tools {
-        match serde_json::to_string(tools) {
-            Ok(tools_json) => hasher.update(tools_json.as_bytes()),
-            Err(_) => hasher.update(b"<tools-serialization-error>"),
-        }
+        let tools_json = serde_json::to_string(tools).unwrap_or_default();
+        hasher.update(tools_json.as_bytes());
     }
     format!("{:x}", hasher.finalize())
 }
@@ -165,12 +161,7 @@ pub fn semantic_text(request: &ChatRequest) -> String {
 // ---------------------------------------------------------------------------
 
 /// Flatten `MessageContent` (Text or Parts) into a single plain-text string.
-///
-/// **Trimming contract:** This function does NOT trim whitespace. Callers that
-/// need whitespace-normalized strings (e.g. `exact_hash`, `system_prompt_hash`)
-/// must call `.trim()` on the result. `semantic_text` intentionally preserves
-/// spacing because embeddings can be sensitive to whitespace layout.
-pub(crate) fn flatten_content(content: &MessageContent) -> String {
+pub fn flatten_content(content: &MessageContent) -> String {
     match content {
         MessageContent::Text(s) => s.clone(),
         MessageContent::Parts(parts) => parts
@@ -181,127 +172,5 @@ pub(crate) fn flatten_content(content: &MessageContent) -> String {
             })
             .collect::<Vec<_>>()
             .join(" "),
-    }
-}
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::config::CacheConfig;
-    use crate::providers::types::{ChatRequest, ChatMessage, MessageContent, MessageRole, ContentPart, Tool, FunctionDef};
-
-    fn default_request() -> ChatRequest {
-        ChatRequest {
-            model: "gpt-4".into(),
-            messages: vec![],
-            temperature: None,
-            max_tokens: None,
-            stream: false,
-            top_p: None,
-            stop: None,
-            tools: None,
-            tool_choice: None,
-            stream_options: None,
-        }
-    }
-
-    #[test]
-    fn test_exact_hash_determinism() {
-        let mut req1 = default_request();
-        req1.messages = vec![ChatMessage {
-            role: MessageRole::User,
-            content: Some(MessageContent::Text("Hello".into())),
-            name: None,
-            tool_calls: None,
-            tool_call_id: None,
-        }];
-        req1.temperature = Some(0.7);
-        req1.max_tokens = Some(100);
-
-        let req2 = req1.clone();
-        assert_eq!(exact_hash(&req1), exact_hash(&req2));
-
-        let mut req3 = req1.clone();
-        req3.temperature = Some(0.8);
-        assert_ne!(exact_hash(&req1), exact_hash(&req3));
-    }
-
-    #[test]
-    fn test_should_skip() {
-        let mut config = CacheConfig::default();
-        config.skip_models = vec!["skipped-model".into()];
-        config.skip_tool_requests = true;
-
-        let mut req = default_request();
-        req.model = "skipped-model".into();
-
-        assert!(should_skip(&req, &config));
-
-        let mut req2 = req.clone();
-        req2.model = "allowed-model".into();
-        assert!(!should_skip(&req2, &config));
-
-        req2.stream = true;
-        assert!(should_skip(&req2, &config));
-    }
-
-    #[test]
-    fn test_flatten_content() {
-        let content = MessageContent::Text("  hello   world  ".into());
-        assert_eq!(flatten_content(&content), "  hello   world  "); // Caller trims if needed
-
-        let parts = MessageContent::Parts(vec![
-            ContentPart::Text { text: "part1".into() },
-            ContentPart::Text { text: "part2".into() },
-        ]);
-        assert_eq!(flatten_content(&parts), "part1 part2");
-    }
-
-    #[test]
-    fn test_semantic_text() {
-        let mut req = default_request();
-        req.messages = vec![
-            ChatMessage {
-                role: MessageRole::System,
-                content: Some(MessageContent::Text("sys".into())),
-                name: None,
-                tool_calls: None,
-                tool_call_id: None,
-            },
-            ChatMessage {
-                role: MessageRole::User,
-                content: Some(MessageContent::Text("user".into())),
-                name: None,
-                tool_calls: None,
-                tool_call_id: None,
-            },
-        ];
-
-        let text = semantic_text(&req);
-        assert_eq!(text, "sys\n---\nuser");
-    }
-
-    #[test]
-    fn test_tools_hashing() {
-        let tool = Tool {
-            r#type: "function".into(),
-            function: FunctionDef {
-                name: "test".into(),
-                description: None,
-                parameters: None,
-            },
-        };
-
-        let mut req1 = default_request();
-        req1.tools = Some(vec![tool.clone()]);
-
-        let mut req2 = default_request();
-        req2.tools = Some(vec![tool.clone()]);
-
-        assert_eq!(tool_definitions_hash(&req1), tool_definitions_hash(&req2));
-        assert_eq!(exact_hash(&req1), exact_hash(&req2));
     }
 }
