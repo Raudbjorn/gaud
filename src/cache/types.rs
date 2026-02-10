@@ -191,3 +191,71 @@ impl From<serde_json::Error> for CacheError {
         Self::Serialization(err.to_string())
     }
 }
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cache_stats() {
+        let stats = CacheStats::new();
+        stats.record_exact_hit();
+        stats.record_semantic_hit();
+        stats.record_miss();
+        stats.record_exact_hit();
+
+        let snap = stats.snapshot();
+        assert_eq!(snap.hits_exact, 2);
+        assert_eq!(snap.hits_semantic, 1);
+        assert_eq!(snap.misses, 1);
+        assert_eq!(snap.hit_rate, 0.75); // 3 hits / 4 total
+    }
+
+    #[test]
+    fn test_lookup_result_helpers() {
+        let entry = CacheEntry {
+            exact_hash: "h".into(),
+            model: "m".into(),
+            system_prompt_hash: "s".into(),
+            tool_definitions_hash: "t".into(),
+            semantic_text: "txt".into(),
+            embedding: None,
+            request_json: "{}".into(),
+            response_json: "{}".into(),
+            created_at: surrealdb::types::Datetime::now(),
+            hit_count: 0,
+            last_hit: None,
+            hash_version: "v1".into(),
+        };
+
+        let info = CacheHitInfo {
+            kind: CacheHitKind::Exact,
+            score: 1.0,
+            threshold: 0.9,
+            metadata: CacheMetadata {
+                model: "m".into(),
+                system_prompt_hash: "s".into(),
+                tool_definitions_hash: "t".into(),
+                temperature: None,
+                confidence: None,
+            },
+            hash_version: "v1".into(),
+        };
+
+        let res = CacheLookupResult::Hit(entry.clone(), info);
+        assert!(res.is_hit());
+        assert_eq!(res.hit_kind_str(), Some("exact"));
+
+        let unwrapped = res.into_entry();
+        assert!(unwrapped.is_some());
+        assert_eq!(unwrapped.unwrap().exact_hash, "h");
+
+        let miss = CacheLookupResult::Miss;
+        assert!(!miss.is_hit());
+        assert_eq!(miss.hit_kind_str(), None);
+        assert!(miss.into_entry().is_none());
+    }
+}
