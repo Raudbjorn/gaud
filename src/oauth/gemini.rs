@@ -29,7 +29,11 @@ const DEFAULT_AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const DEFAULT_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 
 /// Default scopes for Gemini/Cloud Platform OAuth.
-const DEFAULT_SCOPES: &[&str] = &["https://www.googleapis.com/auth/cloud-platform"];
+const DEFAULT_SCOPES: &[&str] = &[
+    "https://www.googleapis.com/auth/cloud-platform",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile",
+];
 
 /// Configuration for the Gemini OAuth flow.
 #[derive(Clone)]
@@ -69,7 +73,7 @@ impl GeminiOAuthConfig {
             client_secret: client_secret.to_string(),
             auth_url: auth_url.to_string(),
             token_url: token_url.to_string(),
-            redirect_uri: format!("http://localhost:{}/oauth/callback/gemini", callback_port),
+            redirect_uri: format!("http://127.0.0.1:{}/oauth/callback/gemini", callback_port),
             scopes: DEFAULT_SCOPES.iter().map(|s| s.to_string()).collect(),
         }
     }

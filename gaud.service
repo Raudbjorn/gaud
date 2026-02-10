@@ -1,0 +1,39 @@
+[Unit]
+Description=Gaud - Multi-user LLM Proxy
+Documentation=https://github.com/Raudbjorn/gaud
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gaud
+Group=gaud
+ExecStart=/usr/local/bin/gaud --config /etc/gaud/llm-proxy.toml
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+# Environment
+Environment=RUST_LOG=gaud=info,warn
+Environment=GAUD_DATABASE_PATH=/var/lib/gaud/gaud.db
+
+# Directories
+WorkingDirectory=/var/lib/gaud
+StateDirectory=gaud
+ConfigurationDirectory=gaud
+
+# Security hardening
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/gaud
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+MemoryDenyWriteExecute=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

@@ -13,6 +13,7 @@ use crate::budget::BudgetTracker;
 use crate::cache::SemanticCache;
 use crate::config::Config;
 use crate::db::Database;
+use crate::oauth::OAuthManager;
 use crate::providers::cost::CostCalculator;
 use crate::providers::router::ProviderRouter;
 
@@ -31,4 +32,5 @@ pub struct AppState {
     pub audit_tx: tokio::sync::mpsc::UnboundedSender<budget::AuditEntry>,
     pub cost_calculator: Arc<CostCalculator>,
     pub cache: Option<Arc<SemanticCache>>,
+    pub oauth_manager: Arc<OAuthManager>,
 }
