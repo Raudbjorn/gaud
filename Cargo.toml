@@ -265,8 +265,7 @@ reqwest = { version = "0.12", features = ["json", "stream"] }
 kiro-gateway = { path = "kiro-gateway-rs" }
 
 # Embedded SurrealDB for semantic cache (HNSW vector index)
-surrealdb-core = { workspace = true, features = ["kv-mem"] }
-surrealdb-types = { workspace = true }
+surrealdb = { version = "3.0.0-beta", default-features = false, features = ["allocator"] }
 
 # Logging
 tracing = "0.1"
@@ -293,10 +292,23 @@ tempfile = "3"
 proptest = "1.4"
 
 [features]
-default = ["system-keyring"]
+
+default = ["system-keyring", "cache-persistent"]
+
 system-keyring = ["dep:keyring"]
 
+cache-persistent = ["surrealdb/kv-rocksdb"]
+
+cache-ephemeral = ["surrealdb/kv-mem"]
+
+
+
 [profile.release]
+
 lto = true
+
 strip = true
+
 codegen-units = 1
+
+panic = "abort"

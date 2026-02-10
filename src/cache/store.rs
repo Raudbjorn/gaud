@@ -1,429 +1,550 @@
-use std::collections::BTreeMap;
+use surrealdb::engine::local::Db;
+#[cfg(feature = "cache-persistent")]
+use surrealdb::engine::local::RocksDb;
+#[cfg(feature = "cache-ephemeral")]
+use surrealdb::engine::local::Mem;
+use surrealdb::Surreal;
+use chrono::Utc;
+use serde_json;
 
-use surrealdb_core::dbs::Session;
-use surrealdb_core::kvs::Datastore;
-use surrealdb_types::{Number as SurrealNumber, Value as SurrealValue_, Variables};
+use crate::cache::types::{
+    CacheEntry, CacheError, CacheHitInfo, CacheHitKind, CacheLookupResult, CacheMetadata,
+};
 
-use crate::cache::types::{CacheEntry, CacheError};
-
-// Re-alias for clarity within this module.
-type Val = SurrealValue_;
-
-// ---------------------------------------------------------------------------
-// CacheStore -- SurrealDB Datastore wrapper
-// ---------------------------------------------------------------------------
-
-/// Low-level SurrealDB wrapper for cache entry CRUD.
+/// A thin, vector-aware cache layer over an embedded SurrealDB instance.
+///
+/// `CacheStore` provides two-tier lookup (exact hash → ANN vector search)
+/// for LLM prompt/response pairs. All storage, indexing, and transaction
+/// management is delegated to SurrealDB's embedded engine.
 pub struct CacheStore {
-    ds: Datastore,
-    session: Session,
+    db: Surreal<Db>,
+    dimension: u16,
+    hash_version: String,
 }
 
 impl CacheStore {
-    /// Create a new in-memory SurrealDB datastore and initialize the schema.
-    pub async fn new(embedding_dimension: u16, hnsw_m: u8, hnsw_efc: u16) -> Result<Self, CacheError> {
-        let ds = Datastore::new("memory")
+    /// Initialize a persistent semantic cache backed by RocksDB.
+    #[cfg(feature = "cache-persistent")]
+    pub async fn persistent(path: &str, dimension: u16) -> Result<Self, CacheError> {
+        let db = Surreal::new::<RocksDb>(path)
             .await
-            .map_err(|e| CacheError::Store(format!("Failed to create datastore: {e}")))?;
+            .map_err(|e| CacheError::InitFailed(e.to_string()))?;
 
-        let session = Session::owner().with_ns("gaud").with_db("cache");
+        let store = Self {
+            db,
+            dimension,
+            hash_version: "v1".to_string(),
+        };
+        store.apply_schema().await?;
+        store.warmup().await?;
 
-        let store = Self { ds, session };
-        store.init_schema(embedding_dimension, hnsw_m, hnsw_efc).await?;
         Ok(store)
     }
 
-    /// Initialize the SurrealQL schema (tables, fields, indexes).
-    async fn init_schema(
-        &self,
-        dim: u16,
-        m: u8,
-        efc: u16,
-    ) -> Result<(), CacheError> {
+    /// Initialize an ephemeral in-memory cache. Suitable for testing.
+    #[cfg(feature = "cache-ephemeral")]
+    pub async fn ephemeral(dimension: u16) -> Result<Self, CacheError> {
+        let db = Surreal::new::<Mem>(())
+            .await
+            .map_err(|e| CacheError::InitFailed(e.to_string()))?;
+
+        let store = Self {
+            db,
+            dimension,
+            hash_version: "v1".to_string(),
+        };
+        store.apply_schema().await?;
+
+        Ok(store)
+    }
+
+    /// Apply schema with versioning and compatibility checks.
+    async fn apply_schema(&self) -> Result<(), CacheError> {
+        self.db.use_ns("gaud").use_db("cache").await
+            .map_err(|e| CacheError::SchemaFailed(e.to_string()))?;
+
+        // 1. Schema versioning
+        self.db.query("DEFINE TABLE IF NOT EXISTS schema_version SCHEMAFULL;
+                       DEFINE FIELD IF NOT EXISTS version ON schema_version TYPE int;
+                       DEFINE FIELD IF NOT EXISTS applied_at ON schema_version TYPE datetime DEFAULT time::now();")
+            .await
+            .map_err(|e| CacheError::SchemaFailed(e.to_string()))?;
+
+        // 2. Main cache table
         let schema = format!(
             r#"
-            DEFINE NAMESPACE IF NOT EXISTS gaud;
-            DEFINE DATABASE IF NOT EXISTS cache;
+            DEFINE TABLE IF NOT EXISTS cache SCHEMAFULL;
+            DEFINE FIELD IF NOT EXISTS exact_hash            ON cache TYPE string;
+            DEFINE FIELD IF NOT EXISTS model                 ON cache TYPE string;
+            DEFINE FIELD IF NOT EXISTS system_prompt_hash    ON cache TYPE string;
+            DEFINE FIELD IF NOT EXISTS tool_definitions_hash ON cache TYPE string;
+            DEFINE FIELD IF NOT EXISTS semantic_text          ON cache TYPE string;
+            DEFINE FIELD IF NOT EXISTS embedding              ON cache TYPE option<array<float>>;
+            DEFINE FIELD IF NOT EXISTS request_json           ON cache TYPE string;
+            DEFINE FIELD IF NOT EXISTS response_json          ON cache TYPE string;
+            DEFINE FIELD IF NOT EXISTS created_at             ON cache TYPE datetime DEFAULT time::now();
+            DEFINE FIELD IF NOT EXISTS hit_count              ON cache TYPE int DEFAULT 0;
+            DEFINE FIELD IF NOT EXISTS last_hit               ON cache TYPE option<datetime>;
+            DEFINE FIELD IF NOT EXISTS hash_version           ON cache TYPE string;
+            DEFINE FIELD IF NOT EXISTS temperature            ON cache TYPE option<float>;
+            DEFINE FIELD IF NOT EXISTS confidence             ON cache TYPE option<float>;
 
-            DEFINE TABLE IF NOT EXISTS entries SCHEMAFULL;
-            DEFINE FIELD exact_hash    ON TABLE entries TYPE string;
-            DEFINE FIELD model         ON TABLE entries TYPE string;
-            DEFINE FIELD semantic_text  ON TABLE entries TYPE string;
-            DEFINE FIELD embedding      ON TABLE entries FLEXIBLE TYPE option<array>;
-            DEFINE FIELD request_json   ON TABLE entries TYPE string;
-            DEFINE FIELD response_json  ON TABLE entries TYPE string;
-            DEFINE FIELD created_at     ON TABLE entries TYPE datetime DEFAULT time::now();
-            DEFINE FIELD hit_count      ON TABLE entries TYPE int DEFAULT 0;
-            DEFINE FIELD last_hit       ON TABLE entries TYPE option<datetime>;
-
-            DEFINE INDEX idx_exact   ON TABLE entries FIELDS exact_hash UNIQUE;
-            DEFINE INDEX idx_model   ON TABLE entries FIELDS model;
-            DEFINE INDEX idx_created ON TABLE entries FIELDS created_at;
-
-            DEFINE INDEX idx_embedding ON TABLE entries
-                FIELDS embedding
-                HNSW DIMENSION {dim} DIST COSINE TYPE F32 EFC {efc} M {m};
-            "#
+            DEFINE INDEX IF NOT EXISTS idx_prompt_hash ON cache FIELDS exact_hash UNIQUE;
+            DEFINE INDEX IF NOT EXISTS hnsw_embedding ON cache FIELDS embedding 
+                HNSW DIMENSION {dim} DIST COSINE;
+            "#,
+            dim = self.dimension
         );
 
-        self.execute(&schema).await?;
+        self.db.query(schema).await
+            .map_err(|e| CacheError::SchemaFailed(e.to_string()))?;
+
         Ok(())
     }
 
-    // -----------------------------------------------------------------------
-    // Exact-match operations
-    // -----------------------------------------------------------------------
+    /// Synthetic ANN query to eager-load the HNSW index.
+    async fn warmup(&self) -> Result<(), CacheError> {
+        let count: Option<u64> = self.db.query("SELECT count() FROM cache GROUP ALL")
+            .await
+            .map_err(|e| CacheError::LookupFailed(e.to_string()))?
+            .take(0)
+            .map(|v: serde_json::Value| v["count"].as_u64().unwrap_or(0));
 
-    /// Look up a cache entry by exact SHA-256 hash.
-    /// Adds TTL filtering so expired entries are never returned.
-    pub async fn lookup_exact(
+        if count.unwrap_or(0) > 0 {
+            let mut dummy = vec![0.0f32; self.dimension as usize];
+            dummy[0] = 1.0; // Random unit-ish vector
+            
+            let _ = self.db.query("SELECT * FROM cache WHERE embedding <|1, COSINE|> $vec LIMIT 1")
+                .bind(("vec", &dummy))
+                .await;
+            
+            tracing::info!("HNSW index warmup complete");
+        }
+        Ok(())
+    }
+
+    /// Look up a prompt in the cache using two-tier resolution.
+    pub async fn lookup(
         &self,
-        hash: &str,
+        exact_hash: &str,
+        embedding: Option<&[f32]>,
+        metadata: &CacheMetadata,
+        threshold: f32,
         ttl_secs: u64,
-    ) -> Result<Option<CacheEntry>, CacheError> {
-        let sql = format!(
-            "SELECT * FROM entries WHERE exact_hash = $hash \
-             AND created_at > time::now() - {ttl_secs}s LIMIT 1"
-        );
-        let vars = self.vars([("hash", Val::String(hash.to_string()))]);
-        let results = self.execute_with_vars(&sql, vars).await?;
-        self.parse_single_entry(results)
+    ) -> Result<CacheLookupResult, CacheError> {
+        // Tier 1: Exact match
+        if let Some(entry) = self.lookup_exact(exact_hash, ttl_secs).await? {
+            let info = CacheHitInfo {
+                kind: CacheHitKind::Exact,
+                score: 1.0,
+                threshold,
+                metadata: metadata.clone(),
+                hash_version: self.hash_version.clone(),
+            };
+            return Ok(CacheLookupResult::Hit(entry, info));
+        }
+
+        // Tier 2: ANN vector search
+        if let Some(emb) = embedding {
+            if let Some((entry, score)) = self.lookup_approximate(emb, metadata, threshold, ttl_secs).await? {
+                let info = CacheHitInfo {
+                    kind: CacheHitKind::Approximate,
+                    score,
+                    threshold,
+                    metadata: metadata.clone(),
+                    hash_version: self.hash_version.clone(),
+                };
+                return Ok(CacheLookupResult::Hit(entry, info));
+            }
+        }
+
+        Ok(CacheLookupResult::Miss)
     }
 
-    /// Insert a new cache entry (or update if exact_hash already exists).
-    pub async fn insert(&self, entry: &CacheEntry) -> Result<(), CacheError> {
-        let sql = r#"
-            INSERT INTO entries {
-                exact_hash: $exact_hash,
-                model: $model,
-                semantic_text: $semantic_text,
-                embedding: $embedding,
-                request_json: $request_json,
-                response_json: $response_json,
-                hit_count: 0,
-                created_at: time::now(),
-                last_hit: NONE
-            } ON DUPLICATE KEY UPDATE
-                response_json = $input.response_json,
-                embedding = $input.embedding,
-                created_at = time::now(),
-                hit_count = 0
-        "#;
-
-        let embedding_val = match &entry.embedding {
-            Some(v) => Val::Array(
-                v.iter()
-                    .map(|f| Val::Number(SurrealNumber::Float(*f as f64)))
-                    .collect::<Vec<Val>>()
-                    .into(),
-            ),
-            None => Val::None,
-        };
-
-        let vars = self.vars([
-            ("exact_hash", Val::String(entry.exact_hash.clone())),
-            ("model", Val::String(entry.model.clone())),
-            ("semantic_text", Val::String(entry.semantic_text.clone())),
-            ("embedding", embedding_val),
-            ("request_json", Val::String(entry.request_json.clone())),
-            ("response_json", Val::String(entry.response_json.clone())),
-        ]);
-
-        self.execute_with_vars(sql, vars).await?;
-        Ok(())
+    async fn lookup_exact(&self, hash: &str, ttl_secs: u64) -> Result<Option<CacheEntry>, CacheError> {
+        let sql = "SELECT * FROM cache WHERE exact_hash = $hash AND created_at > time::now() - $ttl LIMIT 1";
+        let mut response = self.db.query(sql)
+            .bind(("hash", hash))
+            .bind(("ttl", format!("{}s", ttl_secs)))
+            .await
+            .map_err(|e| CacheError::LookupFailed(e.to_string()))?;
+        
+        Ok(response.take(0).map_err(|e| CacheError::LookupFailed(e.to_string()))?)
     }
 
-    /// Increment the hit counter and update last_hit timestamp for an entry.
-    pub async fn record_hit(&self, hash: &str) -> Result<(), CacheError> {
-        let sql = r#"
-            UPDATE entries SET
-                hit_count += 1,
-                last_hit = time::now()
-            WHERE exact_hash = $hash
-        "#;
-        let vars = self.vars([("hash", Val::String(hash.to_string()))]);
-        self.execute_with_vars(sql, vars).await?;
-        Ok(())
-    }
-
-    // -----------------------------------------------------------------------
-    // Semantic search (HNSW KNN)
-    // -----------------------------------------------------------------------
-
-    /// KNN search for semantically similar entries by embedding vector.
-    ///
-    /// Returns the best entry for the given model with cosine similarity >= threshold.
-    /// Uses in-query WHERE filtering so the planner handles condition evaluation
-    /// during KNN traversal.
-    pub async fn lookup_semantic(
+    async fn lookup_approximate(
         &self,
         embedding: &[f32],
-        model: &str,
-        k: usize,
+        metadata: &CacheMetadata,
         threshold: f32,
         ttl_secs: u64,
     ) -> Result<Option<(CacheEntry, f32)>, CacheError> {
-        let embedding_val = Val::Array(
-            embedding
-                .iter()
-                .map(|f| Val::Number(SurrealNumber::Float(*f as f64)))
-                .collect::<Vec<Val>>()
-                .into(),
-        );
+        let sql = "SELECT *, vector::similarity::cosine(embedding, $vec) AS score 
+                   FROM cache 
+                   WHERE embedding <|10, COSINE|> $vec 
+                     AND model = $model 
+                     AND system_prompt_hash = $sys_hash
+                     AND tool_definitions_hash = $tool_hash
+                     AND created_at > time::now() - $ttl 
+                   ORDER BY score DESC LIMIT 1";
 
-        let sql = format!(
-            "SELECT *, vector::similarity::cosine(embedding, $vec) AS score \
-             FROM entries \
-             WHERE embedding <|{k},COSINE|> $vec \
-             AND model = $model \
-             AND created_at > time::now() - {ttl_secs}s \
-             ORDER BY score DESC \
-             LIMIT {k}"
-        );
+        let mut response = self.db.query(sql)
+            .bind(("vec", embedding))
+            .bind(("model", &metadata.model))
+            .bind(("sys_hash", &metadata.system_prompt_hash))
+            .bind(("tool_hash", &metadata.tool_definitions_hash))
+            .bind(("ttl", format!("{}s", ttl_secs)))
+            .await
+            .map_err(|e| CacheError::LookupFailed(e.to_string()))?;
 
-        let vars = self.vars([
-            ("vec", embedding_val),
-            ("model", Val::String(model.to_string())),
-        ]);
-
-        let results = self.execute_with_vars(&sql, vars).await?;
-
-        // Find the best match above threshold.
-        for result in results {
-            match result.output() {
-                Ok(Val::Array(arr)) => {
-                    for val in arr.iter() {
-                        if let Some(entry) = self.value_to_entry(val) {
-                            let score = self.extract_float(val, "score");
-                            let similarity = score as f32;
-                            if similarity >= threshold {
-                                return Ok(Some((entry, similarity)));
-                            }
-                        }
-                    }
-                }
-                _ => continue,
+        let entry_with_score: Option<serde_json::Value> = response.take(0).map_err(|e| CacheError::LookupFailed(e.to_string()))?;
+        
+        if let Some(val) = entry_with_score {
+            let score = val["score"].as_f64().unwrap_or(0.0) as f32;
+            if score >= threshold {
+                let entry: CacheEntry = serde_json::from_value(val).map_err(|e| CacheError::Serialization(e.to_string()))?;
+                return Ok(Some((entry, score)));
             }
         }
 
         Ok(None)
     }
 
-    // -----------------------------------------------------------------------
-    // Eviction / management
-    // -----------------------------------------------------------------------
+    pub async fn insert(&self, entry: &CacheEntry, metadata: &CacheMetadata) -> Result<(), CacheError> {
+        self.validate_vector(entry.embedding.as_deref())?;
 
-    /// Delete entries older than `ttl_secs` seconds.
-    pub async fn evict_expired(&self, ttl_secs: u64) -> Result<u64, CacheError> {
-        let sql = format!(
-            "DELETE FROM entries WHERE created_at < time::now() - {ttl_secs}s RETURN BEFORE"
-        );
-        let results = self.execute(&sql).await?;
-        let mut count = 0u64;
-        for r in results {
-            if let Ok(Val::Array(arr)) = r.output() {
-                count += arr.len() as u64;
-            }
-        }
-        Ok(count)
+        let sql = "INSERT INTO cache {
+            exact_hash: $exact_hash,
+            model: $model,
+            system_prompt_hash: $sys_hash,
+            tool_definitions_hash: $tool_hash,
+            semantic_text: $sem_text,
+            embedding: $emb,
+            request_json: $req_json,
+            response_json: $resp_json,
+            hash_version: $hash_ver,
+            temperature: $temp,
+            confidence: $conf,
+            created_at: time::now(),
+            hit_count: 0
+        } ON DUPLICATE KEY UPDATE 
+            response_json = $input.response_json,
+            embedding = $input.embedding,
+            created_at = time::now(),
+            hit_count = 0";
+
+        self.db.query(sql)
+            .bind(("exact_hash", &entry.exact_hash))
+            .bind(("model", &entry.model))
+            .bind(("sys_hash", &metadata.system_prompt_hash))
+            .bind(("tool_hash", &metadata.tool_definitions_hash))
+            .bind(("sem_text", &entry.semantic_text))
+            .bind(("emb", &entry.embedding))
+            .bind(("req_json", &entry.request_json))
+            .bind(("resp_json", &entry.response_json))
+            .bind(("hash_ver", &self.hash_version))
+            .bind(("temp", metadata.temperature))
+            .bind(("conf", metadata.confidence))
+            .await
+            .map_err(|e| CacheError::InsertFailed(e.to_string()))?;
+
+        Ok(())
     }
 
-    /// Delete entries exceeding `max_entries`, ordered by LRU (lowest
-    /// hit_count first, then oldest created_at).
-    pub async fn evict_lru(&self, max_entries: usize) -> Result<u64, CacheError> {
-        let count_sql = "SELECT count() FROM entries GROUP ALL";
-        let results = self.execute(count_sql).await?;
-
-        let total = results
-            .into_iter()
-            .next()
-            .and_then(|r| r.output().ok())
-            .and_then(|v| {
-                if let Val::Array(arr) = v {
-                    arr.first().map(|row| self.extract_int(row, "count") as usize)
-                } else {
-                    None
+    fn validate_vector(&self, embedding: Option<&[f32]>) -> Result<(), CacheError> {
+        if let Some(vec) = embedding {
+            if vec.len() != self.dimension as usize {
+                return Err(CacheError::DimensionMismatch {
+                    expected: self.dimension,
+                    actual: vec.len(),
+                });
+            }
+            for &f in vec {
+                if f.is_nan() || f.is_infinite() {
+                    return Err(CacheError::InsertFailed("Vector contains NaN or Infinite values".to_string()));
                 }
-            })
-            .unwrap_or(0);
+            }
+            let mag = vec.iter().map(|x| x * x).sum::<f32>().sqrt();
+            if (mag - 1.0).abs() > 1e-3 {
+                return Err(CacheError::NotNormalized { magnitude: mag });
+            }
+        }
+        Ok(())
+    }
 
-        if total <= max_entries {
+    pub async fn record_hit(&self, exact_hash: &str) -> Result<(), CacheError> {
+        let sql = "UPDATE cache SET hit_count += 1, last_hit = time::now() WHERE exact_hash = $hash";
+        self.db.query(sql)
+            .bind(("hash", exact_hash))
+            .await
+            .map_err(|e| CacheError::LookupFailed(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn evict_expired(&self, ttl_secs: u64) -> Result<u64, CacheError> {
+        let sql = "DELETE FROM cache WHERE created_at < time::now() - $ttl RETURN BEFORE";
+        let mut response = self.db.query(sql)
+            .bind(("ttl", format!("{}s", ttl_secs)))
+            .await
+            .map_err(|e| CacheError::LookupFailed(e.to_string()))?;
+        
+        let removed: Vec<CacheEntry> = response.take(0).map_err(|e| CacheError::LookupFailed(e.to_string()))?;
+        Ok(removed.len() as u64)
+    }
+
+    pub async fn evict_lru(&self, max_entries: usize) -> Result<u64, CacheError> {
+        let count_sql = "SELECT count() FROM cache GROUP ALL";
+        let mut response = self.db.query(count_sql).await.map_err(|e| CacheError::LookupFailed(e.to_string()))?;
+        let total = response.take(0).map(|v: serde_json::Value| v["count"].as_u64().unwrap_or(0)).unwrap_or(0);
+
+        if total <= max_entries as u64 {
             return Ok(0);
         }
 
-        let to_remove = total - max_entries;
-        let sql = format!(
-            "DELETE FROM entries WHERE id IN \
-             (SELECT id FROM entries ORDER BY hit_count ASC, created_at ASC LIMIT {to_remove}) \
-             RETURN BEFORE"
-        );
-        let results = self.execute(&sql).await?;
-        let mut removed = 0u64;
-        for r in results {
-            if let Ok(Val::Array(arr)) = r.output() {
-                removed += arr.len() as u64;
-            }
-        }
-        Ok(removed)
+        let to_remove = total - max_entries as u64;
+        let sql = "DELETE FROM cache WHERE id IN (SELECT id FROM cache ORDER BY hit_count ASC, created_at ASC LIMIT $to_remove) RETURN BEFORE";
+        let mut response = self.db.query(sql)
+            .bind(("to_remove", to_remove))
+            .await
+            .map_err(|e| CacheError::LookupFailed(e.to_string()))?;
+        
+        let removed: Vec<CacheEntry> = response.take(0).map_err(|e| CacheError::LookupFailed(e.to_string()))?;
+        Ok(removed.len() as u64)
     }
 
-    /// Flush all cache entries.
     pub async fn flush_all(&self) -> Result<(), CacheError> {
-        self.execute("DELETE FROM entries").await?;
+        self.db.query("DELETE FROM cache").await.map_err(|e| CacheError::LookupFailed(e.to_string()))?;
         Ok(())
     }
 
-    /// Flush entries for a specific model.
     pub async fn flush_model(&self, model: &str) -> Result<(), CacheError> {
-        let vars = self.vars([("model", Val::String(model.to_string()))]);
-        self.execute_with_vars("DELETE FROM entries WHERE model = $model", vars)
-            .await?;
+        self.db.query("DELETE FROM cache WHERE model = $model")
+            .bind(("model", model))
+            .await
+            .map_err(|e| CacheError::LookupFailed(e.to_string()))?;
         Ok(())
     }
 
-    /// Count total entries.
-    pub async fn count(&self) -> Result<u64, CacheError> {
-        let results = self.execute("SELECT count() FROM entries GROUP ALL").await?;
-        let count = results
-            .into_iter()
-            .next()
-            .and_then(|r| r.output().ok())
-            .and_then(|v| {
-                if let Val::Array(arr) = v {
-                    arr.first().map(|row| self.extract_int(row, "count") as u64)
-                } else {
-                    None
-                }
-            })
-            .unwrap_or(0);
-        Ok(count)
+        pub async fn count(&self) -> Result<u64, CacheError> {
+
+            let mut response = self.db.query("SELECT count() FROM cache GROUP ALL").await.map_err(|e| CacheError::LookupFailed(e.to_string()))?;
+
+            Ok(response.take(0).map(|v: serde_json::Value| v["count"].as_u64().unwrap_or(0)).unwrap_or(0))
+
+        }
+
     }
 
-    // -----------------------------------------------------------------------
-    // Internal helpers
-    // -----------------------------------------------------------------------
+    
 
-    /// Execute a SurrealQL statement without variables.
-    async fn execute(
-        &self,
-        sql: &str,
-    ) -> Result<Vec<surrealdb_core::dbs::QueryResult>, CacheError> {
-        self.ds
-            .execute(sql, &self.session, None)
-            .await
-            .map_err(|e| CacheError::Store(format!("Query failed: {e}")))
-    }
+    #[cfg(test)]
 
-    /// Execute a SurrealQL statement with variables.
-    async fn execute_with_vars(
-        &self,
-        sql: &str,
-        vars: Variables,
-    ) -> Result<Vec<surrealdb_core::dbs::QueryResult>, CacheError> {
-        self.ds
-            .execute(sql, &self.session, Some(vars))
-            .await
-            .map_err(|e| CacheError::Store(format!("Query failed: {e}")))
-    }
+    mod tests {
 
-    /// Build a Variables map from key-value pairs.
-    fn vars<const N: usize>(&self, pairs: [(&str, Val); N]) -> Variables {
-        let map: BTreeMap<String, Val> = pairs
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), v))
-            .collect();
-        Variables::from(map)
-    }
+        use super::*;
 
-    /// Parse a single CacheEntry from query results.
-    fn parse_single_entry(
-        &self,
-        results: Vec<surrealdb_core::dbs::QueryResult>,
-    ) -> Result<Option<CacheEntry>, CacheError> {
-        for result in results {
-            match result.output() {
-                Ok(Val::Array(arr)) => {
-                    if let Some(val) = arr.first() {
-                        return Ok(self.value_to_entry(val));
-                    }
-                }
-                Ok(_) => continue,
-                Err(e) => return Err(CacheError::Store(format!("Query error: {e}"))),
+        use crate::cache::types::{CacheEntry, CacheMetadata};
+
+    
+
+        #[tokio::test]
+
+        #[cfg(feature = "cache-ephemeral")]
+
+        async fn test_cache_store_basic() -> Result<(), CacheError> {
+
+            let store = CacheStore::ephemeral(3).await?;
+
+            
+
+            let metadata = CacheMetadata {
+
+                model: "test-model".into(),
+
+                system_prompt_hash: "sys-hash".into(),
+
+                tool_definitions_hash: "tool-hash".into(),
+
+                temperature: Some(0.0),
+
+                confidence: None,
+
+            };
+
+    
+
+            let mut embedding = vec![1.0, 0.0, 0.0]; // Normalized
+
+            let entry = CacheEntry {
+
+                exact_hash: "exact-hash-1".into(),
+
+                model: "test-model".into(),
+
+                system_prompt_hash: "sys-hash".into(),
+
+                tool_definitions_hash: "tool-hash".into(),
+
+                semantic_text: "hello world".into(),
+
+                embedding: Some(embedding.clone()),
+
+                request_json: "{}".into(),
+
+                response_json: "{\"result\": \"ok\"}".into(),
+
+                created_at: "".into(),
+
+                hit_count: 0,
+
+                last_hit: None,
+
+                hash_version: "v1".into(),
+
+            };
+
+    
+
+            store.insert(&entry, &metadata).await?;
+
+            assert_eq!(store.count().await?, 1);
+
+    
+
+            // Exact hit
+
+            let res = store.lookup("exact-hash-1", None, &metadata, 0.9, 3600).await?;
+
+            assert!(res.is_hit());
+
+    
+
+            // Semantic hit
+
+            let query_embedding = vec![0.99, 0.01, 0.0]; // Very close
+
+            let res = store.lookup("different-hash", Some(&query_embedding), &metadata, 0.9, 3600).await?;
+
+            assert!(res.is_hit());
+
+            if let CacheLookupResult::Hit(_, info) = res {
+
+                assert_eq!(info.kind, CacheHitKind::Approximate);
+
+                assert!(info.score > 0.9);
+
             }
-        }
-        Ok(None)
-    }
 
-    /// Extract a string field from a SurrealDB Value (object row).
-    fn extract_string(&self, val: &Val, field: &str) -> String {
-        match &val[field] {
-            Val::String(s) => s.clone(),
-            _ => String::new(),
-        }
-    }
+    
 
-    /// Extract a float field from a SurrealDB Value (object row).
-    fn extract_float(&self, val: &Val, field: &str) -> f64 {
-        match &val[field] {
-            Val::Number(n) => n.to_f64().unwrap_or(0.0),
-            _ => 0.0,
-        }
-    }
+            // Semantic miss (threshold)
 
-    /// Extract an integer field from a SurrealDB Value (object row).
-    fn extract_int(&self, val: &Val, field: &str) -> i64 {
-        match &val[field] {
-            Val::Number(n) => n.to_int().unwrap_or(0),
-            _ => 0,
-        }
-    }
+            let far_embedding = vec![0.0, 1.0, 0.0]; // Orthogonal
 
-    /// Convert a SurrealDB Value (object) into a CacheEntry.
-    fn value_to_entry(&self, val: &Val) -> Option<CacheEntry> {
-        let exact_hash = self.extract_string(val, "exact_hash");
-        let model = self.extract_string(val, "model");
-        let semantic_text = self.extract_string(val, "semantic_text");
-        let request_json = self.extract_string(val, "request_json");
-        let response_json = self.extract_string(val, "response_json");
-        let created_at = match &val["created_at"] {
-            Val::Datetime(dt) => dt.to_string(),
-            Val::String(s) => s.clone(),
-            _ => String::new(),
-        };
-        let hit_count = self.extract_int(val, "hit_count") as u64;
-        let last_hit = match &val["last_hit"] {
-            Val::None | Val::Null => None,
-            Val::Datetime(dt) => Some(dt.to_string()),
-            Val::String(s) => Some(s.clone()),
-            _ => None,
-        };
+            let res = store.lookup("different-hash", Some(&far_embedding), &metadata, 0.9, 3600).await?;
 
-        let embedding = match &val["embedding"] {
-            Val::Array(arr) => Some(
-                arr.iter()
-                    .filter_map(|v| match v {
-                        Val::Number(n) => Some(n.to_f64().unwrap_or(0.0) as f32),
-                        _ => None,
-                    })
-                    .collect(),
-            ),
-            _ => None,
-        };
+            assert!(!res.is_hit());
 
-        if exact_hash.is_empty() {
-            return None;
+    
+
+            // Metadata mismatch
+
+            let mut diff_metadata = metadata.clone();
+
+            diff_metadata.system_prompt_hash = "different-sys".into();
+
+            let res = store.lookup("different-hash", Some(&query_embedding), &diff_metadata, 0.9, 3600).await?;
+
+            assert!(!res.is_hit());
+
+    
+
+            Ok(())
+
         }
 
-        Some(CacheEntry {
-            exact_hash,
-            model,
-            semantic_text,
-            embedding,
-            request_json,
-            response_json,
-            created_at,
-            hit_count,
-            last_hit,
-        })
+    
+
+        #[tokio::test]
+
+        #[cfg(feature = "cache-ephemeral")]
+
+        async fn test_vector_validation() -> Result<(), CacheError> {
+
+            let store = CacheStore::ephemeral(3).await?;
+
+            
+
+            let metadata = CacheMetadata {
+
+                model: "test-model".into(),
+
+                system_prompt_hash: "sys-hash".into(),
+
+                tool_definitions_hash: "tool-hash".into(),
+
+                temperature: Some(0.0),
+
+                confidence: None,
+
+            };
+
+    
+
+            let entry = CacheEntry {
+
+                exact_hash: "h1".into(),
+
+                model: "m1".into(),
+
+                system_prompt_hash: "s1".into(),
+
+                tool_definitions_hash: "t1".into(),
+
+                semantic_text: "text".into(),
+
+                embedding: Some(vec![1.0, 2.0]), // Wrong dimension
+
+                request_json: "{}".into(),
+
+                response_json: "{}".into(),
+
+                created_at: "".into(),
+
+                hit_count: 0,
+
+                last_hit: None,
+
+                hash_version: "v1".into(),
+
+            };
+
+    
+
+            let res = store.insert(&entry, &metadata).await;
+
+            assert!(matches!(res, Err(CacheError::DimensionMismatch { .. })));
+
+    
+
+            let entry_unnorm = CacheEntry {
+
+                embedding: Some(vec![1.0, 1.0, 1.0]), // Magnitude sqrt(3) != 1
+
+                ..entry
+
+            };
+
+            let res = store.insert(&entry_unnorm, &metadata).await;
+
+            assert!(matches!(res, Err(CacheError::NotNormalized { .. })));
+
+    
+
+            Ok(())
+
+        }
+
     }
-}
+
+    

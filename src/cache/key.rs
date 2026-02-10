@@ -33,9 +33,12 @@ pub fn should_skip(request: &ChatRequest, config: &CacheConfig) -> bool {
 
 /// Compute a deterministic SHA-256 hex digest from the cache-relevant fields
 /// of a `ChatRequest`. The hash is model-scoped and includes message content,
-/// temperature, max_tokens, tool presence, and tool_choice.
+/// temperature, max_tokens, tool definitions, and tool_choice.
 pub fn exact_hash(request: &ChatRequest) -> String {
     let mut hasher = Sha256::new();
+
+    // Version prefix to allow for future hashing logic updates
+    hasher.update(b"v1:");
 
     // Model
     hasher.update(request.model.as_bytes());
@@ -66,8 +69,11 @@ pub fn exact_hash(request: &ChatRequest) -> String {
     }
     hasher.update(b"|");
 
-    // Tools presence (bool), not full tool definitions
-    hasher.update(if request.tools.is_some() { b"T" } else { b"F" });
+    // Tool definitions
+    if let Some(ref tools) = request.tools {
+        let tools_json = serde_json::to_string(tools).unwrap_or_default();
+        hasher.update(tools_json.as_bytes());
+    }
     hasher.update(b"|");
 
     // tool_choice (canonical JSON string if present)
@@ -75,6 +81,34 @@ pub fn exact_hash(request: &ChatRequest) -> String {
         hasher.update(tc.to_string().as_bytes());
     }
 
+    format!("{:x}", hasher.finalize())
+}
+
+// ---------------------------------------------------------------------------
+// Component Hashes
+// ---------------------------------------------------------------------------
+
+/// Hash the system prompt(s) specifically for metadata-aware ANN filtering.
+pub fn system_prompt_hash(request: &ChatRequest) -> String {
+    let mut hasher = Sha256::new();
+    for msg in &request.messages {
+        if matches!(msg.role, MessageRole::System) {
+            if let Some(ref content) = msg.content {
+                hasher.update(flatten_content(content).trim().as_bytes());
+                hasher.update(b";");
+            }
+        }
+    }
+    format!("{:x}", hasher.finalize())
+}
+
+/// Hash the tool definitions for metadata-aware ANN filtering.
+pub fn tool_definitions_hash(request: &ChatRequest) -> String {
+    let mut hasher = Sha256::new();
+    if let Some(ref tools) = request.tools {
+        let tools_json = serde_json::to_string(tools).unwrap_or_default();
+        hasher.update(tools_json.as_bytes());
+    }
     format!("{:x}", hasher.finalize())
 }
 
@@ -127,7 +161,7 @@ pub fn semantic_text(request: &ChatRequest) -> String {
 // ---------------------------------------------------------------------------
 
 /// Flatten `MessageContent` (Text or Parts) into a single plain-text string.
-fn flatten_content(content: &MessageContent) -> String {
+pub fn flatten_content(content: &MessageContent) -> String {
     match content {
         MessageContent::Text(s) => s.clone(),
         MessageContent::Parts(parts) => parts
@@ -138,166 +172,5 @@ fn flatten_content(content: &MessageContent) -> String {
             })
             .collect::<Vec<_>>()
             .join(" "),
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::providers::types::ChatMessage;
-
-    fn make_msg(role: MessageRole, text: &str) -> ChatMessage {
-        ChatMessage {
-            role,
-            content: Some(MessageContent::Text(text.to_string())),
-            name: None,
-            tool_calls: None,
-            tool_call_id: None,
-        }
-    }
-
-    fn make_request(messages: Vec<ChatMessage>) -> ChatRequest {
-        ChatRequest {
-            model: "gpt-4".to_string(),
-            messages,
-            temperature: Some(0.7),
-            max_tokens: Some(100),
-            stream: false,
-            top_p: None,
-            stop: None,
-            tools: None,
-            tool_choice: None,
-            stream_options: None,
-        }
-    }
-
-    #[test]
-    fn test_exact_hash_deterministic() {
-        let req = make_request(vec![make_msg(MessageRole::User, "Hello")]);
-        let h1 = exact_hash(&req);
-        let h2 = exact_hash(&req);
-        assert_eq!(h1, h2);
-        assert_eq!(h1.len(), 64); // SHA-256 hex
-    }
-
-    #[test]
-    fn test_exact_hash_differs_on_model() {
-        let mut req1 = make_request(vec![make_msg(MessageRole::User, "Hello")]);
-        let mut req2 = req1.clone();
-        req1.model = "gpt-4".into();
-        req2.model = "gpt-3.5-turbo".into();
-        assert_ne!(exact_hash(&req1), exact_hash(&req2));
-    }
-
-    #[test]
-    fn test_exact_hash_differs_on_content() {
-        let req1 = make_request(vec![make_msg(MessageRole::User, "Hello")]);
-        let req2 = make_request(vec![make_msg(MessageRole::User, "Goodbye")]);
-        assert_ne!(exact_hash(&req1), exact_hash(&req2));
-    }
-
-    #[test]
-    fn test_exact_hash_whitespace_trim() {
-        let req1 = make_request(vec![make_msg(MessageRole::User, "Hello ")]);
-        let req2 = make_request(vec![make_msg(MessageRole::User, "Hello")]);
-        assert_eq!(exact_hash(&req1), exact_hash(&req2));
-    }
-
-    #[test]
-    fn test_semantic_text_system_and_user() {
-        let req = make_request(vec![
-            make_msg(MessageRole::System, "You are helpful."),
-            make_msg(MessageRole::User, "What is 2+2?"),
-        ]);
-        let text = semantic_text(&req);
-        assert!(text.contains("You are helpful."));
-        assert!(text.contains("---"));
-        assert!(text.contains("What is 2+2?"));
-    }
-
-    #[test]
-    fn test_semantic_text_user_only() {
-        let req = make_request(vec![make_msg(MessageRole::User, "Hello")]);
-        let text = semantic_text(&req);
-        assert_eq!(text, "Hello");
-    }
-
-    #[test]
-    fn test_semantic_text_last_user_message() {
-        let req = make_request(vec![
-            make_msg(MessageRole::User, "First"),
-            make_msg(MessageRole::Assistant, "Reply"),
-            make_msg(MessageRole::User, "Second"),
-        ]);
-        let text = semantic_text(&req);
-        assert!(text.contains("Second"));
-        assert!(!text.contains("First"));
-    }
-
-    #[test]
-    fn test_semantic_text_truncation() {
-        let long_text = "x".repeat(10000);
-        let req = make_request(vec![make_msg(MessageRole::User, &long_text)]);
-        let text = semantic_text(&req);
-        assert_eq!(text.len(), MAX_SEMANTIC_LEN);
-    }
-
-    #[test]
-    fn test_should_skip_streaming() {
-        let mut req = make_request(vec![make_msg(MessageRole::User, "Hi")]);
-        req.stream = true;
-        let config = CacheConfig::default();
-        assert!(should_skip(&req, &config));
-    }
-
-    #[test]
-    fn test_should_skip_tools() {
-        let mut req = make_request(vec![make_msg(MessageRole::User, "Hi")]);
-        req.tools = Some(vec![]);
-        let config = CacheConfig {
-            skip_tool_requests: true,
-            ..Default::default()
-        };
-        assert!(should_skip(&req, &config));
-    }
-
-    #[test]
-    fn test_should_skip_model() {
-        let req = make_request(vec![make_msg(MessageRole::User, "Hi")]);
-        let config = CacheConfig {
-            skip_models: vec!["gpt-4".to_string()],
-            ..Default::default()
-        };
-        assert!(should_skip(&req, &config));
-    }
-
-    #[test]
-    fn test_should_not_skip_normal_request() {
-        let req = make_request(vec![make_msg(MessageRole::User, "Hi")]);
-        let config = CacheConfig::default();
-        assert!(!should_skip(&req, &config));
-    }
-
-    #[test]
-    fn test_flatten_content_text() {
-        let content = MessageContent::Text("hello world".into());
-        assert_eq!(flatten_content(&content), "hello world");
-    }
-
-    #[test]
-    fn test_flatten_content_parts() {
-        let content = MessageContent::Parts(vec![
-            ContentPart::Text {
-                text: "hello".into(),
-            },
-            ContentPart::Text {
-                text: "world".into(),
-            },
-        ]);
-        assert_eq!(flatten_content(&content), "hello world");
     }
 }

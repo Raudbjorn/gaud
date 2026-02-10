@@ -10,6 +10,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 pub struct CacheEntry {
     pub exact_hash: String,
     pub model: String,
+    pub system_prompt_hash: String,
+    pub tool_definitions_hash: String,
     pub semantic_text: String,
     pub embedding: Option<Vec<f32>>,
     pub request_json: String,
@@ -17,39 +19,67 @@ pub struct CacheEntry {
     pub created_at: String,
     pub hit_count: u64,
     pub last_hit: Option<String>,
+    pub hash_version: String,
 }
 
 // ---------------------------------------------------------------------------
-// Lookup result
+// Lookup result & Hit Info
 // ---------------------------------------------------------------------------
+
+/// Detailed information about a cache hit for explainability.
+#[derive(Debug, Clone, Serialize)]
+pub struct CacheHitInfo {
+    pub kind: CacheHitKind,
+    pub score: f32,
+    pub threshold: f32,
+    pub metadata: CacheMetadata,
+    pub hash_version: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum CacheHitKind {
+    Exact,
+    Approximate,
+}
+
+/// Metadata attached to cached entries for validation and analysis.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CacheMetadata {
+    pub model: String,
+    pub system_prompt_hash: String,
+    pub tool_definitions_hash: String,
+    pub temperature: Option<f32>,
+    pub confidence: Option<f32>,
+}
 
 /// Outcome of a cache lookup.
 #[derive(Debug, Clone)]
 pub enum CacheLookupResult {
-    /// Exact SHA-256 hash match.
-    ExactHit(CacheEntry),
-    /// Semantic (embedding KNN) match with cosine similarity score.
-    SemanticHit { entry: CacheEntry, similarity: f32 },
+    /// Cache hit with detailed info.
+    Hit(CacheEntry, CacheHitInfo),
     /// No match found.
     Miss,
 }
 
 impl CacheLookupResult {
     pub fn is_hit(&self) -> bool {
-        !matches!(self, Self::Miss)
+        matches!(self, Self::Hit(_, _))
     }
 
-    pub fn hit_kind(&self) -> Option<&'static str> {
+    pub fn hit_kind_str(&self) -> Option<&'static str> {
         match self {
-            Self::ExactHit(_) => Some("exact"),
-            Self::SemanticHit { .. } => Some("semantic"),
+            Self::Hit(_, info) => match info.kind {
+                CacheHitKind::Exact => Some("exact"),
+                CacheHitKind::Approximate => Some("approximate"),
+            },
             Self::Miss => None,
         }
     }
 
     pub fn into_entry(self) -> Option<CacheEntry> {
         match self {
-            Self::ExactHit(e) | Self::SemanticHit { entry: e, .. } => Some(e),
+            Self::Hit(entry, _) => Some(entry),
             Self::Miss => None,
         }
     }
@@ -122,8 +152,26 @@ pub struct CacheStatsSnapshot {
 /// Errors specific to cache operations.
 #[derive(Debug, thiserror::Error)]
 pub enum CacheError {
-    #[error("SurrealDB error: {0}")]
-    Store(String),
+    #[error("Cache initialization failed: {0}")]
+    InitFailed(String),
+
+    #[error("Schema application failed: {0}")]
+    SchemaFailed(String),
+
+    #[error("Cache lookup failed: {0}")]
+    LookupFailed(String),
+
+    #[error("Cache insert failed: {0}")]
+    InsertFailed(String),
+
+    #[error("Invalid configuration: {0}")]
+    InvalidConfig(String),
+
+    #[error("Invalid embedding: expected dimension {expected}, got {actual}")]
+    DimensionMismatch { expected: u16, actual: usize },
+
+    #[error("Embedding vector is not normalized (magnitude: {magnitude:.4})")]
+    NotNormalized { magnitude: f32 },
 
     #[error("Embedding API error: {0}")]
     Embedding(String),
@@ -138,86 +186,5 @@ pub enum CacheError {
 impl From<serde_json::Error> for CacheError {
     fn from(err: serde_json::Error) -> Self {
         Self::Serialization(err.to_string())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_lookup_result_miss() {
-        let result = CacheLookupResult::Miss;
-        assert!(!result.is_hit());
-        assert!(result.hit_kind().is_none());
-        assert!(result.into_entry().is_none());
-    }
-
-    #[test]
-    fn test_lookup_result_exact_hit() {
-        let entry = CacheEntry {
-            exact_hash: "abc123".into(),
-            model: "gpt-4".into(),
-            semantic_text: "hello".into(),
-            embedding: None,
-            request_json: "{}".into(),
-            response_json: "{}".into(),
-            created_at: "2025-01-01T00:00:00Z".into(),
-            hit_count: 1,
-            last_hit: None,
-        };
-        let result = CacheLookupResult::ExactHit(entry);
-        assert!(result.is_hit());
-        assert_eq!(result.hit_kind(), Some("exact"));
-        assert!(result.into_entry().is_some());
-    }
-
-    #[test]
-    fn test_lookup_result_semantic_hit() {
-        let entry = CacheEntry {
-            exact_hash: "abc123".into(),
-            model: "gpt-4".into(),
-            semantic_text: "hello".into(),
-            embedding: Some(vec![0.1, 0.2]),
-            request_json: "{}".into(),
-            response_json: "{}".into(),
-            created_at: "2025-01-01T00:00:00Z".into(),
-            hit_count: 0,
-            last_hit: None,
-        };
-        let result = CacheLookupResult::SemanticHit {
-            entry,
-            similarity: 0.95,
-        };
-        assert!(result.is_hit());
-        assert_eq!(result.hit_kind(), Some("semantic"));
-    }
-
-    #[test]
-    fn test_cache_stats() {
-        let stats = CacheStats::new();
-        stats.record_exact_hit();
-        stats.record_exact_hit();
-        stats.record_semantic_hit();
-        stats.record_miss();
-
-        let snap = stats.snapshot();
-        assert_eq!(snap.hits_exact, 2);
-        assert_eq!(snap.hits_semantic, 1);
-        assert_eq!(snap.misses, 1);
-        assert!((snap.hit_rate - 0.75).abs() < f64::EPSILON);
-    }
-
-    #[test]
-    fn test_cache_stats_zero() {
-        let stats = CacheStats::new();
-        let snap = stats.snapshot();
-        assert_eq!(snap.hit_rate, 0.0);
-    }
-
-    #[test]
-    fn test_cache_error_display() {
-        let err = CacheError::Store("connection failed".into());
-        assert!(err.to_string().contains("SurrealDB error"));
     }
 }

@@ -27,7 +27,7 @@ use gaud::api;
 use gaud::auth::middleware::require_auth;
 use gaud::auth::users::bootstrap_admin;
 use gaud::budget::{spawn_audit_logger, BudgetTracker};
-use gaud::cache::SemanticCache;
+use gaud::cache::SemanticCacheService;
 use gaud::config::{Config, KiroProviderConfig, LitellmProviderConfig};
 use gaud::db::Database;
 use gaud::oauth::OAuthManager;
@@ -104,8 +104,16 @@ ENVIRONMENT:
 // Main
 // ---------------------------------------------------------------------------
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
+    tokio::runtime::Builder::new_multi_thread()
+        .thread_stack_size(10 * 1024 * 1024) // 10 MiB per worker thread
+        .enable_all()
+        .build()
+        .expect("Failed to build Tokio runtime")
+        .block_on(async_main())
+}
+
+async fn async_main() -> anyhow::Result<()> {
     // 1. Parse CLI arguments
     let cli = parse_args();
 
@@ -197,7 +205,7 @@ async fn main() -> anyhow::Result<()> {
 
     // 9. Initialize semantic cache (if enabled)
     let cache = if config.cache.enabled {
-        match SemanticCache::new(&config.cache).await {
+        match SemanticCacheService::new(&config.cache).await {
             Ok(c) => {
                 let c = Arc::new(c);
                 // Spawn TTL eviction every 5 minutes.

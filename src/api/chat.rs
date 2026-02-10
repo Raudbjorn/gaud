@@ -59,7 +59,7 @@ async fn handle_non_streaming(
         if cache.should_check(&request) {
             match cache.lookup(&request).await {
                 Ok(hit) if hit.is_hit() => {
-                    let kind = hit.hit_kind().unwrap_or("unknown");
+                    let kind = hit.hit_kind_str().unwrap_or("unknown");
                     let entry = hit.into_entry().unwrap();
 
                     match serde_json::from_str::<crate::providers::types::ChatResponse>(

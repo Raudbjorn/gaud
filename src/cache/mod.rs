@@ -7,34 +7,36 @@ use crate::config::{CacheConfig, CacheMode};
 use crate::providers::types::{ChatRequest, ChatResponse};
 
 use self::store::CacheStore;
-use self::types::{CacheEntry, CacheError, CacheLookupResult, CacheStats, CacheStatsSnapshot};
+use self::types::{
+    CacheEntry, CacheError, CacheHitInfo, CacheHitKind, CacheLookupResult, CacheMetadata,
+    CacheStats, CacheStatsSnapshot,
+};
 
 // ---------------------------------------------------------------------------
-// SemanticCache -- public facade
+// SemanticCacheService -- public facade
 // ---------------------------------------------------------------------------
 
-/// Opt-in semantic cache for non-streaming chat completions.
-///
-/// Two-tier lookup:
-/// 1. Exact match (SHA-256 hash of normalized request fields)
-/// 2. Semantic match (embedding KNN via SurrealDB HNSW)
-pub struct SemanticCache {
+/// High-level semantic cache service that bridges between chat requests and the low-level store.
+pub struct SemanticCacheService {
     store: CacheStore,
     config: CacheConfig,
     stats: CacheStats,
 }
 
-impl SemanticCache {
-    /// Initialize the cache with the given configuration.
-    ///
-    /// Creates an in-memory SurrealDB datastore and initializes the schema.
+impl SemanticCacheService {
+    /// Initialize the cache service with the given configuration.
     pub async fn new(config: &CacheConfig) -> Result<Self, CacheError> {
-        let store = CacheStore::new(
-            config.embedding_dimension,
-            config.hnsw_m,
-            config.hnsw_ef_construction,
-        )
-        .await?;
+        let store = if cfg!(feature = "cache-persistent") {
+            CacheStore::persistent(
+                config.path.to_str().unwrap_or("gaud.cache"),
+                config.embedding_dimension,
+            )
+            .await?
+        } else if cfg!(feature = "cache-ephemeral") {
+            CacheStore::ephemeral(config.embedding_dimension).await?
+        } else {
+            return Err(CacheError::InitFailed("No cache storage backend enabled (persistent or ephemeral)".into()));
+        };
 
         Ok(Self {
             store,
@@ -49,64 +51,70 @@ impl SemanticCache {
     }
 
     /// Look up a cached response for the given request.
-    ///
-    /// Tries exact match first, then semantic match (if mode is "semantic" or "both").
     pub async fn lookup(&self, request: &ChatRequest) -> Result<CacheLookupResult, CacheError> {
-        let hash = key::exact_hash(request);
+        let exact_hash = key::exact_hash(request);
+        
+        let metadata = CacheMetadata {
+            model: request.model.clone(),
+            system_prompt_hash: key::system_prompt_hash(request),
+            tool_definitions_hash: key::tool_definitions_hash(request),
+            temperature: request.temperature,
+            confidence: None, // Could be calculated from model response in the future
+        };
 
-        // Tier 1: Exact match (always checked unless mode is semantic-only)
-        if self.config.mode != CacheMode::Semantic {
-            if let Some(entry) = self.store.lookup_exact(&hash, self.config.ttl_secs).await? {
-                self.store.record_hit(&hash).await.ok();
-                self.stats.record_exact_hit();
-                return Ok(CacheLookupResult::ExactHit(entry));
-            }
-        }
-
-        // Tier 2: Semantic match (requires embedder and mode includes semantic)
-        if self.config.mode != CacheMode::Exact {
-            if let Some(ref embedding_url) = self.config.embedding_url {
+        // Get embedding if semantic mode is enabled
+        let embedding = if self.config.mode != CacheMode::Exact {
+            if let Some(ref url) = self.config.embedding_url {
                 let sem_text = key::semantic_text(request);
                 if !sem_text.is_empty() {
-                    match self.embed(&sem_text, embedding_url).await {
-                        Ok(embedding) => {
-                            if let Some((entry, similarity)) = self
-                                .store
-                                .lookup_semantic(
-                                    &embedding,
-                                    &request.model,
-                                    10,
-                                    self.config.similarity_threshold,
-                                    self.config.ttl_secs,
-                                )
-                                .await?
-                            {
-                                self.store.record_hit(&entry.exact_hash).await.ok();
-                                self.stats.record_semantic_hit();
-                                return Ok(CacheLookupResult::SemanticHit { entry, similarity });
-                            }
-                        }
+                    match self.embed(&sem_text, url).await {
+                        Ok(emb) => Some(emb),
                         Err(e) => {
-                            tracing::warn!(error = %e, "Embedding lookup failed, falling back to miss");
+                            tracing::warn!(error = %e, "Embedding lookup failed, falling back to exact-only");
+                            None
                         }
                     }
+                } else {
+                    None
                 }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let result = self.store.lookup(
+            &exact_hash,
+            embedding.as_deref(),
+            &metadata,
+            self.config.similarity_threshold,
+            self.config.ttl_secs,
+        ).await?;
+
+        match &result {
+            CacheLookupResult::Hit(entry, info) => {
+                self.store.record_hit(&entry.exact_hash).await.ok();
+                match info.kind {
+                    CacheHitKind::Exact => self.stats.record_exact_hit(),
+                    CacheHitKind::Approximate => self.stats.record_semantic_hit(),
+                }
+            }
+            CacheLookupResult::Miss => {
+                self.stats.record_miss();
             }
         }
 
-        self.stats.record_miss();
-        Ok(CacheLookupResult::Miss)
+        Ok(result)
     }
 
     /// Store a request→response pair in the cache.
-    ///
-    /// If the mode includes semantic, embeds the request text in the background.
     pub async fn store(
         &self,
         request: &ChatRequest,
         response: &ChatResponse,
     ) -> Result<(), CacheError> {
-        // Only cache responses with finish_reason "stop" (no errors, no tool calls).
+        // Only cache responses with finish_reason "stop"
         let should_cache = response.choices.iter().any(|c| {
             c.finish_reason
                 .as_deref()
@@ -116,12 +124,18 @@ impl SemanticCache {
             return Ok(());
         }
 
-        let hash = key::exact_hash(request);
+        let exact_hash = key::exact_hash(request);
         let sem_text = key::semantic_text(request);
-        let request_json = serde_json::to_string(request)
-            .map_err(|e| CacheError::Serialization(e.to_string()))?;
-        let response_json = serde_json::to_string(response)
-            .map_err(|e| CacheError::Serialization(e.to_string()))?;
+        let request_json = serde_json::to_string(request)?;
+        let response_json = serde_json::to_string(response)?;
+
+        let metadata = CacheMetadata {
+            model: request.model.clone(),
+            system_prompt_hash: key::system_prompt_hash(request),
+            tool_definitions_hash: key::tool_definitions_hash(request),
+            temperature: request.temperature,
+            confidence: None,
+        };
 
         // Get embedding if semantic mode is enabled
         let embedding = if self.config.mode != CacheMode::Exact {
@@ -141,18 +155,21 @@ impl SemanticCache {
         };
 
         let entry = CacheEntry {
-            exact_hash: hash,
+            exact_hash,
             model: request.model.clone(),
+            system_prompt_hash: metadata.system_prompt_hash.clone(),
+            tool_definitions_hash: metadata.tool_definitions_hash.clone(),
             semantic_text: sem_text,
             embedding,
             request_json,
             response_json,
-            created_at: String::new(), // Set by SurrealDB default
+            created_at: String::new(), // Set by SurrealDB
             hit_count: 0,
             last_hit: None,
+            hash_version: "v1".to_string(),
         };
 
-        self.store.insert(&entry).await?;
+        self.store.insert(&entry, &metadata).await?;
 
         // Enforce max_entries limit
         if self.config.max_entries > 0 {
@@ -199,6 +216,19 @@ impl SemanticCache {
             .as_deref()
             .unwrap_or("text-embedding-3-small");
         let api_key = self.config.embedding_api_key.as_deref();
-        embedder::embed(url, model, text, api_key).await
+        
+        let mut embedding = embedder::embed(url, model, text, api_key).await?;
+        
+        // Ensure normalization for cosine distance
+        self.normalize(&mut embedding);
+        
+        Ok(embedding)
+    }
+
+    fn normalize(&self, v: &mut [f32]) {
+        let mag = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+        if mag > 1e-6 {
+            v.iter_mut().for_each(|x| *x /= mag);
+        }
     }
 }

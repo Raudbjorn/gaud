@@ -10,7 +10,7 @@ pub mod providers;
 pub mod web;
 
 use crate::budget::BudgetTracker;
-use crate::cache::SemanticCache;
+use crate::cache::SemanticCacheService;
 use crate::config::Config;
 use crate::db::Database;
 use crate::oauth::OAuthManager;
@@ -31,6 +31,6 @@ pub struct AppState {
     pub budget: Arc<BudgetTracker>,
     pub audit_tx: tokio::sync::mpsc::UnboundedSender<budget::AuditEntry>,
     pub cost_calculator: Arc<CostCalculator>,
-    pub cache: Option<Arc<SemanticCache>>,
+    pub cache: Option<Arc<SemanticCacheService>>,
     pub oauth_manager: Arc<OAuthManager>,
 }
