@@ -1,6 +1,7 @@
 pub mod api;
 pub mod auth;
 pub mod budget;
+pub mod cache;
 pub mod config;
 pub mod db;
 pub mod error;
@@ -9,9 +10,11 @@ pub mod providers;
 pub mod web;
 
 use crate::budget::BudgetTracker;
+use crate::cache::SemanticCache;
 use crate::config::Config;
 use crate::db::Database;
 use crate::oauth::OAuthManager;
+use crate::providers::cost::CostCalculator;
 use crate::providers::router::ProviderRouter;
 
 use std::path::PathBuf;
@@ -27,5 +30,7 @@ pub struct AppState {
     pub router: Arc<RwLock<ProviderRouter>>,
     pub budget: Arc<BudgetTracker>,
     pub audit_tx: tokio::sync::mpsc::UnboundedSender<budget::AuditEntry>,
+    pub cost_calculator: Arc<CostCalculator>,
+    pub cache: Option<Arc<SemanticCache>>,
     pub oauth_manager: Arc<OAuthManager>,
 }

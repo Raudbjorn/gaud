@@ -84,6 +84,8 @@ pub struct Config {
     pub budget: BudgetConfig,
     #[serde(default)]
     pub logging: LoggingConfig,
+    #[serde(default)]
+    pub cache: CacheConfig,
     /// Env var overrides are not serialized to TOML.
     #[serde(skip)]
     pub env_overrides: EnvOverrides,
@@ -449,6 +451,136 @@ impl Default for LoggingConfig {
 }
 
 // ---------------------------------------------------------------------------
+// Cache configuration
+// ---------------------------------------------------------------------------
+
+/// Cache operating mode.
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum CacheMode {
+    /// Only exact SHA-256 hash matching.
+    Exact,
+    /// Only semantic (embedding + KNN) matching.
+    Semantic,
+    /// Both exact and semantic matching (exact checked first).
+    #[default]
+    Both,
+}
+
+impl std::fmt::Display for CacheMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Exact => write!(f, "exact"),
+            Self::Semantic => write!(f, "semantic"),
+            Self::Both => write!(f, "both"),
+        }
+    }
+}
+
+impl FromStr for CacheMode {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "exact" => Ok(Self::Exact),
+            "semantic" => Ok(Self::Semantic),
+            "both" => Ok(Self::Both),
+            _ => Err(format!("Unknown cache mode: {s}")),
+        }
+    }
+}
+
+/// Semantic cache configuration.
+///
+/// When `enabled` is true, non-streaming requests are checked against
+/// an in-memory SurrealDB cache with optional HNSW vector search.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CacheConfig {
+    /// Master switch.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Cache matching mode: "exact", "semantic", or "both".
+    #[serde(default)]
+    pub mode: CacheMode,
+
+    /// Cosine similarity threshold for semantic matches (0.0 – 1.0).
+    #[serde(default = "default_similarity_threshold")]
+    pub similarity_threshold: f32,
+
+    /// URL of an OpenAI-compatible embeddings endpoint.
+    #[serde(default)]
+    pub embedding_url: Option<String>,
+    /// Embedding model name (e.g. "text-embedding-3-small").
+    #[serde(default)]
+    pub embedding_model: Option<String>,
+    /// API key for the embedding endpoint.
+    #[serde(default)]
+    pub embedding_api_key: Option<String>,
+    /// Embedding vector dimension.
+    #[serde(default = "default_embedding_dim")]
+    pub embedding_dimension: u16,
+
+    /// HNSW M parameter (max connections per layer).
+    #[serde(default = "default_hnsw_m")]
+    pub hnsw_m: u8,
+    /// HNSW ef_construction parameter.
+    #[serde(default = "default_hnsw_efc")]
+    pub hnsw_ef_construction: u16,
+
+    /// Maximum number of cached entries.
+    #[serde(default = "default_max_entries")]
+    pub max_entries: usize,
+    /// Time-to-live in seconds.
+    #[serde(default = "default_cache_ttl")]
+    pub ttl_secs: u64,
+
+    /// Skip caching for requests that include tool definitions.
+    #[serde(default = "default_true")]
+    pub skip_tool_requests: bool,
+    /// Models to exclude from caching.
+    #[serde(default)]
+    pub skip_models: Vec<String>,
+}
+
+impl Default for CacheConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            mode: CacheMode::default(),
+            similarity_threshold: default_similarity_threshold(),
+            embedding_url: None,
+            embedding_model: None,
+            embedding_api_key: None,
+            embedding_dimension: default_embedding_dim(),
+            hnsw_m: default_hnsw_m(),
+            hnsw_ef_construction: default_hnsw_efc(),
+            max_entries: default_max_entries(),
+            ttl_secs: default_cache_ttl(),
+            skip_tool_requests: true,
+            skip_models: Vec::new(),
+        }
+    }
+}
+
+const fn default_similarity_threshold() -> f32 {
+    0.92
+}
+const fn default_embedding_dim() -> u16 {
+    1536
+}
+const fn default_hnsw_m() -> u8 {
+    16
+}
+const fn default_hnsw_efc() -> u16 {
+    200
+}
+const fn default_max_entries() -> usize {
+    10_000
+}
+const fn default_cache_ttl() -> u64 {
+    3600
+}
+
+// ---------------------------------------------------------------------------
 // Default value functions
 // ---------------------------------------------------------------------------
 
@@ -693,6 +825,51 @@ impl Config {
             self.logging.log_content
         );
 
+        // -- Cache --
+        env_bool!("cache.enabled", "GAUD_CACHE_ENABLED", self.cache.enabled);
+        if let Ok(val) = std::env::var("GAUD_CACHE_MODE") {
+            if let Ok(mode) = val.parse() {
+                self.cache.mode = mode;
+                ov.record("cache.mode", "GAUD_CACHE_MODE");
+            }
+        }
+        env_opt_str!(
+            "cache.embedding_url",
+            "GAUD_CACHE_EMBEDDING_URL",
+            self.cache.embedding_url
+        );
+        env_opt_str!(
+            "cache.embedding_model",
+            "GAUD_CACHE_EMBEDDING_MODEL",
+            self.cache.embedding_model
+        );
+        env_opt_str!(
+            "cache.embedding_api_key",
+            "GAUD_CACHE_EMBEDDING_API_KEY",
+            self.cache.embedding_api_key
+        );
+        env_parse!(
+            "cache.similarity_threshold",
+            "GAUD_CACHE_SIMILARITY_THRESHOLD",
+            self.cache.similarity_threshold
+        );
+        env_parse!(
+            "cache.embedding_dimension",
+            "GAUD_CACHE_EMBEDDING_DIM",
+            self.cache.embedding_dimension
+        );
+        env_parse!("cache.ttl_secs", "GAUD_CACHE_TTL", self.cache.ttl_secs);
+        env_parse!(
+            "cache.max_entries",
+            "GAUD_CACHE_MAX_ENTRIES",
+            self.cache.max_entries
+        );
+        env_bool!(
+            "cache.skip_tool_requests",
+            "GAUD_CACHE_SKIP_TOOLS",
+            self.cache.skip_tool_requests
+        );
+
         if let Some(ref mut kiro) = self.providers.kiro {
             kiro.resolve_env_credentials();
         }
@@ -840,6 +1017,30 @@ impl Config {
             se("logging.json", "Logging", "JSON Log Format", serde_json::json!(self.logging.json), "GAUD_LOG_JSON", "bool"),
             se("logging.log_content", "Logging", "Log Request Content", serde_json::json!(self.logging.log_content), "GAUD_LOG_CONTENT", "bool"),
         ];
+
+        // -- Cache --
+        entries.push(se("cache.enabled", "Cache", "Cache Enabled", serde_json::json!(self.cache.enabled), "GAUD_CACHE_ENABLED", "bool"));
+        entries.push({
+            let mut e = se("cache.mode", "Cache", "Cache Mode", serde_json::json!(self.cache.mode.to_string()), "GAUD_CACHE_MODE", "select");
+            e.options = Some(vec!["exact".to_string(), "semantic".to_string(), "both".to_string()]);
+            e
+        });
+        entries.push(se("cache.similarity_threshold", "Cache", "Similarity Threshold", serde_json::json!(self.cache.similarity_threshold), "GAUD_CACHE_SIMILARITY_THRESHOLD", "number"));
+        entries.push(se("cache.embedding_url", "Cache", "Embedding URL", serde_json::json!(self.cache.embedding_url.as_deref().unwrap_or("")), "GAUD_CACHE_EMBEDDING_URL", "text"));
+        entries.push(se("cache.embedding_model", "Cache", "Embedding Model", serde_json::json!(self.cache.embedding_model.as_deref().unwrap_or("")), "GAUD_CACHE_EMBEDDING_MODEL", "text"));
+        entries.push(se("cache.embedding_dimension", "Cache", "Embedding Dimension", serde_json::json!(self.cache.embedding_dimension), "GAUD_CACHE_EMBEDDING_DIM", "number"));
+        entries.push(se("cache.ttl_secs", "Cache", "TTL (seconds)", serde_json::json!(self.cache.ttl_secs), "GAUD_CACHE_TTL", "number"));
+        entries.push(se("cache.max_entries", "Cache", "Max Entries", serde_json::json!(self.cache.max_entries), "GAUD_CACHE_MAX_ENTRIES", "number"));
+        entries.push(se("cache.skip_tool_requests", "Cache", "Skip Tool Requests", serde_json::json!(self.cache.skip_tool_requests), "GAUD_CACHE_SKIP_TOOLS", "bool"));
+
+        // Mark cache embedding API key as sensitive.
+        {
+            let mut ek = se("cache.embedding_api_key", "Cache", "Embedding API Key",
+                serde_json::json!(self.cache.embedding_api_key.as_deref().map(|_| "********").unwrap_or("")),
+                "GAUD_CACHE_EMBEDDING_API_KEY", "text");
+            ek.sensitive = true;
+            entries.push(ek);
+        }
 
         // Mark litellm api_key as sensitive.
         let mut lk = se(
@@ -1006,6 +1207,52 @@ impl Config {
                         .ok_or("Expected number")?;
                 }
             }
+            "cache.enabled" => {
+                self.cache.enabled = value.as_bool().ok_or("Expected boolean")?;
+            }
+            "cache.mode" => {
+                let s = value.as_str().ok_or("Expected string")?;
+                self.cache.mode = s.parse().map_err(|e: String| e)?;
+            }
+            "cache.similarity_threshold" => {
+                self.cache.similarity_threshold = value
+                    .as_f64()
+                    .ok_or("Expected number")?
+                    as f32;
+            }
+            "cache.embedding_url" => {
+                let s = value.as_str().ok_or("Expected string")?;
+                self.cache.embedding_url = if s.is_empty() { None } else { Some(s.to_string()) };
+            }
+            "cache.embedding_model" => {
+                let s = value.as_str().ok_or("Expected string")?;
+                self.cache.embedding_model = if s.is_empty() { None } else { Some(s.to_string()) };
+            }
+            "cache.embedding_api_key" => {
+                let s = value.as_str().ok_or("Expected string")?;
+                if !s.is_empty() && s != "********" {
+                    self.cache.embedding_api_key = Some(s.to_string());
+                }
+            }
+            "cache.embedding_dimension" => {
+                self.cache.embedding_dimension = value
+                    .as_u64()
+                    .ok_or("Expected number")?
+                    .try_into()
+                    .map_err(|_| "Value out of range")?;
+            }
+            "cache.ttl_secs" => {
+                self.cache.ttl_secs = value.as_u64().ok_or("Expected number")?;
+            }
+            "cache.max_entries" => {
+                self.cache.max_entries = value
+                    .as_u64()
+                    .ok_or("Expected number")?
+                    as usize;
+            }
+            "cache.skip_tool_requests" => {
+                self.cache.skip_tool_requests = value.as_bool().ok_or("Expected boolean")?;
+            }
             _ => return Err(format!("Unknown setting key: {key}")),
         }
         Ok(())
@@ -1021,6 +1268,7 @@ impl Default for Config {
             providers: ProvidersConfig::default(),
             budget: BudgetConfig::default(),
             logging: LoggingConfig::default(),
+            cache: CacheConfig::default(),
             env_overrides: EnvOverrides::default(),
         }
     }

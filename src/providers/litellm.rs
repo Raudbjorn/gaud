@@ -15,9 +15,10 @@ use tokio::sync::RwLock;
 use tracing::{debug, warn};
 
 use crate::providers::types::{
-    ChatChunk, ChatRequest, ChatResponse, Choice, ChunkChoice, Delta, ModelPricing,
+    ChatChunk, ChatRequest, ChatResponse, Choice, ChunkChoice, Delta,
     ResponseMessage, Usage,
 };
+use crate::providers::pricing::ModelPricing;
 use crate::providers::{LlmProvider, ProviderError};
 
 // ---------------------------------------------------------------------------
@@ -297,6 +298,8 @@ impl LitellmProvider {
                     prompt_tokens: u.prompt_tokens,
                     completion_tokens: u.completion_tokens,
                     total_tokens: u.total_tokens,
+                    prompt_tokens_details: None,
+                    completion_tokens_details: None,
                 })
                 .unwrap_or_default(),
         }
@@ -473,6 +476,8 @@ impl LlmProvider for LitellmProvider {
                                             prompt_tokens: u.prompt_tokens,
                                             completion_tokens: u.completion_tokens,
                                             total_tokens: u.total_tokens,
+                                            prompt_tokens_details: None,
+                                            completion_tokens_details: None,
                                         }),
                                     }));
                                 }
@@ -542,6 +547,7 @@ mod tests {
             stop: None,
             tools: None,
             tool_choice: None,
+            stream_options: None,
         };
 
         let body = LitellmProvider::build_request_body(&request);
@@ -563,6 +569,7 @@ mod tests {
             stop: None,
             tools: None,
             tool_choice: None,
+            stream_options: None,
         };
 
         let body = LitellmProvider::build_request_body(&request);

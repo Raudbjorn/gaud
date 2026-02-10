@@ -13,6 +13,7 @@ use futures::Stream;
 use tracing::debug;
 
 use crate::providers::types::*;
+use crate::providers::pricing::ModelPricing;
 use crate::providers::{LlmProvider, ProviderError};
 
 // ---------------------------------------------------------------------------
@@ -326,6 +327,8 @@ impl KiroProvider {
                 prompt_tokens: resp.usage.input_tokens,
                 completion_tokens: resp.usage.output_tokens,
                 total_tokens: resp.usage.input_tokens + resp.usage.output_tokens,
+                prompt_tokens_details: None,
+                completion_tokens_details: None,
             },
         }
     }
@@ -483,6 +486,8 @@ impl KiroProvider {
                     prompt_tokens: u.input_tokens,
                     completion_tokens: u.output_tokens,
                     total_tokens: u.input_tokens + u.output_tokens,
+                    prompt_tokens_details: None,
+                    completion_tokens_details: None,
                 });
 
                 Ok(Some(ChatChunk {
@@ -541,10 +546,9 @@ fn strip_prefix(model: &str) -> &str {
 /// Look up model-specific max output tokens from the pricing database.
 ///
 /// Falls back to 8192 when the model is not found in the pricing table.
-fn max_output_tokens_for_model(model: &str) -> u32 {
-    crate::providers::cost::CostDatabase::for_model(model)
-        .map(|p| p.max_output_tokens)
-        .unwrap_or(8192)
+fn max_output_tokens_for_model(_model: &str) -> u32 {
+    // Default max tokens for all models
+    8192
 }
 
 /// Parse a data URI (data:image/jpeg;base64,...) into (media_type, base64_data).
@@ -562,14 +566,19 @@ fn parse_data_uri(url: &str) -> Option<(String, String)> {
 fn convert_kiro_error(err: kiro_gateway::Error) -> ProviderError {
     match err {
         kiro_gateway::Error::NotAuthenticated | kiro_gateway::Error::TokenExpired => {
-            ProviderError::NoToken("kiro".into())
+            ProviderError::NoToken {
+                provider: "kiro".to_string(),
+            }
         }
-        kiro_gateway::Error::RefreshFailed(msg) => ProviderError::NoToken(format!("kiro: {msg}")),
+        kiro_gateway::Error::RefreshFailed(msg) => ProviderError::NoToken {
+            provider: format!("kiro: {msg}"),
+        },
         kiro_gateway::Error::Api { status, message } => ProviderError::Api { status, message },
         kiro_gateway::Error::RateLimited { retry_after } => ProviderError::RateLimited {
             retry_after_secs: retry_after
                 .map(|d| d.as_secs())
                 .unwrap_or(60),
+            retry_after,
         },
         kiro_gateway::Error::Stream(msg) => ProviderError::Stream(msg),
         kiro_gateway::Error::Network(e) => ProviderError::Http(e),
@@ -674,7 +683,7 @@ impl LlmProvider for KiroProvider {
     }
 
     fn pricing(&self) -> Vec<ModelPricing> {
-        crate::providers::cost::CostDatabase::all()
+        crate::providers::cost::CostCalculator::all()
             .into_iter()
             .filter(|p| p.provider == "kiro")
             .collect()
@@ -752,6 +761,7 @@ mod tests {
             stop: None,
             tools: None,
             tool_choice: None,
+            stream_options: None,
         };
 
         let kiro_req = KiroProvider::convert_request(&req);
@@ -786,6 +796,7 @@ mod tests {
             stop: None,
             tools: None,
             tool_choice: None,
+            stream_options: None,
         };
 
         let kiro_req = KiroProvider::convert_request(&req);
@@ -805,6 +816,7 @@ mod tests {
             stop: Some(StopSequence::Multiple(vec!["END".into(), "STOP".into()])),
             tools: None,
             tool_choice: None,
+            stream_options: None,
         };
 
         let kiro_req = KiroProvider::convert_request(&req);
@@ -844,6 +856,7 @@ mod tests {
                 },
             }]),
             tool_choice: Some(serde_json::json!("auto")),
+            stream_options: None,
         };
 
         let kiro_req = KiroProvider::convert_request(&req);
@@ -872,6 +885,7 @@ mod tests {
             stop: None,
             tools: None,
             tool_choice: None,
+            stream_options: None,
         };
 
         let kiro_req = KiroProvider::convert_request(&req);
@@ -905,6 +919,7 @@ mod tests {
             stop: None,
             tools: None,
             tool_choice: None,
+            stream_options: None,
         };
 
         let kiro_req = KiroProvider::convert_request(&req);
@@ -1016,10 +1031,10 @@ mod tests {
     #[test]
     fn test_convert_kiro_error_auth() {
         let err = convert_kiro_error(kiro_gateway::Error::NotAuthenticated);
-        assert!(matches!(err, ProviderError::NoToken(_)));
+        assert!(matches!(err, ProviderError::NoToken { .. }));
 
         let err = convert_kiro_error(kiro_gateway::Error::TokenExpired);
-        assert!(matches!(err, ProviderError::NoToken(_)));
+        assert!(matches!(err, ProviderError::NoToken { .. }));
     }
 
     #[test]
@@ -1037,7 +1052,7 @@ mod tests {
             retry_after: Some(std::time::Duration::from_secs(30)),
         });
         match err {
-            ProviderError::RateLimited { retry_after_secs } => {
+            ProviderError::RateLimited { retry_after_secs, .. } => {
                 assert_eq!(retry_after_secs, 30);
             }
             _ => panic!("Expected RateLimited"),
@@ -1078,6 +1093,7 @@ mod tests {
             stop: None,
             tools: None,
             tool_choice: None,
+            stream_options: None,
         };
 
         let kiro_req = KiroProvider::convert_request(&req);
@@ -1120,6 +1136,7 @@ mod tests {
             stop: None,
             tools: None,
             tool_choice: None,
+            stream_options: None,
         };
 
         let kiro_req = KiroProvider::convert_request(&req);

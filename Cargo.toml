@@ -38,6 +38,10 @@ reqwest = { version = "0.12", features = ["json", "stream"] }
 # Kiro gateway (Amazon Q / AWS CodeWhisperer)
 kiro-gateway = { path = "kiro-gateway-rs" }
 
+# Embedded SurrealDB for semantic cache (HNSW vector index)
+surrealdb-core = { path = "/home/svnbjrn/projects/surrealdb-cache/surrealdb/core", default-features = false, features = ["kv-mem"] }
+surrealdb-types = { path = "/home/svnbjrn/projects/surrealdb-cache/surrealdb/types" }
+
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
@@ -60,6 +64,7 @@ minijinja = { version = "2", features = ["builtins"] }
 
 [dev-dependencies]
 tempfile = "3"
+proptest = "1.4"
 
 [features]
 default = ["system-keyring"]

@@ -15,7 +15,9 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 
 use crate::providers::health::{CircuitBreaker, CircuitState};
-use crate::providers::types::{ChatChunk, ChatRequest, ChatResponse, ModelPricing};
+use crate::providers::pricing::ModelPricing;
+use crate::providers::retry::{execute_provider_with_retry, RetryPolicy};
+use crate::providers::types::{ChatChunk, ChatRequest, ChatResponse};
 use crate::providers::{LlmProvider, ProviderError};
 
 // ---------------------------------------------------------------------------
@@ -85,6 +87,8 @@ pub struct ProviderRouter {
     strategy: RoutingStrategy,
     /// Round-robin counter.
     rr_index: usize,
+    /// Retry policy applied to each individual provider call before fallback.
+    retry_policy: RetryPolicy,
 }
 
 impl ProviderRouter {
@@ -95,6 +99,7 @@ impl ProviderRouter {
             order: Vec::new(),
             strategy: RoutingStrategy::Priority,
             rr_index: 0,
+            retry_policy: RetryPolicy::new(),
         }
     }
 
@@ -104,6 +109,11 @@ impl ProviderRouter {
             strategy,
             ..Self::new()
         }
+    }
+
+    /// Set the retry policy for provider calls.
+    pub fn set_retry_policy(&mut self, policy: RetryPolicy) {
+        self.retry_policy = policy;
     }
 
     /// Register a provider. Providers are tried in registration order when
@@ -274,8 +284,9 @@ impl ProviderRouter {
 
     // -- chat ----------------------------------------------------------------
 
-    /// Route a non-streaming chat request. Tries each candidate provider in
-    /// order and falls back on failure.
+    /// Route a non-streaming chat request. Each provider attempt is wrapped
+    /// in retry logic (with provider-supplied `retry_after` when available)
+    /// before falling back to the next provider.
     pub async fn chat(&mut self, request: &ChatRequest) -> Result<ChatResponse, ProviderError> {
         let candidates = self.candidates_for_model(&request.model);
         if candidates.is_empty() {
@@ -293,7 +304,14 @@ impl ProviderRouter {
             debug!(provider = %id, model = %request.model, "Attempting chat");
             let start = Instant::now();
 
-            match provider.chat(request).await {
+            let result = execute_provider_with_retry(&self.retry_policy, || {
+                let p = Arc::clone(&provider);
+                let req = request.clone();
+                async move { p.chat(&req).await }
+            })
+            .await;
+
+            match result {
                 Ok(response) => {
                     let latency_ms = start.elapsed().as_millis() as u64;
                     if let Some(entry) = self.providers.get_mut(id) {
@@ -322,12 +340,15 @@ impl ProviderRouter {
             }
         }
 
-        Err(last_err.unwrap_or(ProviderError::AllFailed))
+        Err(last_err.unwrap_or_else(|| ProviderError::AllFailed {
+            model: request.model.clone(),
+            errors: vec!["No providers available".to_string()],
+        }))
     }
 
-    /// Route a streaming chat request. Does NOT fall back -- returns an error
-    /// from the first matching provider if it fails (because we cannot
-    /// seamlessly splice streams mid-response).
+    /// Route a streaming chat request. Each provider's stream initiation is
+    /// retried before falling back to the next provider. Once a stream starts
+    /// successfully, mid-stream errors are not retried.
     pub async fn stream_chat(
         &mut self,
         request: &ChatRequest,
@@ -348,7 +369,14 @@ impl ProviderRouter {
 
             debug!(provider = %id, model = %request.model, "Attempting stream_chat");
 
-            match provider.stream_chat(request).await {
+            let result = execute_provider_with_retry(&self.retry_policy, || {
+                let p = Arc::clone(&provider);
+                let req = request.clone();
+                async move { p.stream_chat(&req).await }
+            })
+            .await;
+
+            match result {
                 Ok(stream) => {
                     if let Some(entry) = self.providers.get_mut(id) {
                         entry.stats.total_requests += 1;
@@ -373,7 +401,10 @@ impl ProviderRouter {
             }
         }
 
-        Err(last_err.unwrap_or(ProviderError::AllFailed))
+        Err(last_err.unwrap_or_else(|| ProviderError::AllFailed {
+            model: request.model.clone(),
+            errors: vec!["No providers available for streaming".to_string()],
+        }))
     }
 
     /// Run health checks against all registered providers.
@@ -537,6 +568,7 @@ mod tests {
             stop: None,
             tools: None,
             tool_choice: None,
+            stream_options: None,
         }
     }
 
@@ -790,5 +822,14 @@ mod tests {
         router.register(Arc::new(StubProvider::new("copilot", &[])));
 
         assert_eq!(router.provider_ids(), &["claude", "gemini", "copilot"]);
+    }
+
+    #[test]
+    fn test_set_retry_policy() {
+        let mut router = ProviderRouter::new();
+        let policy = RetryPolicy::new().with_max_retries(5);
+        router.set_retry_policy(policy);
+        // Verify it compiles and doesn't panic.
+        assert_eq!(router.retry_policy.max_retries, 5);
     }
 }

@@ -11,6 +11,7 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::middleware;
 use axum::Router;
@@ -26,6 +27,7 @@ use gaud::api;
 use gaud::auth::middleware::require_auth;
 use gaud::auth::users::bootstrap_admin;
 use gaud::budget::{spawn_audit_logger, BudgetTracker};
+use gaud::cache::SemanticCache;
 use gaud::config::{Config, KiroProviderConfig, LitellmProviderConfig};
 use gaud::db::Database;
 use gaud::oauth::OAuthManager;
@@ -193,7 +195,47 @@ async fn main() -> anyhow::Result<()> {
     let _audit_handle = spawn_audit_logger(audit_db, audit_budget, audit_rx);
     tracing::debug!("Audit logger spawned");
 
-    // 9. Auth-disabled warning
+    // 9. Initialize semantic cache (if enabled)
+    let cache = if config.cache.enabled {
+        match SemanticCache::new(&config.cache).await {
+            Ok(c) => {
+                let c = Arc::new(c);
+                // Spawn TTL eviction every 5 minutes.
+                let c2 = Arc::clone(&c);
+                let ttl = config.cache.ttl_secs;
+                tokio::spawn(async move {
+                    let mut interval = tokio::time::interval(Duration::from_secs(300));
+                    loop {
+                        interval.tick().await;
+                        match c2.evict_expired(ttl).await {
+                            Ok(n) if n > 0 => {
+                                tracing::debug!(evicted = n, "Cache TTL eviction");
+                            }
+                            Err(e) => {
+                                tracing::warn!(error = %e, "Cache eviction failed");
+                            }
+                            _ => {}
+                        }
+                    }
+                });
+                tracing::info!(
+                    mode = %config.cache.mode,
+                    ttl_secs = config.cache.ttl_secs,
+                    max_entries = config.cache.max_entries,
+                    "Semantic cache initialized"
+                );
+                Some(c)
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Cache init failed, running without cache");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // 10. Auth-disabled warning
     if !config.auth.enabled {
         tracing::warn!("Authentication is DISABLED -- all requests treated as admin");
     }
@@ -204,6 +246,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::debug!("OAuth manager initialized");
 
     // 11. Build shared application state
+    let cost_calculator = Arc::new(gaud::providers::cost::CostCalculator::new());
     let state = AppState {
         config: config_arc,
         config_path: config_path.clone(),
@@ -211,6 +254,8 @@ async fn main() -> anyhow::Result<()> {
         router: provider_router,
         budget,
         audit_tx,
+        cost_calculator,
+        cache,
         oauth_manager,
     };
 
