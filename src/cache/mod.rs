@@ -106,7 +106,7 @@ impl SemanticCacheService {
                 self.store.record_hit(&entry.exact_hash).await.ok();
                 match info.kind {
                     CacheHitKind::Exact => self.stats.record_exact_hit(),
-                    CacheHitKind::Approximate => self.stats.record_semantic_hit(),
+                    CacheHitKind::Semantic => self.stats.record_semantic_hit(),
                 }
             }
             CacheLookupResult::Miss => {
@@ -226,7 +226,7 @@ impl SemanticCacheService {
             .unwrap_or("text-embedding-3-small");
         let api_key = self.config.embedding_api_key.as_deref();
 
-        let mut embedding = embedder::embed(url, model, text, api_key).await?;
+        let mut embedding = embedder::embed(url, model, text, api_key, self.config.embedding_allow_local).await?;
 
         // Ensure normalization for cosine distance
         self.normalize(&mut embedding);
