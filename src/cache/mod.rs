@@ -1,12 +1,4 @@
-// ---------------------------------------------------------------------------
-// Feature Guard
-// ---------------------------------------------------------------------------
-
-#[cfg(all(feature = "cache-persistent", feature = "cache-ephemeral"))]
-compile_error!("Cannot enable both 'cache-persistent' and 'cache-ephemeral' features at the same time.");
-
 pub mod embedder;
-
 pub mod key;
 pub mod store;
 pub mod types;
@@ -16,7 +8,7 @@ use crate::providers::types::{ChatRequest, ChatResponse};
 
 use self::store::CacheStore;
 use self::types::{
-    CacheEntry, CacheError, CacheHitKind, CacheLookupResult, CacheMetadata,
+    CacheEntry, CacheError, CacheHitInfo, CacheHitKind, CacheLookupResult, CacheMetadata,
     CacheStats, CacheStatsSnapshot,
 };
 
@@ -34,18 +26,17 @@ pub struct SemanticCacheService {
 impl SemanticCacheService {
     /// Initialize the cache service with the given configuration.
     pub async fn new(config: &CacheConfig) -> Result<Self, CacheError> {
-        #[cfg(feature = "cache-persistent")]
-        let store = CacheStore::persistent(
-            config.path.to_str().unwrap_or("gaud.cache"),
-            config.embedding_dimension,
-        )
-        .await?;
-
-        #[cfg(all(not(feature = "cache-persistent"), feature = "cache-ephemeral"))]
-        let store = CacheStore::ephemeral(config.embedding_dimension).await?;
-
-        #[cfg(all(not(feature = "cache-persistent"), not(feature = "cache-ephemeral")))]
-        return Err(CacheError::InitFailed("No cache storage backend enabled (persistent or ephemeral)".into()));
+        let store = if cfg!(feature = "cache-persistent") {
+            CacheStore::persistent(
+                config.path.to_str().unwrap_or("gaud.cache"),
+                config.embedding_dimension,
+            )
+            .await?
+        } else if cfg!(feature = "cache-ephemeral") {
+            CacheStore::ephemeral(config.embedding_dimension).await?
+        } else {
+            return Err(CacheError::InitFailed("No cache storage backend enabled (persistent or ephemeral)".into()));
+        };
 
         Ok(Self {
             store,
@@ -62,7 +53,7 @@ impl SemanticCacheService {
     /// Look up a cached response for the given request.
     pub async fn lookup(&self, request: &ChatRequest) -> Result<CacheLookupResult, CacheError> {
         let exact_hash = key::exact_hash(request);
-
+        
         let metadata = CacheMetadata {
             model: request.model.clone(),
             system_prompt_hash: key::system_prompt_hash(request),
@@ -106,7 +97,7 @@ impl SemanticCacheService {
                 self.store.record_hit(&entry.exact_hash).await.ok();
                 match info.kind {
                     CacheHitKind::Exact => self.stats.record_exact_hit(),
-                    CacheHitKind::Semantic => self.stats.record_semantic_hit(),
+                    CacheHitKind::Approximate => self.stats.record_semantic_hit(),
                 }
             }
             CacheLookupResult::Miss => {
@@ -172,7 +163,7 @@ impl SemanticCacheService {
             embedding,
             request_json,
             response_json,
-            created_at: surrealdb::types::Datetime::now(), // Set by SurrealDB but placeholder here
+            created_at: String::new(), // Set by SurrealDB
             hit_count: 0,
             last_hit: None,
             hash_version: "v1".to_string(),
@@ -225,12 +216,12 @@ impl SemanticCacheService {
             .as_deref()
             .unwrap_or("text-embedding-3-small");
         let api_key = self.config.embedding_api_key.as_deref();
-
-        let mut embedding = embedder::embed(url, model, text, api_key, self.config.embedding_allow_local).await?;
-
+        
+        let mut embedding = embedder::embed(url, model, text, api_key).await?;
+        
         // Ensure normalization for cosine distance
         self.normalize(&mut embedding);
-
+        
         Ok(embedding)
     }
 
