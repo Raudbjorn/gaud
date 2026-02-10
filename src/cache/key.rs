@@ -165,7 +165,7 @@ pub fn semantic_text(request: &ChatRequest) -> String {
 // ---------------------------------------------------------------------------
 
 /// Flatten `MessageContent` (Text or Parts) into a single plain-text string.
-pub fn flatten_content(content: &MessageContent) -> String {
+pub(crate) fn flatten_content(content: &MessageContent) -> String {
     match content {
         MessageContent::Text(s) => s.clone(),
         MessageContent::Parts(parts) => parts
