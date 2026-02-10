@@ -117,7 +117,7 @@ pub async fn request_device_code(
         .header("Accept", "application/json")
         .form(&[
             ("client_id", &config.client_id),
-            ("scope", &scope),
+            ("scope", "read:user"),
         ])
         .send()
         .await?;

@@ -7,7 +7,7 @@ cors_origins = []
 path = "gaud.db"
 
 [auth]
-enabled = false
+enabled = true
 default_admin_name = "admin"
 
 [auth.tls_client_cert]
@@ -20,14 +20,14 @@ token_storage_dir = "~/.local/share/gaud/tokens"
 storage_backend = "file"
 
 [providers.claude]
-client_id = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
-auth_url = "https://claude.ai/oauth/authorize"
+client_id = "YOUR_ANTHROPIC_CLIENT_ID"
+auth_url = "https://console.anthropic.com/oauth/authorize"
 token_url = "https://console.anthropic.com/v1/oauth/token"
 callback_port = 19284
 
 [providers.gemini]
-client_id = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
-client_secret = "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"
+client_id = "YOUR_GOOGLE_CLIENT_ID"
+client_secret = "YOUR_GOOGLE_CLIENT_SECRET"
 auth_url = "https://accounts.google.com/o/oauth2/v2/auth"
 token_url = "https://oauth2.googleapis.com/token"
 callback_port = 19285
