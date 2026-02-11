@@ -6,6 +6,7 @@
 pub mod claude;
 pub mod copilot;
 pub mod gemini;
+pub mod kiro;
 pub mod sse;
 pub mod util;
 
@@ -13,5 +14,6 @@ pub mod util;
 pub use claude::ClaudeTransformer;
 pub use copilot::CopilotTransformer;
 pub use gemini::GeminiTransformer;
+pub use kiro::KiroTransformer;
 pub use sse::{SseEvent, SseParser};
 pub use util::*;
