@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 /// Opaque handle to an embedded SurrealDB datastore.
+#[derive(Clone)]
 pub struct Database {
     ds: Arc<Datastore>,
     session: Session,
@@ -52,11 +53,19 @@ impl Database {
 
     /// Select both namespace and database in one call.
     pub async fn use_ns_db(
-        &self,
+        &mut self,
         ns: &str,
         db: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let sql = format!("USE NS `{ns}` DB `{db}`");
+        // Update the session state so future queries use this context.
+        self.session.ns = Some(ns.to_string());
+        self.session.db = Some(db.to_string());
+
+        // Also execute the statement to ensure the engine validated it (or created context if implied).
+        // We explicitly DEFINE them to ensuring they exist, which avoids silent failures in some engines.
+        let sql = format!(
+            "DEFINE NAMESPACE IF NOT EXISTS `{ns}`; USE NS `{ns}`; DEFINE DATABASE IF NOT EXISTS `{db}`; USE DB `{db}`;"
+        );
         let _ = self.ds.execute(&sql, &self.session, None).await?;
         Ok(())
     }

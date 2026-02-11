@@ -32,7 +32,8 @@ impl<T, E: std::fmt::Display> MapCacheErr<T> for Result<T, E> {
 ///
 /// `CacheStore` provides two-tier lookup (exact hash → ANN vector search)
 /// for LLM prompt/response pairs. All storage, indexing, and transaction
-/// management is delegated to SurrealDB's embedded engine.
+/// Wrapper around the embedded semantic cache storage engine.
+#[derive(Clone)]
 pub struct CacheStore {
     db: Database,
     dimension: u16,
@@ -47,10 +48,13 @@ impl CacheStore {
     /// restarts).
     #[cfg(feature = "cache-persistent")]
     pub async fn persistent(path: &str, dimension: u16) -> Result<Self, CacheError> {
-        let db = Database::new_rocksdb(path)
+        let mut db = Database::new_rocksdb(path)
             .await
             .map_err(|e| CacheError::InitFailed(e.to_string()))?;
-        // Note: ephemeral() skips warmup since there's no persisted data to load.
+
+        db.use_ns_db("gaud", "cache")
+            .await
+            .map_err(|e| CacheError::InitFailed(e.to_string()))?;
 
         let store = Self {
             db,
@@ -66,7 +70,11 @@ impl CacheStore {
     /// Initialize an ephemeral in-memory cache. Suitable for testing.
     #[cfg(feature = "cache-ephemeral")]
     pub async fn ephemeral(dimension: u16) -> Result<Self, CacheError> {
-        let db = Database::new_mem()
+        let mut db = Database::new_mem()
+            .await
+            .map_err(|e| CacheError::InitFailed(e.to_string()))?;
+
+        db.use_ns_db("gaud", "cache")
             .await
             .map_err(|e| CacheError::InitFailed(e.to_string()))?;
 
@@ -82,7 +90,7 @@ impl CacheStore {
 
     /// Apply schema with versioning and compatibility checks.
     async fn apply_schema(&self) -> Result<(), CacheError> {
-        self.db.use_ns_db("gaud", "cache").await.schema_err()?;
+        // self.db.use_ns_db("gaud", "cache").await.schema_err()?; -- handled in constructor
 
         // 1. Schema versioning - removed dead code
         // The schema_version table was defined but never used.
@@ -106,6 +114,9 @@ impl CacheStore {
             DEFINE FIELD IF NOT EXISTS hash_version           ON cache TYPE string;
             DEFINE FIELD IF NOT EXISTS temperature            ON cache TYPE option<float>;
             DEFINE FIELD IF NOT EXISTS confidence             ON cache TYPE option<float>;
+
+            DEFINE FIELD IF NOT EXISTS stream_events           ON cache TYPE option<array<string>>;
+            DEFINE FIELD IF NOT EXISTS stream_format           ON cache TYPE option<string>;
 
             DEFINE INDEX IF NOT EXISTS idx_prompt_hash ON cache FIELDS exact_hash UNIQUE;
             DEFINE INDEX IF NOT EXISTS hnsw_embedding ON cache FIELDS embedding
@@ -193,7 +204,14 @@ impl CacheStore {
             .await
             .lookup_err()?;
 
-        Ok(response.take(0usize).lookup_err()?)
+        let val: srrldb::types::Value = response.take(0usize).lookup_err()?;
+        if let srrldb::types::Value::Array(mut vec) = val {
+            if let Some(item) = vec.into_iter().next() {
+                let entry = CacheEntry::from_value(item).map_err(|e| CacheError::Serialization(e.to_string()))?;
+                return Ok(Some(entry));
+            }
+        }
+        Ok(None)
     }
 
     async fn lookup_approximate(
@@ -223,7 +241,13 @@ impl CacheStore {
             .await
             .lookup_err()?;
 
-        let entry_with_score: Option<srrldb::types::Value> = response.take(0usize).lookup_err()?;
+        let val: srrldb::types::Value = response.take(0usize).lookup_err()?;
+        let entry_with_score = if let srrldb::types::Value::Array(mut vec) = val {
+            vec.into_iter().next()
+        } else {
+            None
+        };
+
 
         if let Some(val) = entry_with_score {
             let score = match val.get("score") {
@@ -278,6 +302,64 @@ impl CacheStore {
             .bind(("hash_ver", self.hash_version.clone()))
             .bind(("temp", metadata.temperature))
             .bind(("conf", metadata.confidence))
+            .await
+            .insert_err()?;
+
+        Ok(())
+    }
+
+    /// Insert or update a cache entry with stream events (replay cache).
+    ///
+    /// If an entry with matching `exact_hash` already exists, only the stream
+    /// fields are updated. Otherwise a full entry is created.
+    pub async fn insert_stream(
+        &self,
+        entry: &CacheEntry,
+        metadata: &CacheMetadata,
+        events: &[String],
+    ) -> Result<(), CacheError> {
+        self.validate_vector(entry.embedding.as_deref())?;
+
+        let sql = "INSERT INTO cache {
+            exact_hash: $exact_hash,
+            model: $model,
+            system_prompt_hash: $sys_hash,
+            tool_definitions_hash: $tool_hash,
+            semantic_text: $sem_text,
+            embedding: $emb,
+            request_json: $req_json,
+            response_json: $resp_json,
+            hash_version: $hash_ver,
+            temperature: $temp,
+            confidence: $conf,
+            stream_events: $stream_events,
+            stream_format: $stream_format,
+            created_at: time::now(),
+            hit_count: 0
+        } ON DUPLICATE KEY UPDATE
+            stream_events = $stream_events,
+            stream_format = $stream_format,
+            embedding = $emb,
+            system_prompt_hash = $sys_hash,
+            tool_definitions_hash = $tool_hash,
+            temperature = $temp,
+            confidence = $conf,
+            hash_version = $hash_ver";
+
+        self.db.query(sql)
+            .bind(("exact_hash", entry.exact_hash.clone()))
+            .bind(("model", entry.model.clone()))
+            .bind(("sys_hash", metadata.system_prompt_hash.clone()))
+            .bind(("tool_hash", metadata.tool_definitions_hash.clone()))
+            .bind(("sem_text", entry.semantic_text.clone()))
+            .bind(("emb", entry.embedding.clone()))
+            .bind(("req_json", entry.request_json.clone()))
+            .bind(("resp_json", entry.response_json.clone()))
+            .bind(("hash_ver", self.hash_version.clone()))
+            .bind(("temp", metadata.temperature))
+            .bind(("conf", metadata.confidence))
+            .bind(("stream_events", events.to_vec()))
+            .bind(("stream_format", "openai_sse_v1".to_string()))
             .await
             .insert_err()?;
 
@@ -373,16 +455,18 @@ impl CacheStore {
             .await
             .lookup_err()?;
 
-        Ok(response
-            .take::<Option<srrldb::types::Value>>(0usize)
-            .lookup_err()?
-            .and_then(|v| match v.get("count") {
-                srrldb::types::Value::Number(n) => n.to_int().map(|i| i as u64),
-                _ => None,
-            })
-            .unwrap_or(0))
+        let val: srrldb::types::Value = response.take(0usize).lookup_err()?;
+        if let srrldb::types::Value::Array(vec) = val {
+            if let Some(row) = vec.first() {
+                if let srrldb::types::Value::Object(obj) = row {
+                    if let Some(srrldb::types::Value::Number(n)) = obj.get("count") {
+                        return Ok(n.clone().to_int().map(|i| i as u64).unwrap_or(0));
+                    }
+                }
+            }
+        }
+        Ok(0)
     }
-
 }
 
 #[cfg(test)]
@@ -416,6 +500,8 @@ mod tests {
             hit_count: 0,
             last_hit: None,
             hash_version: "v1".into(),
+            stream_events: None,
+            stream_format: None,
         };
 
         store.insert(&entry, &metadata).await?;
@@ -477,6 +563,8 @@ mod tests {
             hit_count: 0,
             last_hit: None,
             hash_version: "v1".into(),
+            stream_events: None,
+            stream_format: None,
         };
 
         let res = store.insert(&entry, &metadata).await;
@@ -484,6 +572,8 @@ mod tests {
 
         let entry_unnorm = CacheEntry {
             embedding: Some(vec![1.0, 1.0, 1.0]), // Magnitude sqrt(3) != 1
+            stream_events: None,
+            stream_format: None,
             ..entry
         };
         let res = store.insert(&entry_unnorm, &metadata).await;

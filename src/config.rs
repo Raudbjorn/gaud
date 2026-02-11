@@ -593,8 +593,10 @@ impl FromStr for CacheMode {
 
 /// Semantic cache configuration.
 ///
-/// When `enabled` is true, non-streaming requests are checked against
-/// an in-memory SurrealDB cache with optional HNSW vector search.
+/// When `enabled` is true, chat completion results are checked against
+/// an embedded SurrealDB cache with optional HNSW vector search.
+/// Streaming responses can also be cached as replayable SSE event logs
+/// when `stream_cache_enabled` is true.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CacheConfig {
     /// Master switch.
@@ -652,6 +654,18 @@ pub struct CacheConfig {
     /// Models to exclude from caching.
     #[serde(default)]
     pub skip_models: Vec<String>,
+
+    // -- Streaming cache (replay) -------------------------------------------
+
+    /// Whether to cache streaming responses as replayable SSE event logs.
+    #[serde(default)]
+    pub stream_cache_enabled: bool,
+    /// Max events to buffer per streaming request before disabling caching.
+    #[serde(default = "default_stream_cache_max_events")]
+    pub stream_cache_max_events: usize,
+    /// Max bytes to buffer per streaming request before disabling caching.
+    #[serde(default = "default_stream_cache_max_bytes")]
+    pub stream_cache_max_bytes: usize,
 }
 
 impl Default for CacheConfig {
@@ -672,6 +686,9 @@ impl Default for CacheConfig {
             ttl_secs: default_cache_ttl(),
             skip_tool_requests: true,
             skip_models: Vec::new(),
+            stream_cache_enabled: false,
+            stream_cache_max_events: default_stream_cache_max_events(),
+            stream_cache_max_bytes: default_stream_cache_max_bytes(),
         }
     }
 }
@@ -697,6 +714,12 @@ const fn default_hnsw_efc() -> u16 {
 }
 const fn default_max_entries() -> usize {
     10_000
+}
+const fn default_stream_cache_max_events() -> usize {
+    2_000
+}
+const fn default_stream_cache_max_bytes() -> usize {
+    8_388_608 // 8 MB
 }
 const fn default_cache_ttl() -> u64 {
     3600
