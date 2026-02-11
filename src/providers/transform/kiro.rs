@@ -168,6 +168,7 @@ impl KiroTransformer {
             }]
         })
     }
+
     /// Merge adjacent messages with the same role.
     ///
     /// The Anthropic Messages API requires strictly alternating `user` / `assistant`
@@ -319,10 +320,13 @@ impl ProviderTransformer for KiroTransformer {
                                     .as_str()
                                     .unwrap_or_default()
                                     .to_string(),
-                                arguments: serde_json::to_string(
-                                    block.get("input").unwrap_or(&json!({})),
-                                )
-                                .unwrap_or_default(),
+                                arguments: {
+                                    let default_input = json!({});
+                                    serde_json::to_string(
+                                        block.get("input").unwrap_or(&default_input),
+                                    )
+                                    .unwrap_or_default()
+                                },
                             },
                         });
                     }
@@ -486,6 +490,13 @@ impl StreamState for KiroStreamState {
     fn process_event(&mut self, data: &str) -> Result<Option<ChatChunk>, ProviderError> {
         let event: Value = serde_json::from_str(data)
             .map_err(|e| ProviderError::Other(format!("Kiro stream JSON parse error: {e}")))?;
+        self.process_event_value(&event)
+    }
+
+    fn process_event_value(
+        &mut self,
+        event: &serde_json::Value,
+    ) -> Result<Option<ChatChunk>, ProviderError> {
 
         let event_type = event["type"].as_str().unwrap_or("");
 

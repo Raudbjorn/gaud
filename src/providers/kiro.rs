@@ -25,23 +25,6 @@ use crate::providers::types::*;
 use crate::providers::{LlmProvider, ProviderError};
 
 // ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-/// Models exposed via this provider.
-///
-/// Users request these model names and they are resolved internally by the
-/// kiro-gateway model resolver to Kiro API model identifiers.
-const SUPPORTED_MODELS: &[&str] = &[
-    "kiro:auto",
-    "kiro:claude-sonnet-4",
-    "kiro:claude-sonnet-4.5",
-    "kiro:claude-haiku-4.5",
-    "kiro:claude-opus-4.5",
-    "kiro:claude-3.7-sonnet",
-];
-
-// ---------------------------------------------------------------------------
 // KiroProvider
 // ---------------------------------------------------------------------------
 
@@ -102,11 +85,11 @@ impl LlmProvider for KiroProvider {
     }
 
     fn models(&self) -> Vec<String> {
-        SUPPORTED_MODELS.iter().map(|s| s.to_string()).collect()
+        self.transformer.supported_models()
     }
 
     fn supports_model(&self, model: &str) -> bool {
-        SUPPORTED_MODELS.iter().any(|m| *m == model)
+        self.transformer.supports_model(model)
     }
 
     fn chat(
@@ -123,7 +106,9 @@ impl LlmProvider for KiroProvider {
             // 2. Deserialize into typed MessagesRequest for the kiro-gateway client
             let kiro_req: kiro_gateway::MessagesRequest =
                 serde_json::from_value(body).map_err(|e| {
-                    ProviderError::Other(format!("Failed to serialize Kiro request: {e}"))
+                    ProviderError::Other(format!(
+                        "Failed to deserialize Kiro request into kiro_gateway::MessagesRequest: {e}"
+                    ))
                 })?;
 
             // 3. Send via kiro-gateway (handles auth, model resolution, etc.)
@@ -141,7 +126,12 @@ impl LlmProvider for KiroProvider {
             })?;
 
             // 5. Transform: Anthropic JSON → OpenAI via KiroTransformer
-            let meta = ProviderResponseMeta::default();
+            let meta = ProviderResponseMeta {
+                provider: "kiro".to_string(),
+                model: request.model.clone(),
+                created: chrono::Utc::now().timestamp(),
+                ..Default::default()
+            };
             self.transformer.transform_response(response_value, &meta)
         })
     }
@@ -165,13 +155,16 @@ impl LlmProvider for KiroProvider {
             // 1. Transform: OpenAI → Anthropic JSON via KiroTransformer
             let mut body: Value = self.transformer.transform_request(&request)?;
             // Ensure stream is true for the kiro-gateway client
-            body.as_object_mut()
-                .map(|o| o.insert("stream".to_string(), Value::Bool(true)));
+            if let Some(o) = body.as_object_mut() {
+                o.insert("stream".to_string(), Value::Bool(true));
+            }
 
             // 2. Deserialize into typed MessagesRequest
             let kiro_req: kiro_gateway::MessagesRequest =
                 serde_json::from_value(body).map_err(|e| {
-                    ProviderError::Other(format!("Failed to serialize Kiro request: {e}"))
+                    ProviderError::Other(format!(
+                        "Failed to deserialize Kiro request into kiro_gateway::MessagesRequest: {e}"
+                    ))
                 })?;
 
             // 3. Send streaming request via kiro-gateway
@@ -189,9 +182,10 @@ impl LlmProvider for KiroProvider {
             let event_stream = kiro_stream.filter_map(move |result| {
                 let chunk = match result {
                     Ok(event) => {
-                        // Serialize the typed event to JSON for the stream state processor
-                        match serde_json::to_string(&event) {
-                            Ok(json) => match stream_state.process_event(&json) {
+                        // Convert typed event to Value for the stream state processor
+                        // (avoids Value→String→Value round-trip via process_event_value)
+                        match serde_json::to_value(&event) {
+                            Ok(val) => match stream_state.process_event_value(&val) {
                                 Ok(Some(chunk)) => Some(Ok(chunk)),
                                 Ok(None) => None,
                                 Err(e) => Some(Err(e)),
@@ -236,8 +230,10 @@ mod tests {
 
     #[test]
     fn test_supported_models() {
+        let transformer = KiroTransformer::new();
+        let models = transformer.supported_models();
         // All models should have the kiro: prefix.
-        for m in SUPPORTED_MODELS {
+        for m in &models {
             assert!(m.starts_with("kiro:"), "Model {} should start with kiro:", m);
         }
     }
@@ -361,12 +357,19 @@ mod tests {
         };
 
         let response_value = serde_json::to_value(&resp).unwrap();
-        let meta = ProviderResponseMeta::default();
+        let meta = ProviderResponseMeta {
+            provider: "kiro".to_string(),
+            model: "kiro:claude-sonnet-4".to_string(),
+            created: 1700000000,
+            ..Default::default()
+        };
         let chat_resp = transformer
             .transform_response(response_value, &meta)
             .unwrap();
 
         assert_eq!(chat_resp.id, "msg_123");
+        assert_eq!(chat_resp.model, "kiro:claude-sonnet-4");
+        assert_eq!(chat_resp.created, 1700000000);
         assert_eq!(
             chat_resp.choices[0].message.content,
             Some("Hello there!".to_string())
@@ -400,7 +403,12 @@ mod tests {
         };
 
         let response_value = serde_json::to_value(&resp).unwrap();
-        let meta = ProviderResponseMeta::default();
+        let meta = ProviderResponseMeta {
+            provider: "kiro".to_string(),
+            model: "kiro:claude-sonnet-4".to_string(),
+            created: 1700000000,
+            ..Default::default()
+        };
         let chat_resp = transformer
             .transform_response(response_value, &meta)
             .unwrap();
@@ -524,7 +532,12 @@ mod tests {
         };
 
         let response_value = serde_json::to_value(&resp).unwrap();
-        let meta = ProviderResponseMeta::default();
+        let meta = ProviderResponseMeta {
+            provider: "kiro".to_string(),
+            model: "kiro:claude-sonnet-4".to_string(),
+            created: 1700000000,
+            ..Default::default()
+        };
         let chat_resp = transformer
             .transform_response(response_value, &meta)
             .unwrap();
