@@ -5,7 +5,7 @@ use serde::Serialize;
 use crate::providers::types::EmbeddingRequest;
 
 #[derive(Debug, Serialize)]
-pub(crate) struct NotImplementedResponse {
+pub struct NotImplementedResponse {
     error: NotImplementedError,
 }
 

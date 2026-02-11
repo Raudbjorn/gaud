@@ -205,7 +205,7 @@ impl CacheStore {
             .lookup_err()?;
 
         let val: srrldb::types::Value = response.take(0usize).lookup_err()?;
-        if let srrldb::types::Value::Array(mut vec) = val {
+        if let srrldb::types::Value::Array(vec) = val {
             if let Some(item) = vec.into_iter().next() {
                 let entry = CacheEntry::from_value(item).map_err(|e| CacheError::Serialization(e.to_string()))?;
                 return Ok(Some(entry));
@@ -242,7 +242,7 @@ impl CacheStore {
             .lookup_err()?;
 
         let val: srrldb::types::Value = response.take(0usize).lookup_err()?;
-        let entry_with_score = if let srrldb::types::Value::Array(mut vec) = val {
+        let entry_with_score = if let srrldb::types::Value::Array(vec) = val {
             vec.into_iter().next()
         } else {
             None
@@ -466,7 +466,6 @@ impl CacheStore {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[tokio::test]
     #[cfg(feature = "cache-ephemeral")]

@@ -5,6 +5,7 @@ use std::time::Duration;
 /// The defaults are optimal so please only modify these if you know
 /// deliberately why you are modifying them.
 #[derive(Clone, Copy, Debug)]
+#[allow(dead_code)]
 pub struct EngineOptions {
 	/// Interval for refreshing node membership information
 	pub node_membership_refresh_interval: Duration,
@@ -45,6 +46,7 @@ impl Default for EngineOptions {
 	}
 }
 
+#[allow(dead_code)]
 impl EngineOptions {
 	pub fn with_node_membership_refresh_interval(mut self, interval: Duration) -> Self {
 		self.node_membership_refresh_interval = interval;

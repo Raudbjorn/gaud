@@ -83,7 +83,7 @@ struct TokenPollResponse {
     #[serde(default)]
     access_token: Option<String>,
     #[serde(default)]
-    token_type: Option<String>,
+    _token_type: Option<String>,
     #[serde(default)]
     error: Option<String>,
     #[serde(default)]

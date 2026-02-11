@@ -4,7 +4,9 @@
 //! Supports both token-based and cached token pricing.
 
 use super::pricing::{ModelPricing, PricingDatabase};
-use super::types::{Usage, UsageTokenDetails};
+use super::types::Usage;
+#[cfg(test)]
+use super::types::UsageTokenDetails;
 use anyhow::{Context, Result};
 use tracing::{debug, warn};
 
@@ -340,7 +342,7 @@ mod property_tests {
                     completion_tokens_details: None,
                 };
                 let double_cost = calculator.calculate_cost(&model, &double_usage);
-                
+
                 // Double the tokens should result in approximately double the cost
                 // Allow for small floating point errors
                 let ratio = double_cost / cost;

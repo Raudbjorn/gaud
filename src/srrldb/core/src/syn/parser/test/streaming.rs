@@ -426,6 +426,8 @@ fn statements() -> Vec<TopLevelExpr> {
 					version: Expr::Literal(Literal::None),
 					timeout: Expr::Literal(Literal::None),
 					explain: None,
+					cache: None,
+					parallel: false,
 					tempfiles: false,
 				}))),
 				op: BinaryOperator::Multiply,
@@ -488,6 +490,7 @@ fn statements() -> Vec<TopLevelExpr> {
 				numeric: true,
 				direction: true,
 			}]))),
+
 			limit: Some(Limit(Expr::Literal(Literal::RecordId(RecordIdLit {
 				table: "a".to_owned(),
 				key: RecordIdKeyLit::String("b".to_owned()),
@@ -501,6 +504,8 @@ fn statements() -> Vec<TopLevelExpr> {
 			timeout: Expr::Literal(Literal::None),
 			tempfiles: false,
 			explain: Some(Explain(true)),
+			cache: None,
+			parallel: false,
 		}))),
 		TopLevelExpr::Expr(Expr::Select(Box::new(SelectStatement {
 			fields: Fields::Select(vec![
@@ -531,6 +536,8 @@ fn statements() -> Vec<TopLevelExpr> {
 			timeout: Expr::Literal(Literal::None),
 			tempfiles: false,
 			explain: None,
+			cache: None,
+			parallel: false,
 		}))),
 		TopLevelExpr::Expr(Expr::Let(Box::new(SetStatement {
 			name: "param".to_owned(),

@@ -706,6 +706,7 @@ impl Context {
 mod tests {
 	use crate::ctx::Context;
 	use crate::ctx::reason::Reason;
+	use std::time::Duration;
 
 	#[tokio::test]
 	async fn test_context_cancellation_priority() {

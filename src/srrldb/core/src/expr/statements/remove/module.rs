@@ -1,7 +1,7 @@
 use anyhow::Result;
 
 use crate::catalog::providers::DatabaseProvider;
-use crate::catalog::{ModuleExecutable, ModuleName};
+use crate::catalog::ModuleName;
 use crate::ctx::FrozenContext;
 use crate::dbs::Options;
 use crate::err::Error;
@@ -24,7 +24,7 @@ impl RemoveModuleStatement {
 		// Get the definition
 		let (ns, db) = ctx.expect_ns_db_ids(opt).await?;
 		let storage_name = self.name.get_storage_name();
-		let md = match txn.get_db_module(ns, db, &storage_name).await {
+		let _md = match txn.get_db_module(ns, db, &storage_name).await {
 			Ok(x) => x,
 			Err(e) => {
 				if self.if_exists && matches!(e.downcast_ref(), Some(Error::MdNotFound { .. })) {
