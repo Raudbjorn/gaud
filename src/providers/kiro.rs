@@ -73,18 +73,7 @@ fn kiro_api_host(region: &str) -> String {
 
 /// Percent-encode a string for use in URL query parameters (RFC 3986).
 fn url_encode(s: &str) -> String {
-    let mut encoded = String::with_capacity(s.len() * 3);
-    for byte in s.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                encoded.push(byte as char);
-            }
-            _ => {
-                encoded.push_str(&format!("%{byte:02X}"));
-            }
-        }
-    }
-    encoded
+    urlencoding::encode(s).into_owned()
 }
 
 fn generate_assistant_response_url(region: &str, profile_arn: Option<&str>) -> String {
