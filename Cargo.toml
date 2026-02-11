@@ -31,9 +31,9 @@ categories = ["web-programming", "authentication", "api-bindings"]
 # SurrealDB crates
 # WARNING: Using beta version in production. API breakage possible between point releases.
 srrldb = { version = "0.1.0", path = "src/srrldb" }
-surrealdb-core = { version = "0.1.0", path = "src/srrldb/core", default-features = false }
-surrealdb-types = { version = "0.1.0", path = "src/srrldb/types" }
-surrealdb-types-derive = { version = "0.1.0", path = "src/srrldb/types/derive" }
+srrldb-core = { version = "0.1.0", path = "src/srrldb/core", default-features = false }
+srrldb-types = { version = "0.1.0", path = "src/srrldb/types" }
+srrldb-types-derive = { version = "0.1.0", path = "src/srrldb/types/derive" }
 
 
 # External surreal crates
@@ -265,6 +265,9 @@ urlencoding = "2"
 
 # HTML templating
 minijinja = { version = "2", features = ["builtins"] }
+hostname = "0.4.2"
+whoami = "2.1.1"
+shellexpand = "3.1.1"
 
 [dev-dependencies]
 tempfile = "3"

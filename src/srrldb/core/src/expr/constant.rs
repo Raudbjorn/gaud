@@ -1,7 +1,7 @@
 use anyhow::Result;
 use chrono::{TimeZone, Utc};
 use priority_lfu::DeepSizeOf;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use crate::val::{Datetime, Duration, Value};
 

@@ -5,7 +5,7 @@ use std::str::FromStr;
 
 use revision::revisioned;
 use storekey::{BorrowDecode, Encode};
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 use super::Datetime;
 use crate::fmt::QuoteStr;
@@ -85,15 +85,15 @@ impl From<Uuid> for uuid::Uuid {
 	}
 }
 
-impl From<surrealdb_types::Uuid> for Uuid {
-	fn from(v: surrealdb_types::Uuid) -> Self {
+impl From<srrldb_types::Uuid> for Uuid {
+	fn from(v: srrldb_types::Uuid) -> Self {
 		Uuid(v.into_inner())
 	}
 }
 
-impl From<Uuid> for surrealdb_types::Uuid {
+impl From<Uuid> for srrldb_types::Uuid {
 	fn from(x: Uuid) -> Self {
-		surrealdb_types::Uuid::from(x.0)
+		srrldb_types::Uuid::from(x.0)
 	}
 }
 

@@ -6,7 +6,7 @@ use std::str::FromStr;
 use chrono::offset::LocalResult;
 use chrono::{DateTime, SecondsFormat, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
-use surrealdb_types_derive::write_sql;
+use srrldb_types_derive::write_sql;
 
 use crate::sql::{SqlFormat, ToSql};
 use crate::utils::escape::QuoteStr;
@@ -79,7 +79,7 @@ impl Display for Datetime {
 
 impl ToSql for Datetime {
 	fn fmt_sql(&self, f: &mut String, fmt: SqlFormat) {
-		use crate as surrealdb_types;
+		use crate as srrldb_types;
 		write_sql!(f, fmt, "d{}", QuoteStr(&self.to_string()));
 	}
 }

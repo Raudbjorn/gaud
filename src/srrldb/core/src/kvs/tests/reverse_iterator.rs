@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use surrealdb_types::Value as PublicValue;
+use srrldb_types::Value as PublicValue;
 use uuid::Uuid;
 
 use crate::dbs::node::Timestamp;

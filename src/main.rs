@@ -302,24 +302,23 @@ async fn async_main() -> anyhow::Result<()> {
 
 /// Build a [`KiroProvider`] from the configuration.
 ///
-/// The kiro-gateway client is constructed via its builder, picking up
-/// credentials from the config (refresh token, credentials file, or env vars).
+/// Constructs a `KiroClient` using the refresh-token auth flow that matches
+/// the kiro-aws reference implementation.
 async fn build_kiro_provider(kiro_config: &KiroProviderConfig) -> anyhow::Result<KiroProvider> {
-    let mut builder = kiro_gateway::KiroClientBuilder::new();
+    let refresh_token = kiro_config
+        .effective_refresh_token()
+        .ok_or_else(|| anyhow::anyhow!(
+            "Kiro provider requires a refresh token. Set `refresh_token` in config, \
+             provide a `credentials_file`, or set the GAUD_KIRO_REFRESH_TOKEN environment variable."
+        ))?;
 
-    if let Some(ref token) = kiro_config.refresh_token {
-        builder = builder.refresh_token(token.clone());
-    }
+    let client_config = gaud::providers::kiro::KiroClientConfig {
+        refresh_token,
+        region: kiro_config.effective_region(),
+        profile_arn: kiro_config.effective_profile_arn(),
+    };
 
-    if let Some(ref path) = kiro_config.credentials_file {
-        builder = builder.credentials_file(path);
-    }
-
-    if let Some(ref region) = kiro_config.region {
-        builder = builder.region(region.clone());
-    }
-
-    let client = builder.build().await?;
+    let client = gaud::providers::kiro::KiroClient::new(client_config);
     Ok(KiroProvider::new(client))
 }
 

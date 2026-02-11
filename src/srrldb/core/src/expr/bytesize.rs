@@ -4,7 +4,7 @@ use std::str::FromStr;
 use std::{fmt, ops};
 
 use anyhow::{Result, bail, ensure};
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 use crate::err::Error;
 use crate::expr::statements::info::InfoStructure;

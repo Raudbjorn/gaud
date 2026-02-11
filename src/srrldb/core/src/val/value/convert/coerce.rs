@@ -4,7 +4,7 @@ use std::hash::BuildHasher;
 
 use geo::Point;
 use rust_decimal::Decimal;
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 
 use crate::expr::Kind;
 use crate::expr::kind::{GeometryKind, HasKind, KindLiteral};

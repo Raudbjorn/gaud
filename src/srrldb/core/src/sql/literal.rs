@@ -2,7 +2,7 @@ use priority_lfu::DeepSizeOf;
 //use async_graphql::dynamic::Object;
 use geo::{LineString, MultiLineString, MultiPoint, MultiPolygon, Point, Polygon};
 use rust_decimal::Decimal;
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 use crate::fmt::{CoverStmts, EscapeObjectKey, Float, QuoteStr};
 use crate::sql::{Expr, RecordIdLit};

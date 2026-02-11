@@ -3,7 +3,7 @@ use std::ops::Bound;
 
 use reblessive::tree::Stk;
 use revision::{DeserializeRevisioned, Revisioned, SerializeRevisioned};
-use surrealdb_types::{RecordId, SqlFormat, ToSql};
+use srrldb_types::{RecordId, SqlFormat, ToSql};
 
 use super::SleepStatement;
 use crate::cnf::GENERATION_ALLOCATION_LIMIT;
@@ -132,34 +132,34 @@ impl Expr {
 
 	pub fn from_public_value(value: PublicValue) -> Self {
 		match value {
-			surrealdb_types::Value::None => Expr::Literal(Literal::None),
-			surrealdb_types::Value::Null => Expr::Literal(Literal::Null),
-			surrealdb_types::Value::Bool(b) => Expr::Literal(Literal::Bool(b)),
-			surrealdb_types::Value::Number(n) => match n {
-				surrealdb_types::Number::Int(i) => Expr::Literal(Literal::Integer(i)),
-				surrealdb_types::Number::Float(f) => Expr::Literal(Literal::Float(f)),
-				surrealdb_types::Number::Decimal(d) => Expr::Literal(Literal::Decimal(d)),
+			srrldb_types::Value::None => Expr::Literal(Literal::None),
+			srrldb_types::Value::Null => Expr::Literal(Literal::Null),
+			srrldb_types::Value::Bool(b) => Expr::Literal(Literal::Bool(b)),
+			srrldb_types::Value::Number(n) => match n {
+				srrldb_types::Number::Int(i) => Expr::Literal(Literal::Integer(i)),
+				srrldb_types::Number::Float(f) => Expr::Literal(Literal::Float(f)),
+				srrldb_types::Number::Decimal(d) => Expr::Literal(Literal::Decimal(d)),
 			},
-			surrealdb_types::Value::String(s) => Expr::Literal(Literal::String(s)),
-			surrealdb_types::Value::Bytes(b) => {
+			srrldb_types::Value::String(s) => Expr::Literal(Literal::String(s)),
+			srrldb_types::Value::Bytes(b) => {
 				Expr::Literal(Literal::Bytes(crate::val::Bytes(b.into_inner())))
 			}
-			surrealdb_types::Value::Duration(d) => {
+			srrldb_types::Value::Duration(d) => {
 				Expr::Literal(Literal::Duration(crate::val::Duration(d.into_inner())))
 			}
-			surrealdb_types::Value::Datetime(d) => {
+			srrldb_types::Value::Datetime(d) => {
 				Expr::Literal(Literal::Datetime(crate::val::Datetime(d.into_inner())))
 			}
-			surrealdb_types::Value::Uuid(u) => {
+			srrldb_types::Value::Uuid(u) => {
 				Expr::Literal(Literal::Uuid(crate::val::Uuid(u.into_inner())))
 			}
-			surrealdb_types::Value::Array(a) => {
+			srrldb_types::Value::Array(a) => {
 				Expr::Literal(Literal::Array(a.into_iter().map(Expr::from_public_value).collect()))
 			}
-			surrealdb_types::Value::Set(s) => {
+			srrldb_types::Value::Set(s) => {
 				Expr::Literal(Literal::Array(s.into_iter().map(Expr::from_public_value).collect()))
 			}
-			surrealdb_types::Value::Object(o) => Expr::Literal(Literal::Object(
+			srrldb_types::Value::Object(o) => Expr::Literal(Literal::Object(
 				o.into_iter()
 					.map(|(k, v)| ObjectEntry {
 						key: k,
@@ -167,21 +167,21 @@ impl Expr {
 					})
 					.collect(),
 			)),
-			surrealdb_types::Value::Table(t) => Expr::Table(t.into()),
-			surrealdb_types::Value::RecordId(RecordId {
+			srrldb_types::Value::Table(t) => Expr::Table(t.into()),
+			srrldb_types::Value::RecordId(RecordId {
 				table,
 				key,
 			}) => {
 				let key_lit = match key {
-					surrealdb_types::RecordIdKey::Number(n) => RecordIdKeyLit::Number(n),
-					surrealdb_types::RecordIdKey::String(s) => RecordIdKeyLit::String(s),
-					surrealdb_types::RecordIdKey::Uuid(u) => {
+					srrldb_types::RecordIdKey::Number(n) => RecordIdKeyLit::Number(n),
+					srrldb_types::RecordIdKey::String(s) => RecordIdKeyLit::String(s),
+					srrldb_types::RecordIdKey::Uuid(u) => {
 						RecordIdKeyLit::Uuid(crate::val::Uuid(u.into_inner()))
 					}
-					surrealdb_types::RecordIdKey::Array(a) => {
+					srrldb_types::RecordIdKey::Array(a) => {
 						RecordIdKeyLit::Array(a.into_iter().map(Expr::from_public_value).collect())
 					}
-					surrealdb_types::RecordIdKey::Object(o) => RecordIdKeyLit::Object(
+					srrldb_types::RecordIdKey::Object(o) => RecordIdKeyLit::Object(
 						o.into_iter()
 							.map(|(k, v)| ObjectEntry {
 								key: k,
@@ -196,20 +196,20 @@ impl Expr {
 					key: key_lit,
 				}))
 			}
-			surrealdb_types::Value::Geometry(g) => Expr::Literal(Literal::Geometry(g.into())),
-			surrealdb_types::Value::File(f) => {
+			srrldb_types::Value::Geometry(g) => Expr::Literal(Literal::Geometry(g.into())),
+			srrldb_types::Value::File(f) => {
 				Expr::Literal(Literal::File(crate::val::File::new(f.bucket, f.key)))
 			}
-			surrealdb_types::Value::Range(r) => Expr::from(*r),
-			surrealdb_types::Value::Regex(r) => {
+			srrldb_types::Value::Range(r) => Expr::from(*r),
+			srrldb_types::Value::Regex(r) => {
 				Expr::Literal(Literal::Regex(crate::val::Regex(r.into_inner())))
 			}
 		}
 	}
 }
 
-impl From<surrealdb_types::Range> for Expr {
-	fn from(r: surrealdb_types::Range) -> Self {
+impl From<srrldb_types::Range> for Expr {
+	fn from(r: srrldb_types::Range) -> Self {
 		use std::ops::Bound;
 		match r.into_inner() {
 			// Unbounded range: ..

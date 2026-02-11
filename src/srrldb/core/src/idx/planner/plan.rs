@@ -4,7 +4,7 @@ use std::hash::Hash;
 use std::sync::Arc;
 
 use anyhow::Result;
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 
 use crate::catalog::Index;
 use crate::expr::operator::{MatchesOperator, NearestNeighbor};

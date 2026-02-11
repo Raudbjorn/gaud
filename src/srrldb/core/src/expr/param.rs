@@ -5,7 +5,7 @@ use anyhow::{Result, bail};
 use priority_lfu::DeepSizeOf;
 use reblessive::tree::Stk;
 use revision::{DeserializeRevisioned, Revisioned, SerializeRevisioned};
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use super::FlowResultExt as _;
 use crate::catalog::Permission;

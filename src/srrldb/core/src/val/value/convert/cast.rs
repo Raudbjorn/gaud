@@ -4,7 +4,7 @@ use std::str::FromStr as _;
 
 use geo::Point;
 use rust_decimal::Decimal;
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 
 use crate::cnf::GENERATION_ALLOCATION_LIMIT;
 use crate::expr::Kind;

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use priority_lfu::DeepSizeOf;
 use revision::revisioned;
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 use crate::catalog::ApiConfigDefinition;
 use crate::expr::statements::info::InfoStructure;

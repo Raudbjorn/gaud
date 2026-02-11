@@ -4,7 +4,7 @@ use std::hash::{Hash, Hasher};
 use priority_lfu::DeepSizeOf;
 use reblessive::tree::Stk;
 use rust_decimal::Decimal;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use crate::ctx::FrozenContext;
 use crate::dbs::Options;

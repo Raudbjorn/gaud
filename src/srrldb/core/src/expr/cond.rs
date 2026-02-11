@@ -1,6 +1,6 @@
 use priority_lfu::DeepSizeOf;
 use revision::revisioned;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use super::Expr;
 

@@ -6,7 +6,7 @@ use priority_lfu::DeepSizeOf;
 use reblessive::tree::Stk;
 use revision::revisioned;
 use storekey::{BorrowDecode, Encode};
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 use ulid::Ulid;
 
 use crate::cnf::ID_CHARS;

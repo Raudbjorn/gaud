@@ -13,7 +13,7 @@ use object_store::Error as ObjectStoreError;
 use revision::Error as RevisionError;
 use serde::Serialize;
 use storekey::DecodeError as StorekeyError;
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 use thiserror::Error;
 
 use crate::api::err::ApiError;

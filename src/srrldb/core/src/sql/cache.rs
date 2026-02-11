@@ -1,6 +1,6 @@
 use std::fmt;
 
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 use crate::sql::Expr;
 
 /// Cache mode for query results
@@ -110,7 +110,7 @@ impl From<crate::expr::Cache> for Cache {
 }
 
 impl ToSql for Cache {
-    fn fmt_sql(&self, f: &mut String, _fmt: surrealdb_types::SqlFormat) {
+    fn fmt_sql(&self, f: &mut String, _fmt: srrldb_types::SqlFormat) {
         f.push_str(&self.to_string());
     }
 }

@@ -1,6 +1,6 @@
 use std::fmt;
 
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, priority_lfu::DeepSizeOf)]
 pub enum Base {

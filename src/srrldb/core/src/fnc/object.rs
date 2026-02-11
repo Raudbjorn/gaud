@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use anyhow::{Result, bail};
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 
 use crate::err::Error;
 use crate::val::{Array, Object, Value};

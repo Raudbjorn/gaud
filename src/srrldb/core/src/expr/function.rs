@@ -1,7 +1,7 @@
 use futures::future::try_join_all;
 use priority_lfu::DeepSizeOf;
 use reblessive::tree::Stk;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use super::{ControlFlow, FlowResult, FlowResultExt as _};
 use crate::catalog::Permission;

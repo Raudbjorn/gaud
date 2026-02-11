@@ -7,7 +7,7 @@ use anyhow::{Result, bail};
 use reblessive::tree::Stk;
 use revision::{DeserializeRevisioned, Revisioned, SerializeRevisioned};
 use storekey::{BorrowDecode, Encode};
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 use crate::ctx::{Context, FrozenContext};
 use crate::dbs::{Options, Variables};

@@ -1,7 +1,7 @@
 
 use anyhow::{Result, bail};
 use reblessive::tree::Stk;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use crate::catalog;
 use crate::catalog::{DatabaseId, NamespaceId};

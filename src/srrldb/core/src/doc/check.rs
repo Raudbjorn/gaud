@@ -1,6 +1,6 @@
 use anyhow::{Result, bail, ensure};
 use reblessive::tree::Stk;
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 
 use super::IgnoreError;
 use crate::catalog::Permission;

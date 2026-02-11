@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use anyhow::{Result, bail};
 use radix_trie::Trie;
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 
 use crate::catalog::{DatabaseId, IndexDefinition, IndexId, NamespaceId, Record};
 use crate::cnf::COUNT_BATCH_SIZE;

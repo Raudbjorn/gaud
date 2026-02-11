@@ -11,7 +11,7 @@ use revision::revisioned;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use storekey::{BorrowDecode, Encode};
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 use crate::cnf::{REGEX_CACHE_SIZE, REGEX_SIZE_LIMIT};
 
@@ -109,15 +109,15 @@ impl ToSql for Regex {
 	}
 }
 
-impl From<surrealdb_types::Regex> for Regex {
-	fn from(v: surrealdb_types::Regex) -> Self {
+impl From<srrldb_types::Regex> for Regex {
+	fn from(v: srrldb_types::Regex) -> Self {
 		Self(v.into_inner())
 	}
 }
 
-impl From<Regex> for surrealdb_types::Regex {
+impl From<Regex> for srrldb_types::Regex {
 	fn from(x: Regex) -> Self {
-		surrealdb_types::Regex::from(x.0)
+		srrldb_types::Regex::from(x.0)
 	}
 }
 

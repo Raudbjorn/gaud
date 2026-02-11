@@ -1,6 +1,6 @@
 use priority_lfu::DeepSizeOf;
 use revision::revisioned;
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 
 mod access;
 mod analyzer;
@@ -78,13 +78,13 @@ impl InfoStructure for Permission {
 }
 
 impl ToSql for Permission {
-	fn fmt_sql(&self, f: &mut String, sql_fmt: surrealdb_types::SqlFormat) {
+	fn fmt_sql(&self, f: &mut String, sql_fmt: srrldb_types::SqlFormat) {
 		self.to_sql_definition().fmt_sql(f, sql_fmt);
 	}
 }
 
 impl ToSql for Permissions {
-	fn fmt_sql(&self, f: &mut String, sql_fmt: surrealdb_types::SqlFormat) {
+	fn fmt_sql(&self, f: &mut String, sql_fmt: srrldb_types::SqlFormat) {
 		self.to_sql_definition().fmt_sql(f, sql_fmt);
 	}
 }

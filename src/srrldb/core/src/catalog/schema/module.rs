@@ -1,7 +1,7 @@
 use anyhow::bail;
 use priority_lfu::DeepSizeOf;
 use revision::revisioned;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use crate::catalog::{ModuleExecutable, Permission};
 use crate::expr::statements::info::InfoStructure;

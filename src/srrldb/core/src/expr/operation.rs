@@ -1,7 +1,7 @@
 use std::fmt;
 
 use revision::revisioned;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use crate::val::{Array, Object, Value};
 

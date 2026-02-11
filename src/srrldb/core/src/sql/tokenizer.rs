@@ -2,7 +2,7 @@ use priority_lfu::DeepSizeOf;
 use std::fmt;
 use std::fmt::Display;
 
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]

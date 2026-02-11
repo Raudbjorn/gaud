@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use anyhow::Result;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use super::AlterKind;
 use crate::catalog::providers::TableProvider;

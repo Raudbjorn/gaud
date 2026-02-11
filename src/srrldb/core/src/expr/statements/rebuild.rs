@@ -1,6 +1,6 @@
 use anyhow::Result;
 use reblessive::tree::Stk;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use crate::catalog::providers::TableProvider;
 use crate::ctx::FrozenContext;

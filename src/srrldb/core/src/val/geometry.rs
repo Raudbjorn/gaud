@@ -11,7 +11,7 @@ use geo_types::{MultiLineString, MultiPoint, MultiPolygon};
 use priority_lfu::DeepSizeOf;
 use revision::revisioned;
 use storekey::{BorrowDecode, Encode};
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 use super::Object;
 use crate::fmt::Fmt;
@@ -596,32 +596,32 @@ impl FromIterator<Geometry> for geo::Geometry<f64> {
 	}
 }
 
-impl From<Geometry> for surrealdb_types::Geometry {
+impl From<Geometry> for srrldb_types::Geometry {
 	fn from(v: Geometry) -> Self {
 		match v {
-			Geometry::Point(v) => surrealdb_types::Geometry::Point(v),
-			Geometry::Line(v) => surrealdb_types::Geometry::Line(v),
-			Geometry::Polygon(v) => surrealdb_types::Geometry::Polygon(v),
-			Geometry::MultiPoint(v) => surrealdb_types::Geometry::MultiPoint(v),
-			Geometry::MultiLine(v) => surrealdb_types::Geometry::MultiLine(v),
-			Geometry::MultiPolygon(v) => surrealdb_types::Geometry::MultiPolygon(v),
+			Geometry::Point(v) => srrldb_types::Geometry::Point(v),
+			Geometry::Line(v) => srrldb_types::Geometry::Line(v),
+			Geometry::Polygon(v) => srrldb_types::Geometry::Polygon(v),
+			Geometry::MultiPoint(v) => srrldb_types::Geometry::MultiPoint(v),
+			Geometry::MultiLine(v) => srrldb_types::Geometry::MultiLine(v),
+			Geometry::MultiPolygon(v) => srrldb_types::Geometry::MultiPolygon(v),
 			Geometry::Collection(v) => {
-				surrealdb_types::Geometry::Collection(v.into_iter().map(Into::into).collect())
+				srrldb_types::Geometry::Collection(v.into_iter().map(Into::into).collect())
 			}
 		}
 	}
 }
 
-impl From<surrealdb_types::Geometry> for Geometry {
-	fn from(v: surrealdb_types::Geometry) -> Self {
+impl From<srrldb_types::Geometry> for Geometry {
+	fn from(v: srrldb_types::Geometry) -> Self {
 		match v {
-			surrealdb_types::Geometry::Point(v) => Geometry::Point(v),
-			surrealdb_types::Geometry::Line(v) => Geometry::Line(v),
-			surrealdb_types::Geometry::Polygon(v) => Geometry::Polygon(v),
-			surrealdb_types::Geometry::MultiPoint(v) => Geometry::MultiPoint(v),
-			surrealdb_types::Geometry::MultiLine(v) => Geometry::MultiLine(v),
-			surrealdb_types::Geometry::MultiPolygon(v) => Geometry::MultiPolygon(v),
-			surrealdb_types::Geometry::Collection(v) => {
+			srrldb_types::Geometry::Point(v) => Geometry::Point(v),
+			srrldb_types::Geometry::Line(v) => Geometry::Line(v),
+			srrldb_types::Geometry::Polygon(v) => Geometry::Polygon(v),
+			srrldb_types::Geometry::MultiPoint(v) => Geometry::MultiPoint(v),
+			srrldb_types::Geometry::MultiLine(v) => Geometry::MultiLine(v),
+			srrldb_types::Geometry::MultiPolygon(v) => Geometry::MultiPolygon(v),
+			srrldb_types::Geometry::Collection(v) => {
 				Geometry::Collection(v.into_iter().map(Into::into).collect())
 			}
 		}

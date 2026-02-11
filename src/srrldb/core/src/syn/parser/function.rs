@@ -309,7 +309,7 @@ impl Parser<'_> {
 
 #[cfg(test)]
 mod test {
-	use surrealdb_types::ToSql;
+	use srrldb_types::ToSql;
 
 	use super::*;
 	use crate::{sql, syn};

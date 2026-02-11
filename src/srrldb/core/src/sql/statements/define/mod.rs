@@ -32,7 +32,7 @@ pub(crate) use module::DefineModuleStatement;
 pub(crate) use namespace::DefineNamespaceStatement;
 pub(crate) use param::DefineParamStatement;
 pub(crate) use sequence::DefineSequenceStatement;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 pub(crate) use table::DefineTableStatement;
 pub(crate) use user::DefineUserStatement;
 

@@ -4,7 +4,7 @@ use std::ops::{Bound, RangeBounds};
 use priority_lfu::DeepSizeOf;
 use revision::revisioned;
 use storekey::{BorrowDecode, Encode};
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 use super::value::CoerceErrorExt;
 use crate::expr;

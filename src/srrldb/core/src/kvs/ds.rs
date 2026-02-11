@@ -13,7 +13,7 @@ use async_channel::{Receiver, Sender};
 use bytes::{Bytes, BytesMut};
 use futures::{Future, Stream};
 use reblessive::TreeStack;
-use surrealdb_types::{SurrealValue, object};
+use srrldb_types::{SurrealValue, object};
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, instrument, trace};
@@ -594,7 +594,7 @@ impl Datastore {
 	/// # Examples
 	///
 	/// ```rust,no_run
-	/// # use surrealdb_core::kvs::Datastore;
+	/// # use srrldb_core::kvs::Datastore;
 	/// # use anyhow::Error;
 	/// # #[tokio::main]
 	/// # async fn main() -> Result<(),Error> {
@@ -606,7 +606,7 @@ impl Datastore {
 	/// Or to create a file-backed store:
 	///
 	/// ```rust,no_run
-	/// # use surrealdb_core::kvs::Datastore;
+	/// # use srrldb_core::kvs::Datastore;
 	/// # use anyhow::Error;
 	/// # #[tokio::main]
 	/// # async fn main() -> Result<(),Error> {
@@ -618,7 +618,7 @@ impl Datastore {
 	/// Or to connect to a tikv-backed distributed store:
 	///
 	/// ```rust,no_run
-	/// # use surrealdb_core::kvs::Datastore;
+	/// # use srrldb_core::kvs::Datastore;
 	/// # use anyhow::Error;
 	/// # #[tokio::main]
 	/// # async fn main() -> Result<(),Error> {
@@ -1534,7 +1534,7 @@ impl Datastore {
 	/// Create a new transaction on this datastore
 	///
 	/// ```rust,no_run
-	/// use surrealdb_core::kvs::{Datastore, TransactionType::*, LockType::*};
+	/// use srrldb_core::kvs::{Datastore, TransactionType::*, LockType::*};
 	/// use anyhow::Error;
 	///
 	/// #[tokio::main]
@@ -1586,8 +1586,8 @@ impl Datastore {
 	///
 	/// ```rust,no_run
 	/// use anyhow::Error;
-	/// use surrealdb_core::kvs::Datastore;
-	/// use surrealdb_core::dbs::Session;
+	/// use srrldb_core::kvs::Datastore;
+	/// use srrldb_core::dbs::Session;
 	///
 	/// #[tokio::main]
 	/// async fn main() -> Result<(),Error> {
@@ -2128,8 +2128,8 @@ impl Datastore {
 	/// Subscribe to live notifications
 	///
 	/// ```rust,no_run
-	/// use surrealdb_core::kvs::Datastore;
-	/// use surrealdb_core::dbs::Session;
+	/// use srrldb_core::kvs::Datastore;
+	/// use srrldb_core::dbs::Session;
 	/// use anyhow::Error;
 	///
 	/// #[tokio::main]

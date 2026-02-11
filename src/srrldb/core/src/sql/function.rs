@@ -1,5 +1,5 @@
 use priority_lfu::DeepSizeOf;
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 use crate::fmt::{CoverStmts, EscapeIdent, EscapeKwFreeIdent, Fmt};
 use crate::sql::{Expr, Idiom, Model, Script};

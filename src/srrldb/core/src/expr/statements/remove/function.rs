@@ -1,5 +1,5 @@
 use anyhow::Result;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use crate::catalog::providers::DatabaseProvider;
 use crate::ctx::FrozenContext;

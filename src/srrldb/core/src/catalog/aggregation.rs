@@ -45,7 +45,7 @@ use ahash::HashMap;
 use anyhow::{Result, bail, ensure};
 use priority_lfu::DeepSizeOf;
 use revision::revisioned;
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 
 use crate::err::Error;
 use crate::expr::field::Selector;

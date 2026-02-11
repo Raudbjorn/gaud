@@ -136,6 +136,7 @@ See [docs/configuration.md](docs/configuration.md) for the complete reference.
 - [Providers](docs/providers.md) -- Claude, Gemini, Copilot setup and routing
 - [API Reference](docs/api-reference.md) -- All HTTP endpoints with examples
 - [Web UI](docs/web-ui.md) -- Dashboard, OAuth, user management
+- [srrldb & Semantic Cache](src/srrldb/README.md) -- Embedded SurrealDB wrapper and two-tier LLM response cache
 
 ## License
 

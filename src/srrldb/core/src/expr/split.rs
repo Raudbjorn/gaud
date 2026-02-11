@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use crate::expr::idiom::Idiom;
 
@@ -39,8 +39,8 @@ impl Deref for Split {
 	}
 }
 
-impl surrealdb_types::ToSql for Split {
-	fn fmt_sql(&self, f: &mut String, fmt: surrealdb_types::SqlFormat) {
+impl srrldb_types::ToSql for Split {
+	fn fmt_sql(&self, f: &mut String, fmt: srrldb_types::SqlFormat) {
 		let sql_split: crate::sql::Split = self.clone().into();
 		sql_split.fmt_sql(f, fmt);
 	}

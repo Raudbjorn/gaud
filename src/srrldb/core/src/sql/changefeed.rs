@@ -8,9 +8,9 @@ pub struct ChangeFeed {
 	pub store_diff: bool,
 }
 
-impl surrealdb_types::ToSql for ChangeFeed {
-	fn fmt_sql(&self, f: &mut String, sql_fmt: surrealdb_types::SqlFormat) {
-		use surrealdb_types::write_sql;
+impl srrldb_types::ToSql for ChangeFeed {
+	fn fmt_sql(&self, f: &mut String, sql_fmt: srrldb_types::SqlFormat) {
+		use srrldb_types::write_sql;
 		write_sql!(f, sql_fmt, "CHANGEFEED {}", self.expiry);
 		if self.store_diff {
 			f.push_str(" INCLUDE ORIGINAL");

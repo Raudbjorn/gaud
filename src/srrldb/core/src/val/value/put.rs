@@ -1,4 +1,4 @@
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 
 use crate::expr::part::{Next, Part};
 use crate::val::Value;

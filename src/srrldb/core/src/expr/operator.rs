@@ -1,5 +1,5 @@
 use priority_lfu::DeepSizeOf;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use crate::catalog::Distance;
 use crate::expr::{Expr, Kind};

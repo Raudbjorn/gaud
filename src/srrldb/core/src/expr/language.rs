@@ -57,8 +57,8 @@ impl Display for Language {
 	}
 }
 
-impl surrealdb_types::ToSql for Language {
-	fn fmt_sql(&self, f: &mut String, _fmt: surrealdb_types::SqlFormat) {
+impl srrldb_types::ToSql for Language {
+	fn fmt_sql(&self, f: &mut String, _fmt: srrldb_types::SqlFormat) {
 		f.push_str(self.as_str())
 	}
 }

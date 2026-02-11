@@ -4,7 +4,7 @@ mod common;
 
 use common::{block_on, setup_datastore, setup_datastore_with_query, setup_datastore_with_records};
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
-use surrealdb_core::syn::value;
+use srrldb_core::syn::value;
 
 // ============================================================================
 // Benchmark: SELECT from objects and arrays

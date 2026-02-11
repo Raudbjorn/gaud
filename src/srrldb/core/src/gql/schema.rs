@@ -8,7 +8,7 @@ use async_graphql::{Name, Value as GqlValue};
 use rust_decimal::Decimal;
 use rust_decimal::prelude::FromPrimitive;
 use serde_json::Number;
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 
 use super::error::{GqlError, resolver_error};
 #[cfg(debug_assertions)]

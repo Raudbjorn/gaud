@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use revision::revisioned;
 use storekey::{BorrowDecode, Encode};
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 use crate::expr::Expr;
 use crate::val::{IndexFormat, Value};
@@ -151,18 +151,18 @@ impl From<Set> for Vec<Value> {
 	}
 }
 
-impl TryFrom<Set> for surrealdb_types::Set {
+impl TryFrom<Set> for srrldb_types::Set {
 	type Error = anyhow::Error;
 
 	fn try_from(s: Set) -> Result<Self, Self::Error> {
-		Ok(surrealdb_types::Set::from(
-			s.0.into_iter().map(surrealdb_types::Value::try_from).collect::<Result<Vec<_>, _>>()?,
+		Ok(srrldb_types::Set::from(
+			s.0.into_iter().map(srrldb_types::Value::try_from).collect::<Result<Vec<_>, _>>()?,
 		))
 	}
 }
 
-impl From<surrealdb_types::Set> for Set {
-	fn from(s: surrealdb_types::Set) -> Self {
+impl From<srrldb_types::Set> for Set {
+	fn from(s: srrldb_types::Set) -> Self {
 		Set(s.into_iter().map(Value::from).collect())
 	}
 }

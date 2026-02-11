@@ -2,7 +2,7 @@ use md5::Digest;
 use priority_lfu::DeepSizeOf;
 use revision::revisioned;
 use sha2::Sha256;
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 use uuid::Uuid;
 
 use crate::kvs::impl_kv_value_revisioned;

@@ -1,4 +1,4 @@
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 
 pub fn ensure_formats(s: &str) {
 	let parsed = crate::syn::parse(s).unwrap();

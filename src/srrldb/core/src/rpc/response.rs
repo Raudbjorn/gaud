@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
-use surrealdb_types::{ToSql, kind, object};
+use srrldb_types::{ToSql, kind, object};
 use thiserror::Error;
 use uuid::Uuid;
 

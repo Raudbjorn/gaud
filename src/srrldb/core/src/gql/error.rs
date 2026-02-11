@@ -2,7 +2,7 @@ use std::backtrace;
 use std::fmt::Debug;
 
 use async_graphql::{InputType, InputValueError};
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 use thiserror::Error;
 
 use crate::expr::Kind;

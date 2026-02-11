@@ -1,4 +1,4 @@
-use surrealdb_types::{Number, SurrealValue, Value};
+use srrldb_types::{Number, SurrealValue, Value};
 
 #[derive(SurrealValue, Debug, PartialEq)]
 #[surreal(untagged)]

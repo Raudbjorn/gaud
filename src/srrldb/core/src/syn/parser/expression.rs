@@ -1,7 +1,7 @@
 //! This module defines the pratt parser for operators.
 
 use reblessive::Stk;
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 
 use super::enter_query_recursion;
 use super::mac::unexpected;
@@ -722,7 +722,7 @@ impl Parser<'_> {
 
 #[cfg(test)]
 mod test {
-	use surrealdb_types::ToSql;
+	use srrldb_types::ToSql;
 
 	use crate::sql::{BinaryOperator, Expr, Kind, Literal, PrefixOperator};
 	use crate::syn;

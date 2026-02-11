@@ -10,7 +10,7 @@ use std::fmt::Display;
 pub use escape::{
 	EscapeIdent, EscapeKwFreeIdent, EscapeKwIdent, EscapeObjectKey, EscapeRidKey, QuoteStr,
 };
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use crate::sql;
 
@@ -213,7 +213,7 @@ impl ToSql for Float {
 
 #[cfg(test)]
 mod tests {
-	use surrealdb_types::ToSql;
+	use srrldb_types::ToSql;
 
 	use crate::syn::{expr, parse};
 

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 
 use crate::err::Error;
 use crate::val::{RecordId, RecordIdKey, TableName, Value};

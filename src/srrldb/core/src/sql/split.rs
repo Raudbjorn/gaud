@@ -1,7 +1,7 @@
 use priority_lfu::DeepSizeOf;
 use std::ops::Deref;
 
-use surrealdb_types::write_sql;
+use srrldb_types::write_sql;
 
 use crate::fmt::Fmt;
 use crate::sql::idiom::Idiom;
@@ -10,8 +10,8 @@ use crate::sql::idiom::Idiom;
 #[derive(DeepSizeOf)]
 pub struct Splits(pub Vec<Split>);
 
-impl surrealdb_types::ToSql for Splits {
-	fn fmt_sql(&self, f: &mut String, fmt: surrealdb_types::SqlFormat) {
+impl srrldb_types::ToSql for Splits {
+	fn fmt_sql(&self, f: &mut String, fmt: srrldb_types::SqlFormat) {
 		write_sql!(f, fmt, "SPLIT ON {}", Fmt::comma_separated(&self.0))
 	}
 }
@@ -40,8 +40,8 @@ impl Deref for Split {
 	}
 }
 
-impl surrealdb_types::ToSql for Split {
-	fn fmt_sql(&self, f: &mut String, fmt: surrealdb_types::SqlFormat) {
+impl srrldb_types::ToSql for Split {
+	fn fmt_sql(&self, f: &mut String, fmt: srrldb_types::SqlFormat) {
 		self.0.fmt_sql(f, fmt);
 	}
 }

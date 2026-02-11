@@ -30,30 +30,30 @@
 extern crate tracing;
 
 pub mod types {
-	pub use surrealdb_types::*;
-	pub type PublicValue = surrealdb_types::Value;
-	pub type PublicAction = surrealdb_types::Action;
-	pub type PublicArray = surrealdb_types::Array;
-	pub type PublicBytes = surrealdb_types::Bytes;
-	pub type PublicDatetime = surrealdb_types::Datetime;
-	pub type PublicDuration = surrealdb_types::Duration;
-	pub type PublicFile = surrealdb_types::File;
-	pub type PublicGeometry = surrealdb_types::Geometry;
-	pub type PublicGeometryKind = surrealdb_types::GeometryKind;
-	pub type PublicKind = surrealdb_types::Kind;
-	pub type PublicKindLiteral = surrealdb_types::KindLiteral;
-	pub type PublicNotification = surrealdb_types::Notification;
-	pub type PublicNumber = surrealdb_types::Number;
-	pub type PublicObject = surrealdb_types::Object;
-	pub type PublicRecordId = surrealdb_types::RecordId;
-	pub type PublicRecordIdKey = surrealdb_types::RecordIdKey;
-	pub type PublicRecordIdKeyRange = surrealdb_types::RecordIdKeyRange;
-	pub type PublicUuid = surrealdb_types::Uuid;
-	pub type PublicVariables = surrealdb_types::Variables;
-	pub type PublicRange = surrealdb_types::Range;
-	pub type PublicRegex = surrealdb_types::Regex;
-	pub type PublicSet = surrealdb_types::Set;
-	pub type PublicTable = surrealdb_types::Table;
+	pub use srrldb_types::*;
+	pub type PublicValue = srrldb_types::Value;
+	pub type PublicAction = srrldb_types::Action;
+	pub type PublicArray = srrldb_types::Array;
+	pub type PublicBytes = srrldb_types::Bytes;
+	pub type PublicDatetime = srrldb_types::Datetime;
+	pub type PublicDuration = srrldb_types::Duration;
+	pub type PublicFile = srrldb_types::File;
+	pub type PublicGeometry = srrldb_types::Geometry;
+	pub type PublicGeometryKind = srrldb_types::GeometryKind;
+	pub type PublicKind = srrldb_types::Kind;
+	pub type PublicKindLiteral = srrldb_types::KindLiteral;
+	pub type PublicNotification = srrldb_types::Notification;
+	pub type PublicNumber = srrldb_types::Number;
+	pub type PublicObject = srrldb_types::Object;
+	pub type PublicRecordId = srrldb_types::RecordId;
+	pub type PublicRecordIdKey = srrldb_types::RecordIdKey;
+	pub type PublicRecordIdKeyRange = srrldb_types::RecordIdKeyRange;
+	pub type PublicUuid = srrldb_types::Uuid;
+	pub type PublicVariables = srrldb_types::Variables;
+	pub type PublicRange = srrldb_types::Range;
+	pub type PublicRegex = srrldb_types::Regex;
+	pub type PublicSet = srrldb_types::Set;
+	pub type PublicTable = srrldb_types::Table;
 }
 
 /// A unit struct used by the community edition of SurrealDB.

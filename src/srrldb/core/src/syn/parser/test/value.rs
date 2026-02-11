@@ -1,6 +1,6 @@
 use reblessive::Stack;
 use rust_decimal::Decimal;
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 
 use crate::sql::literal::ObjectEntry;
 use crate::sql::{

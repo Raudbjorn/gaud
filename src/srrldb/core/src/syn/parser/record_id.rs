@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 use std::ops::Bound;
 
 use reblessive::Stk;
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 
 use super::{ParseResult, Parser};
 use crate::sql::lookup::LookupSubject;

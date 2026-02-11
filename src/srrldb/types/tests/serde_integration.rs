@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use surrealdb_types::{Object, SurrealValue, Value};
+use srrldb_types::{Object, SurrealValue, Value};
 
 // Test that SurrealValue and serde work together with matching attributes
 #[derive(SurrealValue, Serialize, Deserialize, Debug, PartialEq, Clone)]

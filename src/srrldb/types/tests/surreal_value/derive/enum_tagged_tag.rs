@@ -1,4 +1,4 @@
-use surrealdb_types::{SurrealValue, Value, object};
+use srrldb_types::{SurrealValue, Value, object};
 
 ////////////////////////////////////////////////////
 /////////////// Enum tagged with tag ///////////////

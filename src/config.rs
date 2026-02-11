@@ -269,47 +269,109 @@ pub struct CopilotProviderConfig {
 
 /// Kiro provider configuration (Amazon Q / AWS CodeWhisperer).
 ///
-/// Authentication is managed internally by the kiro-gateway client.
-/// Provide either a `credentials_file` path to a JSON file containing a
-/// refresh token, or a `refresh_token` directly (the env var
-/// `GAUD_KIRO_REFRESH_TOKEN` is the most convenient way).
+/// Authentication uses a **refresh token** that is exchanged for a
+/// short-lived access token via the Kiro Desktop Auth endpoint.
+/// The refresh token can be supplied directly, read from a JSON
+/// credentials file, or set via the `GAUD_KIRO_REFRESH_TOKEN` env var.
+///
+/// ## Config fields (match kiro-aws reference exactly)
+///
+/// | field              | env var                    | description                                     |
+/// |--------------------|----------------------------|-------------------------------------------------|
+/// | `refresh_token`    | `GAUD_KIRO_REFRESH_TOKEN`  | OAuth refresh token for Kiro Desktop Auth        |
+/// | `credentials_file` | `GAUD_KIRO_CREDS_FILE`     | Path to JSON file containing refreshToken etc.   |
+/// | `region`           | `GAUD_KIRO_REGION`         | AWS region (default: `us-east-1`)                |
+/// | `profile_arn`      | `GAUD_KIRO_PROFILE_ARN`    | AWS CodeWhisperer profile ARN (optional)         |
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct KiroProviderConfig {
-    /// Path to a Kiro credentials JSON file (e.g. `~/.kiro/credentials.json`).
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub credentials_file: Option<String>,
-    /// Direct refresh token (overrides credentials_file).
+    /// OAuth refresh token for obtaining access tokens.
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub refresh_token: Option<String>,
-    /// AWS region for the Kiro API (default: us-east-1).
+    /// Path to a JSON credentials file (contains refreshToken, profileArn, etc.).
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub region: Option<String>,
+    pub credentials_file: Option<String>,
+    /// AWS region (default: us-east-1).
+    #[serde(default = "default_kiro_region")]
+    pub region: String,
+    /// AWS CodeWhisperer profile ARN (optional).
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile_arn: Option<String>,
     /// Default model to use when none is specified.
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_model: Option<String>,
+}
 
-    /// Cached result of env var credential check (evaluated once at startup).
-    #[serde(skip)]
-    pub env_credentials_available: bool,
+fn default_kiro_region() -> String {
+    "us-east-1".to_string()
 }
 
 impl KiroProviderConfig {
-    /// Check env vars once and cache the result.
-    pub fn resolve_env_credentials(&mut self) {
-        self.env_credentials_available = std::env::var("KIRO_REFRESH_TOKEN").is_ok()
-            || std::env::var("GAUD_KIRO_REFRESH_TOKEN").is_ok();
+    /// Returns true if we have enough credentials to attempt authentication.
+    pub fn has_credentials(&self) -> bool {
+        self.refresh_token.is_some()
+            || self.credentials_file.is_some()
+            || std::env::var("GAUD_KIRO_REFRESH_TOKEN").is_ok()
+            || std::env::var("GAUD_KIRO_CREDS_FILE").is_ok()
     }
 
-    /// Returns true if any credential source is configured.
-    /// Env var availability is cached at startup via resolve_env_credentials().
-    pub fn has_credentials(&self) -> bool {
-        self.credentials_file.is_some()
-            || self.refresh_token.is_some()
-            || self.env_credentials_available
+    /// Resolve the effective refresh token (config value → env var → creds file).
+    pub fn effective_refresh_token(&self) -> Option<String> {
+        // 1. Directly configured
+        if let Some(ref t) = self.refresh_token {
+            return Some(t.clone());
+        }
+        // 2. Environment variable
+        if let Ok(t) = std::env::var("GAUD_KIRO_REFRESH_TOKEN") {
+            return Some(t);
+        }
+        // 3. Credentials JSON file
+        let creds_path = self
+            .credentials_file
+            .clone()
+            .or_else(|| std::env::var("GAUD_KIRO_CREDS_FILE").ok());
+        if let Some(path) = creds_path {
+            if let Ok(contents) = std::fs::read_to_string(shellexpand::tilde(&path).as_ref()) {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&contents) {
+                    if let Some(t) = json["refreshToken"].as_str() {
+                        return Some(t.to_string());
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Resolve the effective AWS region.
+    pub fn effective_region(&self) -> String {
+        std::env::var("GAUD_KIRO_REGION").unwrap_or_else(|_| self.region.clone())
+    }
+
+    /// Resolve the effective profile ARN (config → env → creds file).
+    pub fn effective_profile_arn(&self) -> Option<String> {
+        if let Some(ref arn) = self.profile_arn {
+            return Some(arn.clone());
+        }
+        if let Ok(arn) = std::env::var("GAUD_KIRO_PROFILE_ARN") {
+            return Some(arn);
+        }
+        let creds_path = self
+            .credentials_file
+            .clone()
+            .or_else(|| std::env::var("GAUD_KIRO_CREDS_FILE").ok());
+        if let Some(path) = creds_path {
+            if let Ok(contents) = std::fs::read_to_string(shellexpand::tilde(&path).as_ref()) {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&contents) {
+                    if let Some(arn) = json["profileArn"].as_str() {
+                        return Some(arn.to_string());
+                    }
+                }
+            }
+        }
+        None
     }
 }
 
@@ -884,9 +946,7 @@ impl Config {
             self.cache.embedding_allow_local
         );
 
-        if let Some(ref mut kiro) = self.providers.kiro {
-            kiro.resolve_env_credentials();
-        }
+
 
         // -- LiteLLM Provider (auto-create from env if URL is set) --
         if let Ok(url) = std::env::var("GAUD_LITELLM_URL") {

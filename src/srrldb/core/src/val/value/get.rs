@@ -3,7 +3,7 @@ use std::ops::Deref;
 
 use futures::future::try_join_all;
 use reblessive::tree::Stk;
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 
 use crate::cnf::MAX_COMPUTATION_DEPTH;
 use crate::ctx::FrozenContext;

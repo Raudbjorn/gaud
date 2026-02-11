@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use geo::Point;
 use rust_decimal::Decimal;
-use surrealdb_types::{
+use srrldb_types::{
 	Array, Bytes, Datetime, Duration, File, Geometry, Kind, KindLiteral, Number, Object, Range,
 	RecordId, SurrealNone, SurrealNull, SurrealValue, Uuid, Value,
 };

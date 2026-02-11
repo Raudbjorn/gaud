@@ -1,5 +1,5 @@
 use reblessive::tree::Stk;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use crate::cnf::PROTECTED_PARAM_NAMES;
 use crate::ctx::{Context, FrozenContext};
@@ -84,7 +84,7 @@ impl ToSql for SetStatement {
 
 #[cfg(test)]
 mod tests {
-	use surrealdb_types::ToSql;
+	use srrldb_types::ToSql;
 
 	use crate::syn;
 

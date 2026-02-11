@@ -2,7 +2,7 @@ use std::collections::btree_map::Entry;
 
 use anyhow::Result;
 use reblessive::tree::Stk;
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 
 use crate::ctx::FrozenContext;
 use crate::dbs::Options;

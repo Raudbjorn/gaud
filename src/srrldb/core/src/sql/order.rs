@@ -1,7 +1,7 @@
 use priority_lfu::DeepSizeOf;
 use std::ops::Deref;
 
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 use crate::fmt::Fmt;
 use crate::sql::Idiom;
@@ -14,8 +14,8 @@ pub enum Ordering {
 	Order(OrderList),
 }
 
-impl surrealdb_types::ToSql for Ordering {
-	fn fmt_sql(&self, f: &mut String, fmt: surrealdb_types::SqlFormat) {
+impl srrldb_types::ToSql for Ordering {
+	fn fmt_sql(&self, f: &mut String, fmt: srrldb_types::SqlFormat) {
 		match self {
 			Ordering::Random => f.push_str("ORDER BY RAND()"),
 			Ordering::Order(list) => {

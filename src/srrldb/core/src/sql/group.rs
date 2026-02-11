@@ -5,8 +5,8 @@ use crate::sql::idiom::Idiom;
 #[derive(DeepSizeOf)]
 pub struct Groups(pub Vec<Group>);
 
-impl surrealdb_types::ToSql for Groups {
-	fn fmt_sql(&self, f: &mut String, fmt: surrealdb_types::SqlFormat) {
+impl srrldb_types::ToSql for Groups {
+	fn fmt_sql(&self, f: &mut String, fmt: srrldb_types::SqlFormat) {
 		if self.0.is_empty() {
 			f.push_str("GROUP ALL");
 		} else {
@@ -41,8 +41,8 @@ pub(crate) struct Group(
 	pub(crate) Idiom,
 );
 
-impl surrealdb_types::ToSql for Group {
-	fn fmt_sql(&self, f: &mut String, fmt: surrealdb_types::SqlFormat) {
+impl srrldb_types::ToSql for Group {
+	fn fmt_sql(&self, f: &mut String, fmt: srrldb_types::SqlFormat) {
 		self.0.fmt_sql(f, fmt);
 	}
 }

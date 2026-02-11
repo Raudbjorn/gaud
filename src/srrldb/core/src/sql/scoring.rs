@@ -2,7 +2,7 @@ use priority_lfu::DeepSizeOf;
 use std::hash::{Hash, Hasher};
 
 use revision::revisioned;
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 #[revisioned(revision = 1)]
 #[derive(DeepSizeOf)]

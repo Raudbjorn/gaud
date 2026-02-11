@@ -1,7 +1,7 @@
 use anyhow::Result;
 use headers::{ContentType, HeaderMapExt};
 use mime::{APPLICATION_JSON, APPLICATION_OCTET_STREAM, Mime, TEXT_PLAIN};
-use surrealdb_types::Value;
+use srrldb_types::Value;
 
 use super::common::{APPLICATION_CBOR, APPLICATION_SDB_FB};
 use crate::api::err::ApiError;

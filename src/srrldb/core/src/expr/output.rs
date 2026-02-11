@@ -1,4 +1,4 @@
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 use crate::expr::field::{Fields, Selector};
 use crate::expr::{Expr, Field, Literal};

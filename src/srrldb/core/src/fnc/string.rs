@@ -1,7 +1,7 @@
 use std::ops::Bound;
 
 use anyhow::{Result, ensure};
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 
 use super::args::{Any, Cast, Optional};
 use crate::cnf::GENERATION_ALLOCATION_LIMIT;
@@ -638,7 +638,7 @@ pub mod semver {
 
 #[cfg(test)]
 mod tests {
-	use surrealdb_types::ToSql;
+	use srrldb_types::ToSql;
 
 	use super::{matches, replace, slice};
 	use crate::fnc::args::{Cast, Optional};

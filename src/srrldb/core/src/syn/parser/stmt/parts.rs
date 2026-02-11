@@ -1,7 +1,7 @@
 //! Contains parsing code for smaller common parts of statements.
 
 use reblessive::Stk;
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 
 use crate::sql::changefeed::ChangeFeed;
 use crate::sql::index::{Distance, VectorType};
@@ -576,7 +576,7 @@ impl Parser<'_> {
 					DistanceKind::Jaccard => Distance::Jaccard,
 
 					DistanceKind::Minkowski => {
-						let distance: surrealdb_types::Number = self.next_token_value()?;
+						let distance: srrldb_types::Number = self.next_token_value()?;
 						Distance::Minkowski(distance)
 					}
 					DistanceKind::Pearson => Distance::Pearson,

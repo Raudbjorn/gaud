@@ -3,7 +3,7 @@ use std::ops::Deref;
 use priority_lfu::DeepSizeOf;
 use reblessive::tree::Stk;
 use revision::{DeserializeRevisioned, Revisioned, SerializeRevisioned};
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 
 use super::FlowResult;
 use crate::ctx::{Context, FrozenContext};
@@ -90,7 +90,7 @@ impl Block {
 }
 
 impl ToSql for Block {
-	fn fmt_sql(&self, f: &mut String, fmt: surrealdb_types::SqlFormat) {
+	fn fmt_sql(&self, f: &mut String, fmt: srrldb_types::SqlFormat) {
 		let block: crate::sql::Block = self.clone().into();
 		block.fmt_sql(f, fmt);
 	}

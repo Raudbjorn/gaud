@@ -1,4 +1,4 @@
-use surrealdb_types::{Array, SurrealValue, Value};
+use srrldb_types::{Array, SurrealValue, Value};
 
 ////////////////////////////////////////////////////
 ////////////// Enum mixed with value ///////////////

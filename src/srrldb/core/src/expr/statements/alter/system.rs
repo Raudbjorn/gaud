@@ -1,5 +1,5 @@
 use reblessive::tree::Stk;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use crate::ctx::FrozenContext;
 use crate::dbs::Options;

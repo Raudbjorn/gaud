@@ -1,6 +1,6 @@
 use revision::revisioned;
 use storekey::{BorrowDecode, Encode};
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 use crate::val::IndexFormat;
 
@@ -40,8 +40,8 @@ impl File {
 	}
 }
 
-impl From<surrealdb_types::File> for File {
-	fn from(v: surrealdb_types::File) -> Self {
+impl From<srrldb_types::File> for File {
+	fn from(v: srrldb_types::File) -> Self {
 		Self {
 			bucket: v.bucket,
 			key: v.key,
@@ -49,9 +49,9 @@ impl From<surrealdb_types::File> for File {
 	}
 }
 
-impl From<File> for surrealdb_types::File {
+impl From<File> for srrldb_types::File {
 	fn from(x: File) -> Self {
-		surrealdb_types::File::new(x.bucket, x.key)
+		srrldb_types::File::new(x.bucket, x.key)
 	}
 }
 

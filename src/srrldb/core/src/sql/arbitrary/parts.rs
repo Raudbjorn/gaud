@@ -2,7 +2,7 @@ use std::ops::Bound;
 use std::sync::LazyLock;
 
 use arbitrary::Arbitrary;
-use surrealdb_types::ToSql as _;
+use srrldb_types::ToSql as _;
 
 use crate::sql::access_type::{JwtAccess, JwtAccessIssue, JwtAccessVerify};
 use crate::sql::arbitrary::idiom::plain_idiom;
