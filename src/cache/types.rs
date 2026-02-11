@@ -103,6 +103,7 @@ pub struct CacheStats {
     pub hits_stream_exact: AtomicU64,
     pub hits_stream_semantic: AtomicU64,
     pub misses: AtomicU64,
+    pub misses_stream: AtomicU64,
 }
 
 impl CacheStats {
@@ -113,6 +114,7 @@ impl CacheStats {
             hits_stream_exact: AtomicU64::new(0),
             hits_stream_semantic: AtomicU64::new(0),
             misses: AtomicU64::new(0),
+            misses_stream: AtomicU64::new(0),
         }
     }
 
@@ -136,25 +138,41 @@ impl CacheStats {
         self.hits_stream_semantic.fetch_add(1, Ordering::Relaxed);
     }
 
+    pub fn record_stream_miss(&self) {
+        self.misses_stream.fetch_add(1, Ordering::Relaxed);
+    }
+
     pub fn snapshot(&self) -> CacheStatsSnapshot {
         let exact = self.hits_exact.load(Ordering::Relaxed);
         let semantic = self.hits_semantic.load(Ordering::Relaxed);
         let stream_exact = self.hits_stream_exact.load(Ordering::Relaxed);
         let stream_semantic = self.hits_stream_semantic.load(Ordering::Relaxed);
         let misses = self.misses.load(Ordering::Relaxed);
-        let total = exact + semantic + stream_exact + stream_semantic + misses;
-        let hit_rate = if total > 0 {
-            (exact + semantic + stream_exact + stream_semantic) as f64 / total as f64
+        let stream_misses = self.misses_stream.load(Ordering::Relaxed);
+
+        let non_stream_total = exact + semantic + misses;
+        let hit_rate = if non_stream_total > 0 {
+            (exact + semantic) as f64 / non_stream_total as f64
         } else {
             0.0
         };
+
+        let stream_total = stream_exact + stream_semantic + stream_misses;
+        let stream_hit_rate = if stream_total > 0 {
+            (stream_exact + stream_semantic) as f64 / stream_total as f64
+        } else {
+            0.0
+        };
+
         CacheStatsSnapshot {
             hits_exact: exact,
             hits_semantic: semantic,
             hits_stream_exact: stream_exact,
             hits_stream_semantic: stream_semantic,
             misses,
+            misses_stream: stream_misses,
             hit_rate,
+            stream_hit_rate,
         }
     }
 }
@@ -167,7 +185,9 @@ pub struct CacheStatsSnapshot {
     pub hits_stream_exact: u64,
     pub hits_stream_semantic: u64,
     pub misses: u64,
+    pub misses_stream: u64,
     pub hit_rate: f64,
+    pub stream_hit_rate: f64,
 }
 
 // ---------------------------------------------------------------------------
