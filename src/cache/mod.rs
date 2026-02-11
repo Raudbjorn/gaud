@@ -13,7 +13,7 @@ pub mod types;
 
 use crate::config::{CacheConfig, CacheMode};
 use crate::providers::types::{
-    ChatRequest, ChatResponse, ChatChunk, ChatMessage, MessageRole, MessageContent,
+    ChatRequest, ChatResponse, ChatChunk,
     Choice, ResponseMessage, Usage
 };
 
@@ -62,6 +62,7 @@ impl SemanticCacheService {
 
     /// Helper for tests to inject a pre-populated store.
     #[cfg(test)]
+    #[allow(dead_code)]
     pub(crate) fn new_with_store(store: CacheStore, config: CacheConfig) -> Self {
         Self {
             store,
@@ -403,7 +404,7 @@ impl SemanticCacheService {
 
     /// Reconstruct a full ChatResponse from a sequence of SSE chunks.
     fn reconstruct_response(
-        request: &ChatRequest,
+        _request: &ChatRequest,
         events: &[String],
     ) -> Result<ChatResponse, CacheError> {
         let mut full_content = String::new();
@@ -536,11 +537,11 @@ impl StreamCacheOps for SemanticCacheService {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    #[cfg(feature = "cache-ephemeral")]
     use crate::cache::store::CacheStore;
     use crate::providers::types::{ChatRequest, ChatMessage, MessageRole, MessageContent};
-    use std::sync::Arc;
 
+    #[allow(dead_code)]
     fn test_request() -> ChatRequest {
         ChatRequest {
             model: "test-model".into(),

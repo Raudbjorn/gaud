@@ -1859,6 +1859,8 @@ pub fn parse_for() {
 					version: Expr::Literal(Literal::None),
 					timeout: Expr::Literal(Literal::None),
 					explain: None,
+					cache: None,
+					parallel: false,
 					tempfiles: false
 				}))),
 				op: BinaryOperator::Multiply,
@@ -2201,6 +2203,8 @@ fn parse_insert_select() {
 				version: Expr::Literal(Literal::None),
 				timeout: Expr::Literal(Literal::None),
 				explain: None,
+				cache: None,
+				parallel: false,
 				tempfiles: false
 			}))),
 			ignore: true,
