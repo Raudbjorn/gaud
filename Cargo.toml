@@ -240,8 +240,6 @@ hmac = "0.12"
 # HTTP Client
 reqwest = { version = "0.12", features = ["json", "stream"] }
 
-# Kiro gateway (Amazon Q / AWS CodeWhisperer)
-kiro-gateway = { path = "kiro-gateway-rs" }
 
 # Embedded SurrealDB for semantic cache (HNSW vector index)
 srrldb = { workspace = true, features = ["allocator"] }
