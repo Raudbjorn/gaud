@@ -1,14 +1,9 @@
-use surrealdb::engine::local::Db;
-#[cfg(feature = "cache-persistent")]
-use surrealdb::engine::local::RocksDb;
-#[cfg(feature = "cache-ephemeral")]
-use surrealdb::engine::local::Mem;
-use surrealdb::Surreal;
+use srrldb::Database;
 
 use crate::cache::types::{
     CacheEntry, CacheError, CacheHitInfo, CacheHitKind, CacheLookupResult, CacheMetadata,
 };
-use surrealdb::types::SurrealValue;
+use srrldb::types::SurrealValue;
 
 // ---------------------------------------------------------------------------
 // Error mapping helpers
@@ -39,7 +34,7 @@ impl<T, E: std::fmt::Display> MapCacheErr<T> for Result<T, E> {
 /// for LLM prompt/response pairs. All storage, indexing, and transaction
 /// management is delegated to SurrealDB's embedded engine.
 pub struct CacheStore {
-    db: Surreal<Db>,
+    db: Database,
     dimension: u16,
     hash_version: String,
 }
@@ -52,7 +47,7 @@ impl CacheStore {
     /// restarts).
     #[cfg(feature = "cache-persistent")]
     pub async fn persistent(path: &str, dimension: u16) -> Result<Self, CacheError> {
-        let db = Surreal::new::<RocksDb>(path)
+        let db = Database::new_rocksdb(path)
             .await
             .map_err(|e| CacheError::InitFailed(e.to_string()))?;
         // Note: ephemeral() skips warmup since there's no persisted data to load.
@@ -71,7 +66,7 @@ impl CacheStore {
     /// Initialize an ephemeral in-memory cache. Suitable for testing.
     #[cfg(feature = "cache-ephemeral")]
     pub async fn ephemeral(dimension: u16) -> Result<Self, CacheError> {
-        let db = Surreal::new::<Mem>(())
+        let db = Database::new_mem()
             .await
             .map_err(|e| CacheError::InitFailed(e.to_string()))?;
 
@@ -87,7 +82,7 @@ impl CacheStore {
 
     /// Apply schema with versioning and compatibility checks.
     async fn apply_schema(&self) -> Result<(), CacheError> {
-        self.db.use_ns("gaud").use_db("cache").await.schema_err()?;
+        self.db.use_ns_db("gaud", "cache").await.schema_err()?;
 
         // 1. Schema versioning - removed dead code
         // The schema_version table was defined but never used.
@@ -119,7 +114,7 @@ impl CacheStore {
             dim = self.dimension
         );
 
-        self.db.query(schema).await.schema_err()?;
+        self.db.query(&schema).await.schema_err()?;
 
         Ok(())
     }
@@ -228,11 +223,11 @@ impl CacheStore {
             .await
             .lookup_err()?;
 
-        let entry_with_score: Option<surrealdb::types::Value> = response.take(0usize).lookup_err()?;
+        let entry_with_score: Option<srrldb::types::Value> = response.take(0usize).lookup_err()?;
 
         if let Some(val) = entry_with_score {
             let score = match val.get("score") {
-                surrealdb::types::Value::Number(n) => n.to_f64().unwrap_or(0.0) as f32,
+                srrldb::types::Value::Number(n) => n.to_f64().unwrap_or(0.0) as f32,
                 _ => 0.0,
             };
             if score >= threshold {
@@ -326,7 +321,7 @@ impl CacheStore {
             .await
             .lookup_err()?;
 
-        let removed: Vec<CacheEntry> = response.take(0usize).lookup_err()?;
+        let removed: Vec<CacheEntry> = response.take_vec(0usize).lookup_err()?;
         Ok(removed.len() as u64)
     }
 
@@ -344,7 +339,7 @@ impl CacheStore {
             .await
             .lookup_err()?;
 
-        let removed: Vec<CacheEntry> = response.take(0usize).lookup_err()?;
+        let removed: Vec<CacheEntry> = response.take_vec(0usize).lookup_err()?;
         Ok(removed.len() as u64)
     }
 
@@ -379,10 +374,10 @@ impl CacheStore {
             .lookup_err()?;
 
         Ok(response
-            .take::<Option<surrealdb::types::Value>>(0usize)
+            .take::<Option<srrldb::types::Value>>(0usize)
             .lookup_err()?
             .and_then(|v| match v.get("count") {
-                surrealdb::types::Value::Number(n) => n.to_int().map(|i| i as u64),
+                srrldb::types::Value::Number(n) => n.to_int().map(|i| i as u64),
                 _ => None,
             })
             .unwrap_or(0))
@@ -417,7 +412,7 @@ mod tests {
             embedding: Some(embedding.clone()),
             request_json: "{}".into(),
             response_json: "{\"result\": \"ok\"}".into(),
-            created_at: surrealdb::types::Datetime::now(),
+            created_at: srrldb::types::Datetime::now(),
             hit_count: 0,
             last_hit: None,
             hash_version: "v1".into(),
@@ -478,7 +473,7 @@ mod tests {
             embedding: Some(vec![1.0, 2.0]), // Wrong dimension
             request_json: "{}".into(),
             response_json: "{}".into(),
-            created_at: surrealdb::types::Datetime::now(),
+            created_at: srrldb::types::Datetime::now(),
             hit_count: 0,
             last_hit: None,
             hash_version: "v1".into(),
