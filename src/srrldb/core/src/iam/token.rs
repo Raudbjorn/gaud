@@ -5,7 +5,7 @@ use std::sync::LazyLock;
 use anyhow::{Result, bail};
 use jsonwebtoken::{Algorithm, Header};
 use serde::{Deserialize, Serialize};
-use surrealdb_types::SurrealValue;
+use srrldb_types::SurrealValue;
 
 use crate::dbs::Session;
 use crate::err::Error;
@@ -53,7 +53,7 @@ fn decode_access_token_claims(token: &str) -> Result<jsonwebtoken::TokenData<Cla
 /// # Examples
 ///
 /// ```rust
-/// use surrealdb_core::iam::token::Token;
+/// use srrldb_core::iam::token::Token;
 ///
 /// // Access-only token
 /// let access_token = Token::Access("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...".to_string());

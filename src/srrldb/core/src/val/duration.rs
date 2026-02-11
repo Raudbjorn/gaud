@@ -6,7 +6,7 @@ use std::{fmt, ops, time};
 use anyhow::Result;
 use revision::revisioned;
 use storekey::{BorrowDecode, Encode};
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use crate::err::Error;
 use crate::expr::statements::info::InfoStructure;

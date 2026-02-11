@@ -31,15 +31,15 @@ impl Deref for Group {
 	}
 }
 
-impl surrealdb_types::ToSql for Groups {
-	fn fmt_sql(&self, f: &mut String, fmt: surrealdb_types::SqlFormat) {
+impl srrldb_types::ToSql for Groups {
+	fn fmt_sql(&self, f: &mut String, fmt: srrldb_types::SqlFormat) {
 		let sql_groups: crate::sql::Groups = self.clone().into();
 		sql_groups.fmt_sql(f, fmt);
 	}
 }
 
-impl surrealdb_types::ToSql for Group {
-	fn fmt_sql(&self, f: &mut String, fmt: surrealdb_types::SqlFormat) {
+impl srrldb_types::ToSql for Group {
+	fn fmt_sql(&self, f: &mut String, fmt: srrldb_types::SqlFormat) {
 		let sql_group: crate::sql::Group = self.clone().into();
 		sql_group.fmt_sql(f, fmt);
 	}

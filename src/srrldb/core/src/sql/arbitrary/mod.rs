@@ -8,7 +8,7 @@ use arbitrary::{Arbitrary, Result, Unstructured};
 pub(crate) use idiom::*;
 pub(crate) use parts::*;
 use rust_decimal::Decimal;
-use surrealdb_types::Duration;
+use srrldb_types::Duration;
 pub(crate) use utils::*;
 
 use crate::sql::changefeed::ChangeFeed;

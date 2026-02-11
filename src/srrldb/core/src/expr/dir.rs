@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use storekey::{BorrowDecode, Encode};
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 #[derive(
 	Clone,

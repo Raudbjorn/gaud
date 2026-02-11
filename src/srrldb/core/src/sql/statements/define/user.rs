@@ -4,7 +4,7 @@ use argon2::password_hash::{PasswordHasher, SaltString};
 use rand::Rng;
 use rand::distributions::Alphanumeric;
 use rand::rngs::OsRng;
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 use super::DefineKind;
 use crate::fmt::{CoverStmts, EscapeKwFreeIdent, QuoteStr};

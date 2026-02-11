@@ -1,7 +1,7 @@
 use anyhow::{Result, bail, ensure};
 use rand::Rng;
 use reblessive::tree::Stk;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use crate::catalog::providers::{
 	AuthorisationProvider, CatalogProvider, NamespaceProvider, UserProvider,

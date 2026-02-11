@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::{Result, ensure};
-use surrealdb_types::{HashMap, object};
+use srrldb_types::{HashMap, object};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 

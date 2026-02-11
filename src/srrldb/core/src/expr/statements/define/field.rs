@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::{Result, bail, ensure};
 use reblessive::tree::Stk;
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 use uuid::Uuid;
 
 use super::DefineKind;

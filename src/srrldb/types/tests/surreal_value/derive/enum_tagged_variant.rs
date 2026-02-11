@@ -1,4 +1,4 @@
-use surrealdb_types::{Number, SurrealValue, Value, array, object};
+use srrldb_types::{Number, SurrealValue, Value, array, object};
 
 ////////////////////////////////////////////////////
 /////////////// Enum tagged variant ////////////////

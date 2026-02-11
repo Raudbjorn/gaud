@@ -1,5 +1,5 @@
 use priority_lfu::DeepSizeOf;
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 use crate::fmt::CoverStmts;
 use crate::sql::Expr;
@@ -68,8 +68,8 @@ impl PermissionKind {
 	}
 }
 
-impl surrealdb_types::ToSql for Permissions {
-	fn fmt_sql(&self, f: &mut String, fmt: surrealdb_types::SqlFormat) {
+impl srrldb_types::ToSql for Permissions {
+	fn fmt_sql(&self, f: &mut String, fmt: srrldb_types::SqlFormat) {
 		f.push_str("PERMISSIONS");
 		if self.is_none() {
 			f.push_str(" NONE");

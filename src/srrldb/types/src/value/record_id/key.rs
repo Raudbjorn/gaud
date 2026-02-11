@@ -1,7 +1,7 @@
 use priority_lfu::DeepSizeOf;
 use serde::{Deserialize, Serialize};
 
-use crate as surrealdb_types;
+use crate as srrldb_types;
 use crate::sql::{SqlFormat, ToSql};
 use crate::{Array, Number, Object, RecordIdKeyRange, SurrealValue, Uuid, Value, kind};
 

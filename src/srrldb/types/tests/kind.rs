@@ -1,4 +1,4 @@
-use surrealdb_types::{GeometryKind, Kind, kind};
+use srrldb_types::{GeometryKind, Kind, kind};
 
 #[test]
 fn test_kind_proc_macro() {
@@ -76,31 +76,31 @@ fn test_kind_proc_macro() {
 		(string | int | bool) => Kind::Either(vec![Kind::String, Kind::Int, Kind::Bool]),
 
 		// Literals
-		(true) => Kind::Literal(surrealdb_types::KindLiteral::Bool(true)),
-		(false) => Kind::Literal(surrealdb_types::KindLiteral::Bool(false)),
-		(42) => Kind::Literal(surrealdb_types::KindLiteral::Integer(42)),
-		("hello") => Kind::Literal(surrealdb_types::KindLiteral::String("hello".to_string())),
+		(true) => Kind::Literal(srrldb_types::KindLiteral::Bool(true)),
+		(false) => Kind::Literal(srrldb_types::KindLiteral::Bool(false)),
+		(42) => Kind::Literal(srrldb_types::KindLiteral::Integer(42)),
+		("hello") => Kind::Literal(srrldb_types::KindLiteral::String("hello".to_string())),
 
 		// Kind:: prefix
 		(Kind::String) => Kind::String,
 		(Kind::Bool) => Kind::Bool,
 
 		// Literal:: prefix
-		(Literal::Bool(true)) => Kind::Literal(surrealdb_types::KindLiteral::Bool(true)),
-		(Literal::Integer(42)) => Kind::Literal(surrealdb_types::KindLiteral::Integer(42)),
+		(Literal::Bool(true)) => Kind::Literal(srrldb_types::KindLiteral::Bool(true)),
+		(Literal::Integer(42)) => Kind::Literal(srrldb_types::KindLiteral::Integer(42)),
 
 		// Parenthesized expressions (escape hatch)
-		((surrealdb_types::Kind::String)) => Kind::String,
-		(array<(surrealdb_types::Kind::String)>) => Kind::Array(Box::new(Kind::String), None),
-		(set<(surrealdb_types::Kind::Int), 5>) => Kind::Set(Box::new(Kind::Int), Some(5)),
+		((srrldb_types::Kind::String)) => Kind::String,
+		(array<(srrldb_types::Kind::String)>) => Kind::Array(Box::new(Kind::String), None),
+		(set<(srrldb_types::Kind::Int), 5>) => Kind::Set(Box::new(Kind::Int), Some(5)),
 
 		// Object literals
-		({ status: string }) => Kind::Literal(surrealdb_types::KindLiteral::Object(
+		({ status: string }) => Kind::Literal(srrldb_types::KindLiteral::Object(
 			std::collections::BTreeMap::from([
 				("status".to_string(), Kind::String)
 			])
 		)),
-		({ status: string, "user-id": int }) => Kind::Literal(surrealdb_types::KindLiteral::Object(
+		({ status: string, "user-id": int }) => Kind::Literal(srrldb_types::KindLiteral::Object(
 			std::collections::BTreeMap::from([
 				("status".to_string(), Kind::String),
 				("user-id".to_string(), Kind::Int)
@@ -109,29 +109,29 @@ fn test_kind_proc_macro() {
 
 		// Union of object literals (like the user's example)
 		({ status: Literal::String("OK".to_string()), result: any } | { status: Literal::String("ERR".to_string()), result: string }) => Kind::Either(vec![
-			Kind::Literal(surrealdb_types::KindLiteral::Object(
+			Kind::Literal(srrldb_types::KindLiteral::Object(
 				std::collections::BTreeMap::from([
-					("status".to_string(), Kind::Literal(surrealdb_types::KindLiteral::String("OK".to_string()))),
+					("status".to_string(), Kind::Literal(srrldb_types::KindLiteral::String("OK".to_string()))),
 					("result".to_string(), Kind::Any)
 				])
 			)),
-			Kind::Literal(surrealdb_types::KindLiteral::Object(
+			Kind::Literal(srrldb_types::KindLiteral::Object(
 				std::collections::BTreeMap::from([
-					("status".to_string(), Kind::Literal(surrealdb_types::KindLiteral::String("ERR".to_string()))),
+					("status".to_string(), Kind::Literal(srrldb_types::KindLiteral::String("ERR".to_string()))),
 					("result".to_string(), Kind::String)
 				])
 			))
 		]),
 
 		// Array literals
-		([]) => Kind::Literal(surrealdb_types::KindLiteral::Array(vec![])),
-		([string]) => Kind::Literal(surrealdb_types::KindLiteral::Array(vec![Kind::String])),
-		([string, int, bool]) => Kind::Literal(surrealdb_types::KindLiteral::Array(vec![
+		([]) => Kind::Literal(srrldb_types::KindLiteral::Array(vec![])),
+		([string]) => Kind::Literal(srrldb_types::KindLiteral::Array(vec![Kind::String])),
+		([string, int, bool]) => Kind::Literal(srrldb_types::KindLiteral::Array(vec![
 			Kind::String,
 			Kind::Int,
 			Kind::Bool
 		])),
-		([string | int, bool]) => Kind::Literal(surrealdb_types::KindLiteral::Array(vec![
+		([string | int, bool]) => Kind::Literal(srrldb_types::KindLiteral::Array(vec![
 			Kind::Either(vec![Kind::String, Kind::Int]),
 			Kind::Bool
 		]))

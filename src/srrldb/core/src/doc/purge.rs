@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::{Result, bail};
 use futures::StreamExt;
 use reblessive::tree::Stk;
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 
 use crate::catalog::providers::TableProvider;
 use crate::ctx::{Context, FrozenContext};

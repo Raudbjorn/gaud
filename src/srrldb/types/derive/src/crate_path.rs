@@ -15,7 +15,7 @@ impl CratePath {
 	/// Parse the crate path from attributes.
 	///
 	/// Looks for `#[surreal(crate = "path::to::crate")]` attribute.
-	/// Defaults to `::surrealdb_types` if not specified.
+	/// Defaults to `::srrldb_types` if not specified.
 	pub fn parse(attrs: &[Attribute]) -> Self {
 		for attr in attrs {
 			if attr.path().is_ident("surreal") {
@@ -40,7 +40,7 @@ impl CratePath {
 			}
 		}
 
-		// Default to ::surrealdb_types
+		// Default to ::srrldb_types
 		Self::default()
 	}
 
@@ -108,7 +108,7 @@ impl CratePath {
 impl Default for CratePath {
 	fn default() -> Self {
 		Self {
-			path: quote! { ::surrealdb_types },
+			path: quote! { ::srrldb_types },
 		}
 	}
 }

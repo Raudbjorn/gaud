@@ -1,6 +1,6 @@
 use anyhow::Result;
 use reblessive::tree::Stk;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 use uuid::Uuid;
 
 use crate::catalog::TableDefinition;

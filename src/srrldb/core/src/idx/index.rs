@@ -15,7 +15,7 @@
 
 use anyhow::{Result, bail};
 use reblessive::tree::Stk;
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 
 use crate::catalog::{
 	DatabaseId, FullTextParams, HnswParams, Index, IndexDefinition, NamespaceId, TableId,

@@ -1,6 +1,6 @@
 use geo::Point;
 use rstest::rstest;
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 
 use crate::sql::literal::ObjectEntry;
 use crate::sql::statements::access::{AccessStatementGrant, Subject};

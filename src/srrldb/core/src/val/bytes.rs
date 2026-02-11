@@ -3,7 +3,7 @@ use std::ops::Deref;
 use priority_lfu::DeepSizeOf;
 use revision::revisioned;
 use storekey::{BorrowDecode, Encode};
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 use crate::val::IndexFormat;
 
@@ -40,15 +40,15 @@ impl From<bytes::Bytes> for Bytes {
 	}
 }
 
-impl From<surrealdb_types::Bytes> for Bytes {
-	fn from(v: surrealdb_types::Bytes) -> Self {
+impl From<srrldb_types::Bytes> for Bytes {
+	fn from(v: srrldb_types::Bytes) -> Self {
 		Bytes(v.into_inner())
 	}
 }
 
-impl From<Bytes> for surrealdb_types::Bytes {
+impl From<Bytes> for srrldb_types::Bytes {
 	fn from(v: Bytes) -> Self {
-		surrealdb_types::Bytes::from(v.into_inner())
+		srrldb_types::Bytes::from(v.into_inner())
 	}
 }
 

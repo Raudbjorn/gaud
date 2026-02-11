@@ -1,6 +1,6 @@
 use priority_lfu::DeepSizeOf;
 use revision::{DeserializeRevisioned, Revisioned, SerializeRevisioned, revisioned};
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 use uuid::Uuid;
 
 use crate::catalog::{DatabaseId, NamespaceId, Permissions, ViewDefinition};

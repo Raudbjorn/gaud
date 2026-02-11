@@ -40,15 +40,15 @@ impl TopLevelExpr {
 	}
 }
 
-impl surrealdb_types::ToSql for TopLevelExpr {
-	fn fmt_sql(&self, f: &mut String, fmt: surrealdb_types::SqlFormat) {
+impl srrldb_types::ToSql for TopLevelExpr {
+	fn fmt_sql(&self, f: &mut String, fmt: srrldb_types::SqlFormat) {
 		let sql_expr: crate::sql::TopLevelExpr = self.clone().into();
 		sql_expr.fmt_sql(f, fmt);
 	}
 }
 
-impl surrealdb_types::ToSql for LogicalPlan {
-	fn fmt_sql(&self, f: &mut String, fmt: surrealdb_types::SqlFormat) {
+impl srrldb_types::ToSql for LogicalPlan {
+	fn fmt_sql(&self, f: &mut String, fmt: srrldb_types::SqlFormat) {
 		let sql_ast: crate::sql::Ast = self.clone().into();
 		sql_ast.fmt_sql(f, fmt);
 	}

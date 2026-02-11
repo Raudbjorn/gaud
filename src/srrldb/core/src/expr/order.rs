@@ -2,7 +2,7 @@ use std::cmp;
 use std::ops::Deref;
 
 use priority_lfu::DeepSizeOf;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use crate::expr::Value;
 use crate::expr::idiom::Idiom;

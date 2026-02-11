@@ -2,8 +2,8 @@
 //!
 //! This module provides shared infrastructure for all benchmark files including:
 
-use surrealdb_core::dbs::{Capabilities, Session};
-use surrealdb_core::kvs::Datastore;
+use srrldb_core::dbs::{Capabilities, Session};
+use srrldb_core::kvs::Datastore;
 use tokio::runtime::Runtime;
 
 /// Create a new multithreaded Tokio runtime for benchmarks
@@ -66,9 +66,9 @@ macro_rules! bench {
 			// Create a multithreaded runtime for async benchmarking
 			let runtime = $crate::common::create_runtime();
 			// Run an initial query for validation
-			let result: surrealdb_types::Value = execute!($dbs, $ses, $($fmt)*).remove(0).result.unwrap();
+			let result: srrldb_types::Value = execute!($dbs, $ses, $($fmt)*).remove(0).result.unwrap();
 			// Validate the result against the expected expression
-			let check: fn(&surrealdb_types::Value) -> bool = $expected;
+			let check: fn(&srrldb_types::Value) -> bool = $expected;
 			assert!(check(&result), "Result did not match expected value: {result:?}");
 			// Iterate over the benchmark
 			b.to_async(&runtime).iter(|| async {

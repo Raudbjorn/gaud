@@ -1,5 +1,5 @@
 use http::{HeaderMap, HeaderValue, StatusCode};
-use surrealdb_types::SurrealValue;
+use srrldb_types::SurrealValue;
 
 use crate::api::X_SURREAL_REQUEST_ID;
 use crate::api::err::ApiError;

@@ -1,7 +1,7 @@
 use priority_lfu::DeepSizeOf;
 use revision::revisioned;
 use serde::{Deserialize, Serialize};
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 #[revisioned(revision = 1)]
 #[derive(Clone, Debug, Default, Eq, PartialEq, PartialOrd, Serialize, Deserialize, Hash)]

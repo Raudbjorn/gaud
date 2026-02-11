@@ -1,6 +1,6 @@
 use std::fmt::{Display, Write};
 
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 // TODO: Remove duplicated code between core and types
 

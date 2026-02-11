@@ -1,6 +1,6 @@
 use priority_lfu::DeepSizeOf;
 pub mod field;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 mod database;
 mod index;
 mod sequence;

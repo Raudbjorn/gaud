@@ -1,7 +1,7 @@
 use priority_lfu::DeepSizeOf;
 use revision::revisioned;
 use serde::{Deserialize, Serialize};
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use crate::catalog::Permission;
 use crate::expr::statements::info::InfoStructure;

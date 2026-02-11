@@ -51,14 +51,14 @@ impl UnitValue {
 
 			let (value, is_value, kind_of) = match ident_str.as_str() {
 				"none" => (
-					quote!(surrealdb_types::Value::None),
+					quote!(srrldb_types::Value::None),
 					quote!(value.is_none()),
-					quote!(surrealdb_types::Kind::None),
+					quote!(srrldb_types::Kind::None),
 				),
 				"null" => (
-					quote!(surrealdb_types::Value::Null),
+					quote!(srrldb_types::Value::Null),
 					quote!(value.is_null()),
-					quote!(surrealdb_types::Kind::Null),
+					quote!(srrldb_types::Kind::Null),
 				),
 				_ => panic!(
 					"Invalid identifier: {}. Only null and none identifiers are supported.",
@@ -81,41 +81,41 @@ impl UnitValue {
 		let (value, is_value, kind_of) = match lit {
 			// Literal true
 			Lit::Bool(x) if x.value => (
-				quote!(surrealdb_types::Value::Bool(true)),
+				quote!(srrldb_types::Value::Bool(true)),
 				quote!(value.is_true()),
-				quote!(surrealdb_types::Kind::Literal(surrealdb_types::KindLiteral::Bool(true))),
+				quote!(srrldb_types::Kind::Literal(srrldb_types::KindLiteral::Bool(true))),
 			),
 			// Literal false
 			Lit::Bool(x) if !x.value => (
-				quote!(surrealdb_types::Value::Bool(false)),
+				quote!(srrldb_types::Value::Bool(false)),
 				quote!(value.is_false()),
-				quote!(surrealdb_types::Kind::Literal(surrealdb_types::KindLiteral::Bool(false))),
+				quote!(srrldb_types::Kind::Literal(srrldb_types::KindLiteral::Bool(false))),
 			),
 			// Literal string
 			Lit::Str(x) => {
 				let inner = x.value();
 				(
-					quote!(surrealdb_types::Value::String(#inner.to_string())),
+					quote!(srrldb_types::Value::String(#inner.to_string())),
 					quote!(value.is_string_and(|s| s == #inner)),
-					quote!(surrealdb_types::Kind::Literal(surrealdb_types::KindLiteral::String(#inner.to_string()))),
+					quote!(srrldb_types::Kind::Literal(srrldb_types::KindLiteral::String(#inner.to_string()))),
 				)
 			}
 			// Literal integer
 			Lit::Int(x) => {
 				let inner = x.base10_digits().parse::<i64>().unwrap();
 				(
-					quote!(surrealdb_types::Value::Number(surrealdb_types::Number::Int(#inner))),
+					quote!(srrldb_types::Value::Number(srrldb_types::Number::Int(#inner))),
 					quote!(value.is_int_and(|i| i == &#inner)),
-					quote!(surrealdb_types::Kind::Literal(surrealdb_types::KindLiteral::Integer(#inner))),
+					quote!(srrldb_types::Kind::Literal(srrldb_types::KindLiteral::Integer(#inner))),
 				)
 			}
 			// Literal float
 			Lit::Float(x) => {
 				let inner = x.base10_digits().parse::<f64>().unwrap();
 				(
-					quote!(surrealdb_types::Value::Number(surrealdb_types::Number::Float(#inner))),
+					quote!(srrldb_types::Value::Number(srrldb_types::Number::Float(#inner))),
 					quote!(value.is_float_and(|f| f == &#inner)),
-					quote!(surrealdb_types::Kind::Literal(surrealdb_types::KindLiteral::Float(#inner))),
+					quote!(srrldb_types::Kind::Literal(srrldb_types::KindLiteral::Float(#inner))),
 				)
 			}
 			_ => panic!(

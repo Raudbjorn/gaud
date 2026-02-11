@@ -43,7 +43,7 @@ use crate_path::CratePath;
 /// Basic struct:
 ///
 /// ```ignore
-/// use surrealdb_types::SurrealValue;
+/// use srrldb_types::SurrealValue;
 ///
 /// #[derive(SurrealValue)]
 /// struct Person {
@@ -55,7 +55,7 @@ use crate_path::CratePath;
 /// Enum with variants:
 ///
 /// ```ignore
-/// use surrealdb_types::SurrealValue;
+/// use srrldb_types::SurrealValue;
 ///
 /// #[derive(SurrealValue)]
 /// enum Status {
@@ -112,7 +112,7 @@ pub fn surreal_value(input: TokenStream) -> TokenStream {
 /// # Examples
 ///
 /// ```ignore
-/// use surrealdb_types::{kind, Kind};
+/// use srrldb_types::{kind, Kind};
 ///
 /// // Basic types
 /// let string_kind = kind!(string);
@@ -163,7 +163,7 @@ pub fn kind(input: TokenStream) -> TokenStream {
 /// # Examples
 ///
 /// ```ignore
-/// use surrealdb_types::{write_sql, SqlFormat, ToSql};
+/// use srrldb_types::{write_sql, SqlFormat, ToSql};
 ///
 /// let mut f = String::new();
 /// let fmt = SqlFormat::SingleLine;

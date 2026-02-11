@@ -4,7 +4,7 @@ use priority_lfu::DeepSizeOf;
 use revision::{DeserializeRevisioned, Revisioned, SerializeRevisioned, revisioned};
 use serde::{Deserialize, Serialize};
 use storekey::{BorrowDecode, Encode};
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use crate::catalog::NamespaceId;
 use crate::expr::ChangeFeed;

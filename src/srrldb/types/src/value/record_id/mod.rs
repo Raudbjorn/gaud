@@ -7,9 +7,9 @@ pub mod range;
 pub use key::*;
 pub use range::*;
 use serde::{Deserialize, Serialize};
-use surrealdb_types_derive::write_sql;
+use srrldb_types_derive::write_sql;
 
-use crate as surrealdb_types;
+use crate as srrldb_types;
 use crate::Table;
 use crate::sql::{SqlFormat, ToSql};
 

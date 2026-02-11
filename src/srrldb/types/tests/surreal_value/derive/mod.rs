@@ -6,7 +6,7 @@ mod enum_unit_value;
 mod enum_untagged;
 
 use rstest::rstest;
-use surrealdb_types::{Array, Object, SurrealValue, Uuid, Value, object};
+use srrldb_types::{Array, Object, SurrealValue, Uuid, Value, object};
 
 ////////////////////////////////////////////////////
 ///////////////// Simple struct ////////////////////

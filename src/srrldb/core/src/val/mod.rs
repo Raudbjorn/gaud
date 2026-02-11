@@ -11,7 +11,7 @@ use priority_lfu::DeepSizeOf;
 use revision::revisioned;
 use rust_decimal::prelude::*;
 use storekey::{BorrowDecode, Encode};
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 use crate::err::Error;
 use crate::expr;
@@ -969,19 +969,19 @@ impl FromIterator<(String, Value)> for Value {
 	}
 }
 
-/// Convert our internal value `crate::val::Value` to the public value `surrealdb_types::Value`.
+/// Convert our internal value `crate::val::Value` to the public value `srrldb_types::Value`.
 ///
 /// In the future, as the two types diverge, this function will need access to the context in order
 /// to convert certain values to the public value.
 pub(crate) fn convert_value_to_public_value(
 	value: crate::val::Value,
-) -> Result<surrealdb_types::Value> {
+) -> Result<srrldb_types::Value> {
 	match value {
-		crate::val::Value::None => Ok(surrealdb_types::Value::None),
-		crate::val::Value::Null => Ok(surrealdb_types::Value::Null),
-		crate::val::Value::Bool(value) => Ok(surrealdb_types::Value::Bool(value)),
+		crate::val::Value::None => Ok(srrldb_types::Value::None),
+		crate::val::Value::Null => Ok(srrldb_types::Value::Null),
+		crate::val::Value::Bool(value) => Ok(srrldb_types::Value::Bool(value)),
 		crate::val::Value::Number(value) => convert_number_to_public(value),
-		crate::val::Value::String(value) => Ok(surrealdb_types::Value::String(value)),
+		crate::val::Value::String(value) => Ok(srrldb_types::Value::String(value)),
 		crate::val::Value::Datetime(value) => convert_datetime_to_public(value),
 		crate::val::Value::Duration(value) => convert_duration_to_public(value),
 		crate::val::Value::Uuid(value) => convert_uuid_to_public(value),
@@ -994,48 +994,48 @@ pub(crate) fn convert_value_to_public_value(
 		crate::val::Value::File(value) => convert_file_to_public(value),
 		crate::val::Value::Range(value) => convert_range_to_public(*value),
 		crate::val::Value::Regex(value) => convert_regex_to_public(value),
-		crate::val::Value::Table(value) => Ok(surrealdb_types::Value::Table(value.into())),
+		crate::val::Value::Table(value) => Ok(srrldb_types::Value::Table(value.into())),
 		crate::val::Value::Closure(_) => {
 			Err(anyhow::anyhow!("Closure values cannot be converted to public value"))
 		}
 	}
 }
 
-fn convert_number_to_public(value: crate::val::Number) -> Result<surrealdb_types::Value> {
+fn convert_number_to_public(value: crate::val::Number) -> Result<srrldb_types::Value> {
 	let number = match value {
-		crate::val::Number::Int(i) => surrealdb_types::Number::Int(i),
-		crate::val::Number::Float(f) => surrealdb_types::Number::Float(f),
-		crate::val::Number::Decimal(d) => surrealdb_types::Number::Decimal(d),
+		crate::val::Number::Int(i) => srrldb_types::Number::Int(i),
+		crate::val::Number::Float(f) => srrldb_types::Number::Float(f),
+		crate::val::Number::Decimal(d) => srrldb_types::Number::Decimal(d),
 	};
-	Ok(surrealdb_types::Value::Number(number))
+	Ok(srrldb_types::Value::Number(number))
 }
 
-fn convert_datetime_to_public(value: crate::val::Datetime) -> Result<surrealdb_types::Value> {
-	Ok(surrealdb_types::Value::Datetime(surrealdb_types::Datetime::from(value.0)))
+fn convert_datetime_to_public(value: crate::val::Datetime) -> Result<srrldb_types::Value> {
+	Ok(srrldb_types::Value::Datetime(srrldb_types::Datetime::from(value.0)))
 }
 
-fn convert_duration_to_public(value: crate::val::Duration) -> Result<surrealdb_types::Value> {
-	Ok(surrealdb_types::Value::Duration(surrealdb_types::Duration::from_std(value.0)))
+fn convert_duration_to_public(value: crate::val::Duration) -> Result<srrldb_types::Value> {
+	Ok(srrldb_types::Value::Duration(srrldb_types::Duration::from_std(value.0)))
 }
 
-fn convert_uuid_to_public(value: crate::val::Uuid) -> Result<surrealdb_types::Value> {
-	Ok(surrealdb_types::Value::Uuid(surrealdb_types::Uuid::from(value.0)))
+fn convert_uuid_to_public(value: crate::val::Uuid) -> Result<srrldb_types::Value> {
+	Ok(srrldb_types::Value::Uuid(srrldb_types::Uuid::from(value.0)))
 }
 
-fn convert_bytes_to_public(value: crate::val::Bytes) -> Result<surrealdb_types::Value> {
-	Ok(surrealdb_types::Value::Bytes(surrealdb_types::Bytes::from(value.0)))
+fn convert_bytes_to_public(value: crate::val::Bytes) -> Result<srrldb_types::Value> {
+	Ok(srrldb_types::Value::Bytes(srrldb_types::Bytes::from(value.0)))
 }
 
-fn convert_regex_to_public(value: crate::val::Regex) -> Result<surrealdb_types::Value> {
-	Ok(surrealdb_types::Value::Regex(surrealdb_types::Regex::from(value.0)))
+fn convert_regex_to_public(value: crate::val::Regex) -> Result<srrldb_types::Value> {
+	Ok(srrldb_types::Value::Regex(srrldb_types::Regex::from(value.0)))
 }
 
-fn convert_file_to_public(value: crate::val::File) -> Result<surrealdb_types::Value> {
-	Ok(surrealdb_types::Value::File(surrealdb_types::File::new(value.bucket, value.key)))
+fn convert_file_to_public(value: crate::val::File) -> Result<srrldb_types::Value> {
+	Ok(srrldb_types::Value::File(srrldb_types::File::new(value.bucket, value.key)))
 }
 
-fn convert_geometry_to_public(value: crate::val::Geometry) -> Result<surrealdb_types::Value> {
-	use surrealdb_types::Geometry as PublicGeometry;
+fn convert_geometry_to_public(value: crate::val::Geometry) -> Result<srrldb_types::Value> {
+	use srrldb_types::Geometry as PublicGeometry;
 	let geometry = match value {
 		crate::val::Geometry::Point(p) => PublicGeometry::Point(p),
 		crate::val::Geometry::Line(l) => PublicGeometry::Line(l),
@@ -1047,7 +1047,7 @@ fn convert_geometry_to_public(value: crate::val::Geometry) -> Result<surrealdb_t
 			let converted: Result<Vec<_>> = c
 				.into_iter()
 				.map(|g| {
-					if let surrealdb_types::Value::Geometry(g) = convert_geometry_to_public(g)? {
+					if let srrldb_types::Value::Geometry(g) = convert_geometry_to_public(g)? {
 						Ok(g)
 					} else {
 						Err(anyhow::anyhow!("Failed to convert geometry collection item"))
@@ -1057,36 +1057,36 @@ fn convert_geometry_to_public(value: crate::val::Geometry) -> Result<surrealdb_t
 			PublicGeometry::Collection(converted?)
 		}
 	};
-	Ok(surrealdb_types::Value::Geometry(geometry))
+	Ok(srrldb_types::Value::Geometry(geometry))
 }
 
-fn convert_array_to_public(value: crate::val::Array) -> Result<surrealdb_types::Value> {
+fn convert_array_to_public(value: crate::val::Array) -> Result<srrldb_types::Value> {
 	let converted: Result<Vec<_>> =
 		value.0.into_iter().map(convert_value_to_public_value).collect();
-	Ok(surrealdb_types::Value::Array(surrealdb_types::Array::from(converted?)))
+	Ok(srrldb_types::Value::Array(srrldb_types::Array::from(converted?)))
 }
 
-fn convert_set_to_public(value: crate::val::Set) -> Result<surrealdb_types::Value> {
+fn convert_set_to_public(value: crate::val::Set) -> Result<srrldb_types::Value> {
 	// Set is stored as a sorted Vec internally
-	let converted: Result<Vec<surrealdb_types::Value>> =
+	let converted: Result<Vec<srrldb_types::Value>> =
 		value.0.into_iter().map(convert_value_to_public_value).collect();
-	Ok(surrealdb_types::Value::Set(surrealdb_types::Set::from(converted?)))
+	Ok(srrldb_types::Value::Set(srrldb_types::Set::from(converted?)))
 }
 
-fn convert_object_to_public(value: crate::val::Object) -> Result<surrealdb_types::Value> {
+fn convert_object_to_public(value: crate::val::Object) -> Result<srrldb_types::Value> {
 	let converted = convert_object_to_public_map(value)?;
-	Ok(surrealdb_types::Value::Object(surrealdb_types::Object::from(converted)))
+	Ok(srrldb_types::Value::Object(srrldb_types::Object::from(converted)))
 }
 
 pub(crate) fn convert_object_to_public_map(
 	value: crate::val::Object,
-) -> Result<BTreeMap<String, surrealdb_types::Value>> {
+) -> Result<BTreeMap<String, srrldb_types::Value>> {
 	value.0.into_iter().map(|(k, v)| convert_value_to_public_value(v).map(|v| (k, v))).collect()
 }
 
-fn convert_record_id_to_public(value: crate::val::RecordId) -> Result<surrealdb_types::Value> {
+fn convert_record_id_to_public(value: crate::val::RecordId) -> Result<srrldb_types::Value> {
 	let key = convert_record_id_key_to_public(value.key)?;
-	Ok(surrealdb_types::Value::RecordId(surrealdb_types::RecordId {
+	Ok(srrldb_types::Value::RecordId(srrldb_types::RecordId {
 		table: value.table.into(),
 		key,
 	}))
@@ -1094,31 +1094,31 @@ fn convert_record_id_to_public(value: crate::val::RecordId) -> Result<surrealdb_
 
 fn convert_record_id_key_to_public(
 	key: crate::val::RecordIdKey,
-) -> Result<surrealdb_types::RecordIdKey> {
+) -> Result<srrldb_types::RecordIdKey> {
 	match key {
-		crate::val::RecordIdKey::Number(n) => Ok(surrealdb_types::RecordIdKey::Number(n)),
-		crate::val::RecordIdKey::String(s) => Ok(surrealdb_types::RecordIdKey::String(s)),
+		crate::val::RecordIdKey::Number(n) => Ok(srrldb_types::RecordIdKey::Number(n)),
+		crate::val::RecordIdKey::String(s) => Ok(srrldb_types::RecordIdKey::String(s)),
 		crate::val::RecordIdKey::Uuid(u) => {
-			Ok(surrealdb_types::RecordIdKey::Uuid(surrealdb_types::Uuid::from(u.0)))
+			Ok(srrldb_types::RecordIdKey::Uuid(srrldb_types::Uuid::from(u.0)))
 		}
 		crate::val::RecordIdKey::Array(a) => {
 			let converted_array = convert_array_to_public(a)?;
-			if let surrealdb_types::Value::Array(arr) = converted_array {
-				Ok(surrealdb_types::RecordIdKey::Array(arr))
+			if let srrldb_types::Value::Array(arr) = converted_array {
+				Ok(srrldb_types::RecordIdKey::Array(arr))
 			} else {
 				Err(anyhow::anyhow!("Failed to convert record id key array"))
 			}
 		}
 		crate::val::RecordIdKey::Object(o) => {
 			let converted_object = convert_object_to_public(o)?;
-			if let surrealdb_types::Value::Object(obj) = converted_object {
-				Ok(surrealdb_types::RecordIdKey::Object(obj))
+			if let srrldb_types::Value::Object(obj) = converted_object {
+				Ok(srrldb_types::RecordIdKey::Object(obj))
 			} else {
 				Err(anyhow::anyhow!("Failed to convert record id key object"))
 			}
 		}
 		crate::val::RecordIdKey::Range(r) => {
-			Ok(surrealdb_types::RecordIdKey::Range(Box::new(surrealdb_types::RecordIdKeyRange {
+			Ok(srrldb_types::RecordIdKey::Range(Box::new(srrldb_types::RecordIdKeyRange {
 				start: match r.start {
 					Bound::Included(k) => Bound::Included(convert_record_id_key_to_public(k)?),
 					Bound::Excluded(k) => Bound::Excluded(convert_record_id_key_to_public(k)?),
@@ -1134,8 +1134,8 @@ fn convert_record_id_key_to_public(
 	}
 }
 
-fn convert_range_to_public(value: crate::val::Range) -> Result<surrealdb_types::Value> {
-	Ok(surrealdb_types::Value::Range(Box::new(surrealdb_types::Range {
+fn convert_range_to_public(value: crate::val::Range) -> Result<srrldb_types::Value> {
+	Ok(srrldb_types::Value::Range(Box::new(srrldb_types::Range {
 		start: match value.start {
 			Bound::Included(v) => Bound::Included(convert_value_to_public_value(v)?),
 			Bound::Excluded(v) => Bound::Excluded(convert_value_to_public_value(v)?),

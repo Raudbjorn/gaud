@@ -51,21 +51,21 @@ impl TokenValue for Param {
 	}
 }
 
-impl TokenValue for surrealdb_types::Duration {
+impl TokenValue for srrldb_types::Duration {
 	fn from_token(parser: &mut Parser<'_>) -> ParseResult<Self> {
 		let token = parser.peek();
 		match token.kind {
 			TokenKind::Digits => {
 				parser.pop_peek();
 				let v = parser.lexer.lex_compound(token, compound::duration)?.value;
-				Ok(surrealdb_types::Duration::from(v))
+				Ok(srrldb_types::Duration::from(v))
 			}
 			_ => unexpected!(parser, token, "a duration"),
 		}
 	}
 }
 
-impl TokenValue for surrealdb_types::Datetime {
+impl TokenValue for srrldb_types::Datetime {
 	fn from_token(parser: &mut Parser<'_>) -> ParseResult<Self> {
 		let token = parser.peek();
 		match token.kind {
@@ -94,7 +94,7 @@ impl TokenValue for surrealdb_types::Datetime {
 	}
 }
 
-impl TokenValue for surrealdb_types::Uuid {
+impl TokenValue for srrldb_types::Uuid {
 	fn from_token(parser: &mut Parser<'_>) -> ParseResult<Self> {
 		let token = parser.peek();
 		match token.kind {
@@ -122,7 +122,7 @@ impl TokenValue for surrealdb_types::Uuid {
 	}
 }
 
-impl TokenValue for surrealdb_types::File {
+impl TokenValue for srrldb_types::File {
 	fn from_token(parser: &mut Parser<'_>) -> ParseResult<Self> {
 		let token = parser.peek();
 		if !parser.settings.files_enabled {
@@ -154,7 +154,7 @@ impl TokenValue for surrealdb_types::File {
 	}
 }
 
-impl TokenValue for surrealdb_types::Bytes {
+impl TokenValue for srrldb_types::Bytes {
 	fn from_token(parser: &mut Parser<'_>) -> ParseResult<Self> {
 		let token = parser.peek();
 		match token.kind {
@@ -182,7 +182,7 @@ impl TokenValue for surrealdb_types::Bytes {
 	}
 }
 
-impl TokenValue for surrealdb_types::Regex {
+impl TokenValue for srrldb_types::Regex {
 	fn from_token(parser: &mut Parser<'_>) -> ParseResult<Self> {
 		let peek = parser.peek();
 		match peek.kind {
@@ -196,7 +196,7 @@ impl TokenValue for surrealdb_types::Regex {
 				let token = parser.lex_compound(peek, compound::regex)?;
 				let s = parser.unescape_regex_span(token.span)?;
 				match regex::Regex::new(s) {
-					Ok(x) => Ok(surrealdb_types::Regex::from(x)),
+					Ok(x) => Ok(srrldb_types::Regex::from(x)),
 					Err(e) => {
 						bail!("Invalid regex syntax {e}", @token.span);
 					}
@@ -245,7 +245,7 @@ impl TokenValue for NumberToken {
 }
 
 // TODO: Remove once properly seperating AST from Expr.
-impl TokenValue for surrealdb_types::Number {
+impl TokenValue for srrldb_types::Number {
 	fn from_token(parser: &mut Parser<'_>) -> ParseResult<Self> {
 		let token = parser.next_token_value::<NumberToken>()?;
 		match token {

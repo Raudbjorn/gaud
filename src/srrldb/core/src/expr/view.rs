@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 use anyhow::{Result, bail};
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use crate::catalog::ViewDefinition;
 use crate::catalog::aggregation::{AggregateFields, AggregationAnalysis};

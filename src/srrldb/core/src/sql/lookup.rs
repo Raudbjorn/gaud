@@ -1,7 +1,7 @@
 use priority_lfu::DeepSizeOf;
 use std::ops::Bound;
 
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 use crate::fmt::{EscapeKwFreeIdent, Fmt};
 use crate::sql::order::Ordering;

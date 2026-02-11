@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use priority_lfu::DeepSizeOf;
 use revision::revisioned;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 use uuid::Uuid;
 
 use crate::catalog::{DatabaseId, NamespaceId};

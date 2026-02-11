@@ -1,7 +1,7 @@
 use std::vec::IntoIter;
 
 use anyhow::{Result, bail};
-use surrealdb_types::SurrealValue;
+use srrldb_types::SurrealValue;
 
 use crate::err::Error;
 use crate::val::value::{Cast as CastTrait, Coerce};

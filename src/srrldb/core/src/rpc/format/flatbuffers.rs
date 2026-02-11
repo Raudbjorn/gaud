@@ -1,1 +1,1 @@
-pub use surrealdb_types::{decode, encode};
+pub use srrldb_types::{decode, encode};

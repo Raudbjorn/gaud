@@ -5,7 +5,7 @@ use anyhow::Result;
 use priority_lfu::DeepSizeOf;
 use revision::{DeserializeRevisioned, Revisioned, SerializeRevisioned, revisioned};
 use storekey::{BorrowDecode, Encode};
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 use crate::err::Error;
 use crate::expr::statements::info::InfoStructure;

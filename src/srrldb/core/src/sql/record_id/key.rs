@@ -1,7 +1,7 @@
 use priority_lfu::DeepSizeOf;
 use std::ops::Bound;
 
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 use crate::fmt::{CoverStmts, EscapeObjectKey, EscapeRidKey, Fmt};
 use crate::sql::literal::ObjectEntry;
@@ -112,7 +112,7 @@ impl From<crate::expr::RecordIdKeyLit> for RecordIdKeyLit {
 			crate::expr::RecordIdKeyLit::Number(x) => RecordIdKeyLit::Number(x),
 			crate::expr::RecordIdKeyLit::String(x) => RecordIdKeyLit::String(x),
 			crate::expr::RecordIdKeyLit::Uuid(uuid) => {
-				RecordIdKeyLit::Uuid(surrealdb_types::Uuid::from(uuid.0))
+				RecordIdKeyLit::Uuid(srrldb_types::Uuid::from(uuid.0))
 			}
 			crate::expr::RecordIdKeyLit::Array(exprs) => {
 				RecordIdKeyLit::Array(exprs.into_iter().map(From::from).collect())

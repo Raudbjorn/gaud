@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::{Result, bail};
 use chrono::Utc;
 use jsonwebtoken::{Header, encode};
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 use uuid::Uuid;
 
 use super::access::{authenticate_record, create_refresh_token_record};
@@ -51,10 +51,10 @@ use crate::val::Value;
 /// # Examples
 ///
 /// ```rust
-/// use surrealdb_core::iam::signup;
-/// use surrealdb_core::kvs::Datastore;
-/// use surrealdb_core::dbs::Session;
-/// use surrealdb_core::types::PublicVariables;
+/// use srrldb_core::iam::signup;
+/// use srrldb_core::kvs::Datastore;
+/// use srrldb_core::dbs::Session;
+/// use srrldb_core::types::PublicVariables;
 ///
 /// // Database access method registration
 /// let vars = PublicVariables::from([
@@ -136,10 +136,10 @@ pub async fn signup(
 /// # Examples
 ///
 /// ```rust
-/// use surrealdb_core::iam::signup::db_access;
-/// use surrealdb_core::kvs::Datastore;
-/// use surrealdb_core::dbs::Session;
-/// use surrealdb_core::types::PublicVariables;
+/// use srrldb_core::iam::signup::db_access;
+/// use srrldb_core::kvs::Datastore;
+/// use srrldb_core::dbs::Session;
+/// use srrldb_core::types::PublicVariables;
 ///
 /// let vars = PublicVariables::from([
 ///     ("email".to_string(), "user@example.com".into()),

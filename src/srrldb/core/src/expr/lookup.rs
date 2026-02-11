@@ -3,7 +3,7 @@ use std::ops::Bound;
 use anyhow::{Result, bail};
 use priority_lfu::DeepSizeOf;
 use reblessive::tree::Stk;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use crate::catalog::{DatabaseId, NamespaceId};
 use crate::ctx::FrozenContext;

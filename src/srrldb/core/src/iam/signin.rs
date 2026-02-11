@@ -7,7 +7,7 @@ use jsonwebtoken::{EncodingKey, Header, encode};
 use md5::Digest;
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 use uuid::Uuid;
 
 use super::access::{
@@ -65,10 +65,10 @@ use crate::val::{Datetime, Value};
 /// # Examples
 ///
 /// ```rust
-/// use surrealdb_core::iam::signin;
-/// use surrealdb_core::kvs::Datastore;
-/// use surrealdb_core::dbs::Session;
-/// use surrealdb_core::types::PublicVariables;
+/// use srrldb_core::iam::signin;
+/// use srrldb_core::kvs::Datastore;
+/// use srrldb_core::dbs::Session;
+/// use srrldb_core::types::PublicVariables;
 ///
 /// // Database access method
 /// let vars = PublicVariables::from([
@@ -214,10 +214,10 @@ pub async fn signin(
 /// # Examples
 ///
 /// ```rust
-/// use surrealdb_core::iam::signin::db_access;
-/// use surrealdb_core::kvs::Datastore;
-/// use surrealdb_core::dbs::Session;
-/// use surrealdb_core::types::PublicVariables;
+/// use srrldb_core::iam::signin::db_access;
+/// use srrldb_core::kvs::Datastore;
+/// use srrldb_core::dbs::Session;
+/// use srrldb_core::types::PublicVariables;
 ///
 /// let vars = PublicVariables::from([
 ///     ("email".to_string(), "user@example.com".into()),

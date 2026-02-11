@@ -5,7 +5,7 @@ use anyhow::Result;
 use priority_lfu::DeepSizeOf;
 use reblessive::tree::Stk;
 use revision::revisioned;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use super::paths::ID;
 use crate::ctx::FrozenContext;

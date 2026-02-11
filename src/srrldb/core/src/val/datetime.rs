@@ -9,7 +9,7 @@ use chrono::{DateTime, SecondsFormat, TimeZone, Utc};
 use priority_lfu::DeepSizeOf;
 use revision::revisioned;
 use storekey::{BorrowDecode, Encode};
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 use crate::err::Error;
 use crate::fmt::QuoteStr;
@@ -44,15 +44,15 @@ impl From<Datetime> for DateTime<Utc> {
 	}
 }
 
-impl From<surrealdb_types::Datetime> for Datetime {
-	fn from(v: surrealdb_types::Datetime) -> Self {
+impl From<srrldb_types::Datetime> for Datetime {
+	fn from(v: srrldb_types::Datetime) -> Self {
 		Self(v.into_inner())
 	}
 }
 
-impl From<Datetime> for surrealdb_types::Datetime {
+impl From<Datetime> for srrldb_types::Datetime {
 	fn from(x: Datetime) -> Self {
-		surrealdb_types::Datetime::from(x.0)
+		srrldb_types::Datetime::from(x.0)
 	}
 }
 

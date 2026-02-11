@@ -177,13 +177,13 @@ pub fn write_sql_impl(input: TokenStream) -> TokenStream {
 					let arg = &input.args[positional_idx];
 					positional_idx += 1;
 					statements.push(quote! {
-						surrealdb_types::ToSql::fmt_sql(&#arg, #f, #fmt);
+						srrldb_types::ToSql::fmt_sql(&#arg, #f, #fmt);
 					});
 				}
 				Placeholder::Named(name) => {
 					let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
 					statements.push(quote! {
-						surrealdb_types::ToSql::fmt_sql(&#ident, #f, #fmt);
+						srrldb_types::ToSql::fmt_sql(&#ident, #f, #fmt);
 					});
 				}
 			}

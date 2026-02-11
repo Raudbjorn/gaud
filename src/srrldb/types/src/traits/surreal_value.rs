@@ -6,7 +6,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use rust_decimal::Decimal;
 
-use crate as surrealdb_types;
+use crate as srrldb_types;
 use crate::error::{ConversionError, length_mismatch_error, out_of_range_error};
 use crate::{
 	Array, Bytes, Datetime, Duration, File, Geometry, Kind, Number, Object, Range, RecordId, Set,

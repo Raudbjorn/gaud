@@ -7,7 +7,7 @@ use async_graphql::dynamic::{
 	TypeRef,
 };
 use async_graphql::{Name, Value as GqlValue};
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 
 use super::error::{GqlError, resolver_error};
 use super::schema::{gql_to_sql_kind, sql_value_to_gql_value};

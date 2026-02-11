@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use revision::revisioned;
 use serde::{Deserialize, Serialize};
-use surrealdb_types::{Kind, SurrealValue, Value, kind, object};
+use srrldb_types::{Kind, SurrealValue, Value, kind, object};
 
 use crate::expr::TopLevelExpr;
 use crate::rpc::DbResultError;

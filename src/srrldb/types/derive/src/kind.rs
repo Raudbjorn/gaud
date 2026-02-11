@@ -287,7 +287,7 @@ impl KindExpr {
 /// # Examples
 ///
 /// ```ignore
-/// use surrealdb_types::kind;
+/// use srrldb_types::kind;
 ///
 /// // Basic types
 /// let k = kind!(string);
@@ -311,7 +311,7 @@ pub fn kind(input: TokenStream) -> TokenStream {
 /// Generate Rust code for a parsed `KindExpr`.
 ///
 /// Converts the parsed kind expression into tokens that construct the appropriate
-/// `surrealdb_types::Kind` variant at compile time.
+/// `srrldb_types::Kind` variant at compile time.
 fn generate_kind_code(expr: &KindExpr) -> TokenStream2 {
 	match expr {
 		KindExpr::Ident(ident) => generate_simple_kind(ident),
@@ -322,17 +322,17 @@ fn generate_kind_code(expr: &KindExpr) -> TokenStream2 {
 		KindExpr::Union(variants) => {
 			let variant_codes: Vec<_> = variants.iter().map(generate_kind_code).collect();
 			quote! {
-				surrealdb_types::Kind::Either(vec![#(#variant_codes),*])
+				srrldb_types::Kind::Either(vec![#(#variant_codes),*])
 			}
 		}
 		KindExpr::Literal(lit) => generate_literal_kind(lit),
 		KindExpr::KindPrefix(path) => {
-			// Convert Kind::Something to surrealdb_types::Kind::Something
-			quote! { surrealdb_types::Kind::#path }
+			// Convert Kind::Something to srrldb_types::Kind::Something
+			quote! { srrldb_types::Kind::#path }
 		}
 		KindExpr::LiteralPrefix(expr) => {
 			quote! {
-				surrealdb_types::Kind::Literal(surrealdb_types::KindLiteral::#expr)
+				srrldb_types::Kind::Literal(srrldb_types::KindLiteral::#expr)
 			}
 		}
 		KindExpr::Parenthesized(expr) => {
@@ -348,8 +348,8 @@ fn generate_kind_code(expr: &KindExpr) -> TokenStream2 {
 				.collect();
 
 			quote! {
-				surrealdb_types::Kind::Literal(
-					surrealdb_types::KindLiteral::Object(
+				srrldb_types::Kind::Literal(
+					srrldb_types::KindLiteral::Object(
 						std::collections::BTreeMap::from([#(#field_codes),*])
 					)
 				)
@@ -359,8 +359,8 @@ fn generate_kind_code(expr: &KindExpr) -> TokenStream2 {
 			let element_codes: Vec<_> = elements.iter().map(generate_kind_code).collect();
 
 			quote! {
-				surrealdb_types::Kind::Literal(
-					surrealdb_types::KindLiteral::Array(vec![#(#element_codes),*])
+				srrldb_types::Kind::Literal(
+					srrldb_types::KindLiteral::Array(vec![#(#element_codes),*])
 				)
 			}
 		}
@@ -375,13 +375,13 @@ fn generate_literal_kind(lit: &syn::Lit) -> TokenStream2 {
 		syn::Lit::Bool(lit_bool) => {
 			let value = lit_bool.value;
 			quote! {
-				surrealdb_types::Kind::Literal(surrealdb_types::KindLiteral::Bool(#value))
+				srrldb_types::Kind::Literal(srrldb_types::KindLiteral::Bool(#value))
 			}
 		}
 		syn::Lit::Int(lit_int) => {
 			if let Ok(value) = lit_int.base10_parse::<i64>() {
 				quote! {
-					surrealdb_types::Kind::Literal(surrealdb_types::KindLiteral::Integer(#value))
+					srrldb_types::Kind::Literal(srrldb_types::KindLiteral::Integer(#value))
 				}
 			} else {
 				quote! { compile_error!("Integer literal out of range") }
@@ -390,7 +390,7 @@ fn generate_literal_kind(lit: &syn::Lit) -> TokenStream2 {
 		syn::Lit::Float(lit_float) => {
 			if let Ok(value) = lit_float.base10_parse::<f64>() {
 				quote! {
-					surrealdb_types::Kind::Literal(surrealdb_types::KindLiteral::Float(#value))
+					srrldb_types::Kind::Literal(srrldb_types::KindLiteral::Float(#value))
 				}
 			} else {
 				quote! { compile_error!("Float literal out of range") }
@@ -399,7 +399,7 @@ fn generate_literal_kind(lit: &syn::Lit) -> TokenStream2 {
 		syn::Lit::Str(lit_str) => {
 			let value = lit_str.value();
 			quote! {
-				surrealdb_types::Kind::Literal(surrealdb_types::KindLiteral::String(#value.to_string()))
+				srrldb_types::Kind::Literal(srrldb_types::KindLiteral::String(#value.to_string()))
 			}
 		}
 		_ => quote! { compile_error!("Unsupported literal type") },
@@ -413,31 +413,31 @@ fn generate_literal_kind(lit: &syn::Lit) -> TokenStream2 {
 fn generate_simple_kind(ident: &Ident) -> TokenStream2 {
 	let name = ident.to_string();
 	match name.as_str() {
-		"any" => quote! { surrealdb_types::Kind::Any },
-		"none" => quote! { surrealdb_types::Kind::None },
-		"null" => quote! { surrealdb_types::Kind::Null },
-		"bool" => quote! { surrealdb_types::Kind::Bool },
-		"bytes" => quote! { surrealdb_types::Kind::Bytes },
-		"datetime" => quote! { surrealdb_types::Kind::Datetime },
-		"decimal" => quote! { surrealdb_types::Kind::Decimal },
-		"duration" => quote! { surrealdb_types::Kind::Duration },
-		"float" => quote! { surrealdb_types::Kind::Float },
-		"int" => quote! { surrealdb_types::Kind::Int },
-		"number" => quote! { surrealdb_types::Kind::Number },
-		"object" => quote! { surrealdb_types::Kind::Object },
-		"string" => quote! { surrealdb_types::Kind::String },
-		"uuid" => quote! { surrealdb_types::Kind::Uuid },
-		"regex" => quote! { surrealdb_types::Kind::Regex },
-		"range" => quote! { surrealdb_types::Kind::Range },
-		"table" => quote! { surrealdb_types::Kind::Table(vec![]) },
-		"record" => quote! { surrealdb_types::Kind::Record(vec![]) },
-		"geometry" => quote! { surrealdb_types::Kind::Geometry(vec![]) },
-		"set" => quote! { surrealdb_types::Kind::Set(Box::new(surrealdb_types::Kind::Any), None) },
+		"any" => quote! { srrldb_types::Kind::Any },
+		"none" => quote! { srrldb_types::Kind::None },
+		"null" => quote! { srrldb_types::Kind::Null },
+		"bool" => quote! { srrldb_types::Kind::Bool },
+		"bytes" => quote! { srrldb_types::Kind::Bytes },
+		"datetime" => quote! { srrldb_types::Kind::Datetime },
+		"decimal" => quote! { srrldb_types::Kind::Decimal },
+		"duration" => quote! { srrldb_types::Kind::Duration },
+		"float" => quote! { srrldb_types::Kind::Float },
+		"int" => quote! { srrldb_types::Kind::Int },
+		"number" => quote! { srrldb_types::Kind::Number },
+		"object" => quote! { srrldb_types::Kind::Object },
+		"string" => quote! { srrldb_types::Kind::String },
+		"uuid" => quote! { srrldb_types::Kind::Uuid },
+		"regex" => quote! { srrldb_types::Kind::Regex },
+		"range" => quote! { srrldb_types::Kind::Range },
+		"table" => quote! { srrldb_types::Kind::Table(vec![]) },
+		"record" => quote! { srrldb_types::Kind::Record(vec![]) },
+		"geometry" => quote! { srrldb_types::Kind::Geometry(vec![]) },
+		"set" => quote! { srrldb_types::Kind::Set(Box::new(srrldb_types::Kind::Any), None) },
 		"array" => {
-			quote! { surrealdb_types::Kind::Array(Box::new(surrealdb_types::Kind::Any), None) }
+			quote! { srrldb_types::Kind::Array(Box::new(srrldb_types::Kind::Any), None) }
 		}
-		"file" => quote! { surrealdb_types::Kind::File(vec![]) },
-		"function" => quote! { surrealdb_types::Kind::Function(None, None) },
+		"file" => quote! { srrldb_types::Kind::File(vec![]) },
+		"function" => quote! { srrldb_types::Kind::Function(None, None) },
 		_ => quote! { compile_error!(concat!("Unknown kind: ", #name)) },
 	}
 }
@@ -474,7 +474,7 @@ fn generate_parameterized_kind(name: &Ident, params: &[KindParam]) -> TokenStrea
 			}
 
 			quote! {
-				surrealdb_types::Kind::Table(vec![#(#tables.into()),*])
+				srrldb_types::Kind::Table(vec![#(#tables.into()),*])
 			}
 		}
 		"record" => {
@@ -497,12 +497,12 @@ fn generate_parameterized_kind(name: &Ident, params: &[KindParam]) -> TokenStrea
 			}
 
 			quote! {
-				surrealdb_types::Kind::Record(vec![#(#tables.into()),*])
+				srrldb_types::Kind::Record(vec![#(#tables.into()),*])
 			}
 		}
 		"array" => {
 			if params.is_empty() {
-				quote! { surrealdb_types::Kind::Array(Box::new(surrealdb_types::Kind::Any), None) }
+				quote! { srrldb_types::Kind::Array(Box::new(srrldb_types::Kind::Any), None) }
 			} else {
 				let inner_kind = generate_param_code(&params[0]);
 				let size = if params.len() > 1 {
@@ -517,13 +517,13 @@ fn generate_parameterized_kind(name: &Ident, params: &[KindParam]) -> TokenStrea
 				};
 
 				quote! {
-					surrealdb_types::Kind::Array(Box::new(#inner_kind), #size)
+					srrldb_types::Kind::Array(Box::new(#inner_kind), #size)
 				}
 			}
 		}
 		"set" => {
 			if params.is_empty() {
-				quote! { surrealdb_types::Kind::Set(Box::new(surrealdb_types::Kind::Any), None) }
+				quote! { srrldb_types::Kind::Set(Box::new(srrldb_types::Kind::Any), None) }
 			} else {
 				let inner_kind = generate_param_code(&params[0]);
 				let size = if params.len() > 1 {
@@ -538,7 +538,7 @@ fn generate_parameterized_kind(name: &Ident, params: &[KindParam]) -> TokenStrea
 				};
 
 				quote! {
-					surrealdb_types::Kind::Set(Box::new(#inner_kind), #size)
+					srrldb_types::Kind::Set(Box::new(#inner_kind), #size)
 				}
 			}
 		}
@@ -550,23 +550,23 @@ fn generate_parameterized_kind(name: &Ident, params: &[KindParam]) -> TokenStrea
 						let geom_name = ident.to_string();
 						match geom_name.as_str() {
 							"point" => {
-								geom_kinds.push(quote! { surrealdb_types::GeometryKind::Point })
+								geom_kinds.push(quote! { srrldb_types::GeometryKind::Point })
 							}
 							"line" => {
-								geom_kinds.push(quote! { surrealdb_types::GeometryKind::Line })
+								geom_kinds.push(quote! { srrldb_types::GeometryKind::Line })
 							}
 							"polygon" => {
-								geom_kinds.push(quote! { surrealdb_types::GeometryKind::Polygon })
+								geom_kinds.push(quote! { srrldb_types::GeometryKind::Polygon })
 							}
 							"multipoint" => geom_kinds
-								.push(quote! { surrealdb_types::GeometryKind::MultiPoint }),
+								.push(quote! { srrldb_types::GeometryKind::MultiPoint }),
 							"multiline" => {
-								geom_kinds.push(quote! { surrealdb_types::GeometryKind::MultiLine })
+								geom_kinds.push(quote! { srrldb_types::GeometryKind::MultiLine })
 							}
 							"multipolygon" => geom_kinds
-								.push(quote! { surrealdb_types::GeometryKind::MultiPolygon }),
+								.push(quote! { srrldb_types::GeometryKind::MultiPolygon }),
 							"collection" => geom_kinds
-								.push(quote! { surrealdb_types::GeometryKind::Collection }),
+								.push(quote! { srrldb_types::GeometryKind::Collection }),
 							_ => {}
 						}
 					}
@@ -577,20 +577,20 @@ fn generate_parameterized_kind(name: &Ident, params: &[KindParam]) -> TokenStrea
 								let geom_name = ident.to_string();
 								match geom_name.as_str() {
 									"point" => geom_kinds
-										.push(quote! { surrealdb_types::GeometryKind::Point }),
+										.push(quote! { srrldb_types::GeometryKind::Point }),
 									"line" => geom_kinds
-										.push(quote! { surrealdb_types::GeometryKind::Line }),
+										.push(quote! { srrldb_types::GeometryKind::Line }),
 									"polygon" => geom_kinds
-										.push(quote! { surrealdb_types::GeometryKind::Polygon }),
+										.push(quote! { srrldb_types::GeometryKind::Polygon }),
 									"multipoint" => geom_kinds
-										.push(quote! { surrealdb_types::GeometryKind::MultiPoint }),
+										.push(quote! { srrldb_types::GeometryKind::MultiPoint }),
 									"multiline" => geom_kinds
-										.push(quote! { surrealdb_types::GeometryKind::MultiLine }),
+										.push(quote! { srrldb_types::GeometryKind::MultiLine }),
 									"multipolygon" => geom_kinds.push(
-										quote! { surrealdb_types::GeometryKind::MultiPolygon },
+										quote! { srrldb_types::GeometryKind::MultiPolygon },
 									),
 									"collection" => geom_kinds
-										.push(quote! { surrealdb_types::GeometryKind::Collection }),
+										.push(quote! { srrldb_types::GeometryKind::Collection }),
 									_ => {}
 								}
 							}
@@ -601,7 +601,7 @@ fn generate_parameterized_kind(name: &Ident, params: &[KindParam]) -> TokenStrea
 			}
 
 			quote! {
-				surrealdb_types::Kind::Geometry(vec![#(#geom_kinds),*])
+				srrldb_types::Kind::Geometry(vec![#(#geom_kinds),*])
 			}
 		}
 		"file" => {
@@ -624,7 +624,7 @@ fn generate_parameterized_kind(name: &Ident, params: &[KindParam]) -> TokenStrea
 			}
 
 			quote! {
-				surrealdb_types::Kind::File(vec![#(#buckets.to_string()),*])
+				srrldb_types::Kind::File(vec![#(#buckets.to_string()),*])
 			}
 		}
 		_ => quote! { compile_error!(concat!("Unknown parameterized kind: ", #name_str)) },

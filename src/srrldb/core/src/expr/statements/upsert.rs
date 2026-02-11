@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use priority_lfu::DeepSizeOf;
 use reblessive::tree::Stk;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use crate::catalog::providers::{DatabaseProvider, NamespaceProvider};
 use crate::ctx::FrozenContext;

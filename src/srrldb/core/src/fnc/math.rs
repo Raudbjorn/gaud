@@ -1,7 +1,7 @@
 use core::f64;
 
 use anyhow::{Result, bail, ensure};
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 
 use crate::err::Error;
 use crate::fnc::util;

@@ -2,7 +2,7 @@ use std::fmt;
 
 use anyhow::Result;
 use async_channel::Sender;
-use surrealdb_types::{SurrealValue, ToSql};
+use srrldb_types::{SurrealValue, ToSql};
 
 use super::Transaction;
 use crate::catalog::providers::{

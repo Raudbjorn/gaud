@@ -5,7 +5,7 @@ use std::time::Duration;
 use priority_lfu::DeepSizeOf;
 use revision::revisioned;
 use serde::{Deserialize, Serialize};
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 use uuid::Uuid;
 
 use crate::expr::statements::info::InfoStructure;

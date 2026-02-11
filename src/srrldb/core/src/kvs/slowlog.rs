@@ -19,7 +19,7 @@ use std::fmt::Write;
 use std::sync::Arc;
 use std::time::Duration;
 
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 use trice::Instant;
 
 use crate::catalog::{Permission, Permissions};

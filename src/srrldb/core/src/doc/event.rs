@@ -6,7 +6,7 @@ use anyhow::{Result, bail};
 use reblessive::TreeStack;
 use reblessive::tree::Stk;
 use revision::revisioned;
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 #[cfg(not(target_family = "wasm"))]
 use tokio::spawn;
 

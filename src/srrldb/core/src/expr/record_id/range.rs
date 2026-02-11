@@ -2,7 +2,7 @@ use std::ops::Bound;
 
 use anyhow::Result;
 use reblessive::tree::Stk;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use super::RecordIdKeyLit;
 use crate::ctx::FrozenContext;

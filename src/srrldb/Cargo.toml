@@ -8,14 +8,14 @@ description = "Thin wrapper around SurrealDB for the gaud project"
 
 [features]
 default = []
-allocator = ["surrealdb-core/allocator"]
-kv-mem = ["surrealdb-core/kv-mem", "tokio/time"]
-kv-rocksdb = ["surrealdb-core/kv-rocksdb", "tokio/time"]
-allocation-tracking = ["surrealdb-core/allocation-tracking"]
+allocator = ["srrldb-core/allocator"]
+kv-mem = ["srrldb-core/kv-mem", "tokio/time"]
+kv-rocksdb = ["srrldb-core/kv-rocksdb", "tokio/time"]
+allocation-tracking = ["srrldb-core/allocation-tracking"]
 
 [dependencies]
-surrealdb-core = { workspace = true, default-features = false }
-surrealdb-types.workspace = true
+srrldb-core = { workspace = true, default-features = false }
+srrldb-types.workspace = true
 tokio = { workspace = true, default-features = false, features = ["rt", "sync"] }
 semver = { workspace = true, features = ["serde"] }
 uuid = { workspace = true, features = ["serde", "v4", "v7"] }

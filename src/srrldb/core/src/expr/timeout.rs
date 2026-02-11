@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use reblessive::tree::Stk;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use crate::ctx::Context;
 use crate::dbs::Options;

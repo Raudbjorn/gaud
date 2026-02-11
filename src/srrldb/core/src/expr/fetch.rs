@@ -53,8 +53,8 @@ impl IntoIterator for Fetchs {
 	}
 }
 
-impl surrealdb_types::ToSql for Fetchs {
-	fn fmt_sql(&self, f: &mut String, fmt: surrealdb_types::SqlFormat) {
+impl srrldb_types::ToSql for Fetchs {
+	fn fmt_sql(&self, f: &mut String, fmt: srrldb_types::SqlFormat) {
 		let sql_fetchs: crate::sql::Fetchs = self.clone().into();
 		sql_fetchs.fmt_sql(f, fmt);
 	}
@@ -157,8 +157,8 @@ impl Fetch {
 	}
 }
 
-impl surrealdb_types::ToSql for Fetch {
-	fn fmt_sql(&self, f: &mut String, fmt: surrealdb_types::SqlFormat) {
+impl srrldb_types::ToSql for Fetch {
+	fn fmt_sql(&self, f: &mut String, fmt: srrldb_types::SqlFormat) {
 		let sql_fetch: crate::sql::Fetch = self.clone().into();
 		sql_fetch.fmt_sql(f, fmt);
 	}
@@ -166,7 +166,7 @@ impl surrealdb_types::ToSql for Fetch {
 
 impl InfoStructure for Fetch {
 	fn structure(self) -> Value {
-		use surrealdb_types::ToSql;
+		use srrldb_types::ToSql;
 		self.to_sql().into()
 	}
 }

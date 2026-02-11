@@ -5,7 +5,7 @@ use anyhow::Result;
 use http::{HeaderMap, HeaderName, HeaderValue};
 use revision::revisioned;
 use storekey::{BorrowDecode, Encode};
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 use crate::err::Error;
 use crate::expr::literal::ObjectEntry;

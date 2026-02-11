@@ -4,7 +4,7 @@ use std::fmt::Display;
 use std::hash;
 
 use rust_decimal::Decimal;
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 use crate::fmt::{EscapeKwFreeIdent, EscapeObjectKey, Float, Fmt, QuoteStr};
 use crate::types::PublicDuration;

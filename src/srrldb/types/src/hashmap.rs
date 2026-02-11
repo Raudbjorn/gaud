@@ -16,7 +16,7 @@
 //! # Example
 //!
 //! ```rust
-//! use surrealdb_types::HashMap;
+//! use srrldb_types::HashMap;
 //!
 //! let map: HashMap<String, i32> = HashMap::new();
 //! map.insert("key".to_string(), 42);

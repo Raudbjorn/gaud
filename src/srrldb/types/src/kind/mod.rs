@@ -8,10 +8,10 @@ use std::fmt::Display;
 pub use geometry::*;
 pub use literal::*;
 use serde::{Deserialize, Serialize};
-use surrealdb_types_derive::write_sql;
+use srrldb_types_derive::write_sql;
 
 use crate::utils::display::format_seperated;
-use crate::{self as surrealdb_types, SqlFormat, Table, ToSql};
+use crate::{self as srrldb_types, SqlFormat, Table, ToSql};
 
 /// The kind of a SurrealDB value.
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq, Serialize, Deserialize)]

@@ -2,7 +2,7 @@ use priority_lfu::DeepSizeOf;
 use std::ops::Deref;
 use std::str;
 
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, PartialOrd, Hash)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]

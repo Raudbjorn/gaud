@@ -2,7 +2,7 @@ use std::fmt::{self, Display};
 
 use priority_lfu::DeepSizeOf;
 use revision::revisioned;
-use surrealdb_types::{SqlFormat, SurrealValue, ToSql, write_sql};
+use srrldb_types::{SqlFormat, SurrealValue, ToSql, write_sql};
 
 use crate::api::path::Path;
 use crate::catalog::Permission;

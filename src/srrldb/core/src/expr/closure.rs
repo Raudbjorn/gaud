@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 
 use anyhow::Result;
 use priority_lfu::DeepSizeOf;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use crate::ctx::FrozenContext;
 use crate::dbs::ParameterCapturePass;

@@ -23,7 +23,7 @@ pub use kind::*;
 pub use notification::*;
 pub use sql::{SqlFormat, ToSql, write_sql};
 // Re-export the derive macro
-pub use surrealdb_types_derive::{SurrealValue, kind};
+pub use srrldb_types_derive::{SurrealValue, kind};
 pub use traits::*;
 pub use utils::either::*;
 pub use value::*;
@@ -37,7 +37,7 @@ pub use variables::*;
 /// # Example
 ///
 /// ```rust
-/// use surrealdb_types::object;
+/// use srrldb_types::object;
 ///
 /// let obj = object! {
 ///     name: "John".to_string(),
@@ -81,7 +81,7 @@ macro_rules! object {
 /// # Example
 ///
 /// ```rust
-/// use surrealdb_types::set;
+/// use srrldb_types::set;
 ///
 /// let set = set! {1, 2, 3};
 /// ```
@@ -100,7 +100,7 @@ macro_rules! set {
 /// # Example
 ///
 /// ```rust
-/// use surrealdb_types::vars;
+/// use srrldb_types::vars;
 ///
 /// let obj = vars! {
 ///     name: "John".to_string(),
@@ -126,7 +126,7 @@ macro_rules! vars {
 /// # Example
 ///
 /// ```rust
-/// use surrealdb_types::array;
+/// use srrldb_types::array;
 ///
 /// let arr = array![1, 2, 3];
 /// ```
@@ -152,7 +152,7 @@ macro_rules! array {
 /// Example usage of the `object!` and `array!` macros:
 ///
 /// ```rust
-/// use surrealdb_types::{object, array};
+/// use srrldb_types::{object, array};
 ///
 /// // Create an empty object
 /// let empty = object! {};

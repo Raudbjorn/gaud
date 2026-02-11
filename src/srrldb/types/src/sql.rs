@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
-pub use surrealdb_types_derive::write_sql;
+pub use srrldb_types_derive::write_sql;
 
-use crate as surrealdb_types;
+use crate as srrldb_types;
 use crate::utils::escape::QuoteStr;
 
 /// Trait for types that can be converted to SQL representation.
@@ -20,8 +20,8 @@ use crate::utils::escape::QuoteStr;
 ///
 /// A good example is Datetime:
 /// ```rust
-/// use surrealdb_types::ToSql;
-/// use surrealdb_types::Datetime;
+/// use srrldb_types::ToSql;
+/// use srrldb_types::Datetime;
 /// use chrono::{TimeZone, Utc};
 ///
 /// let datetime = Datetime::new(Utc.with_ymd_and_hms(2025, 10, 3, 10, 2, 32).unwrap() + chrono::Duration::microseconds(873077));

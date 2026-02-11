@@ -1,5 +1,5 @@
 [package]
-name = "surrealdb-types-derive"
+name = "srrldb-types-derive"
 version.workspace = true
 publish = true
 authors.workspace = true

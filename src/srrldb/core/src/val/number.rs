@@ -32,7 +32,7 @@ use revision::revisioned;
 use rust_decimal::Decimal;
 use rust_decimal::prelude::*;
 use storekey::{BorrowDecode, Encode};
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 use super::IndexFormat;
 use crate::err::Error;
@@ -95,17 +95,17 @@ impl From<Decimal> for Number {
 	}
 }
 
-impl From<surrealdb_types::Number> for Number {
-	fn from(v: surrealdb_types::Number) -> Self {
+impl From<srrldb_types::Number> for Number {
+	fn from(v: srrldb_types::Number) -> Self {
 		match v {
-			surrealdb_types::Number::Int(i) => Self::Int(i),
-			surrealdb_types::Number::Float(f) => Self::Float(f),
-			surrealdb_types::Number::Decimal(d) => Self::Decimal(d),
+			srrldb_types::Number::Int(i) => Self::Int(i),
+			srrldb_types::Number::Float(f) => Self::Float(f),
+			srrldb_types::Number::Decimal(d) => Self::Decimal(d),
 		}
 	}
 }
 
-impl From<Number> for surrealdb_types::Number {
+impl From<Number> for srrldb_types::Number {
 	fn from(v: Number) -> Self {
 		match v {
 			Number::Int(i) => Self::Int(i),

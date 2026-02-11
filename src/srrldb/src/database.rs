@@ -1,10 +1,10 @@
 //! Simplified embedded SurrealDB handle.
 //!
-//! Wraps `surrealdb_core`'s [`Datastore`] behind a single opaque [`Database`]
+//! Wraps `srrldb_core`'s [`Datastore`] behind a single opaque [`Database`]
 //! struct so callers don't need to carry generic engine parameters.
 
-use surrealdb_core::dbs::Session;
-use surrealdb_core::kvs::Datastore;
+use srrldb_core::dbs::Session;
+use srrldb_core::kvs::Datastore;
 use crate::types::{SurrealValue, Value, Variables};
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -18,7 +18,7 @@ pub struct Database {
 /// Thin wrapper around SurrealDB query results so callers can chain
 /// `.take()` / `.take_vec()` like the upstream client.
 pub struct QueryResponse {
-    results: Vec<surrealdb_core::dbs::QueryResult>,
+    results: Vec<srrldb_core::dbs::QueryResult>,
 }
 
 impl Database {

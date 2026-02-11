@@ -1,4 +1,4 @@
-use surrealdb_types::{
+use srrldb_types::{
 	ConversionError, Kind, LengthMismatchError, Number, OutOfRangeError, TypeError, Value,
 };
 

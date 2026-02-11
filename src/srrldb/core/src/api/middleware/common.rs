@@ -1,7 +1,7 @@
 use std::sync::LazyLock;
 
 use mime::Mime;
-use surrealdb_types::SurrealValue;
+use srrldb_types::SurrealValue;
 
 use crate::api::format;
 

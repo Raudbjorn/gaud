@@ -1,6 +1,6 @@
 use anyhow::{Result, bail};
 use reblessive::tree::Stk;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use super::config::api::ApiConfig;
 use super::{CursorDoc, DefineKind};

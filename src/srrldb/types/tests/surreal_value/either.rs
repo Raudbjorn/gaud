@@ -1,4 +1,4 @@
-use surrealdb_types::{Either2, Either3, Either8, Either10, Kind, SurrealValue, Value};
+use srrldb_types::{Either2, Either3, Either8, Either10, Kind, SurrealValue, Value};
 
 #[test]
 fn test_either2_string_or_int() {

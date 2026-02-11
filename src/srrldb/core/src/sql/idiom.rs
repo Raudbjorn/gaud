@@ -1,7 +1,7 @@
 use priority_lfu::DeepSizeOf;
 use std::ops::Deref;
 
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 use crate::expr::idiom::Idioms as ExprIdioms;
 use crate::fmt::{EscapeIdent, Fmt};
@@ -79,8 +79,8 @@ impl From<crate::expr::Idiom> for Idiom {
 	}
 }
 
-impl surrealdb_types::ToSql for Idiom {
-	fn fmt_sql(&self, f: &mut String, fmt: surrealdb_types::SqlFormat) {
+impl srrldb_types::ToSql for Idiom {
+	fn fmt_sql(&self, f: &mut String, fmt: srrldb_types::SqlFormat) {
 		let mut iter = self.0.iter();
 		match iter.next() {
 			Some(Part::Field(v)) => EscapeIdent(v).fmt_sql(f, fmt),

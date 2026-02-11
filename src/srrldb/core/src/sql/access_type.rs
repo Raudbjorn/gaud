@@ -4,7 +4,7 @@ use std::str::FromStr;
 use anyhow::Result;
 use rand::Rng;
 use rand::distributions::Alphanumeric;
-use surrealdb_types::{SqlFormat, ToSql, write_sql};
+use srrldb_types::{SqlFormat, ToSql, write_sql};
 
 use super::Expr;
 use crate::err::Error;

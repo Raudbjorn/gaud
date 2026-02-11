@@ -1,9 +1,9 @@
 [package]
-name = "surrealdb-types"
+name = "srrldb-types"
 version.workspace = true
 publish = true
 readme = "README.md"
-documentation = "https://docs.rs/surrealdb-types/"
+documentation = "https://docs.rs/srrldb-types/"
 authors.workspace = true
 edition.workspace = true
 license-file.workspace = true
@@ -49,7 +49,7 @@ rust_decimal.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 surrealdb-protocol = { workspace = true, features = ["flatbuffers"] }
-surrealdb-types-derive.workspace = true
+srrldb-types-derive.workspace = true
 ulid.workspace = true
 
 # WASM DEPENDENCY CONFIGURATION

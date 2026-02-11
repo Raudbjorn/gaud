@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use http::HeaderMap;
-use surrealdb_types::SurrealValue;
+use srrldb_types::SurrealValue;
 
 use crate::catalog::ApiMethod;
 use crate::sql::expression::convert_public_value_to_internal;

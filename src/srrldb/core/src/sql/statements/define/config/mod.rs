@@ -1,7 +1,7 @@
 use priority_lfu::DeepSizeOf;
 pub mod api;
 pub mod defaults;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 pub mod graphql;
 
 use api::ApiConfig;

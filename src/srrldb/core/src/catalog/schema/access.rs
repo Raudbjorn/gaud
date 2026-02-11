@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use priority_lfu::DeepSizeOf;
 use revision::revisioned;
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use crate::catalog::schema::base::Base;
 use crate::expr::Expr;

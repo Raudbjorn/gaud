@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 
 use anyhow::Result;
 use reblessive::tree::Stk;
-use surrealdb_types::ToSql;
+use srrldb_types::ToSql;
 
 use crate::catalog::aggregation::{self, AggregateFields, AggregationAnalysis, AggregationStat};
 use crate::ctx::FrozenContext;

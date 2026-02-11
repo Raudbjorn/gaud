@@ -1,7 +1,7 @@
 use priority_lfu::DeepSizeOf;
 use std::ops::Bound;
 
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use super::RecordIdKeyLit;
 

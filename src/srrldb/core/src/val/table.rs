@@ -6,7 +6,7 @@ use std::ops::Deref;
 use priority_lfu::DeepSizeOf;
 use revision::{DeserializeRevisioned, Revisioned, SerializeRevisioned};
 use storekey::{BorrowDecode, Decode, Encode};
-use surrealdb_types::{SqlFormat, ToSql};
+use srrldb_types::{SqlFormat, ToSql};
 
 use crate::fmt::EscapeIdent;
 
@@ -60,15 +60,15 @@ impl From<&str> for TableName {
 	}
 }
 
-impl From<surrealdb_types::Table> for TableName {
-	fn from(value: surrealdb_types::Table) -> Self {
+impl From<srrldb_types::Table> for TableName {
+	fn from(value: srrldb_types::Table) -> Self {
 		TableName(value.into_string())
 	}
 }
 
-impl From<TableName> for surrealdb_types::Table {
+impl From<TableName> for srrldb_types::Table {
 	fn from(value: TableName) -> Self {
-		surrealdb_types::Table::new(value.0)
+		srrldb_types::Table::new(value.0)
 	}
 }
 
