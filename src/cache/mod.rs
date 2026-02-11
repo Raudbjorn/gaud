@@ -536,8 +536,8 @@ impl StreamCacheOps for SemanticCacheService {
 }
 
 #[cfg(test)]
+#[cfg(feature = "cache-ephemeral")]
 mod tests {
-    #[cfg(feature = "cache-ephemeral")]
     use crate::cache::store::CacheStore;
     use crate::providers::types::{ChatRequest, ChatMessage, MessageRole, MessageContent};
 
@@ -564,7 +564,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[cfg(feature = "cache-ephemeral")]
     async fn test_service_stream_hit_no_events_returns_miss() {
         let store = Arc::new(CacheStore::ephemeral(3).await.expect("ephemeral init"));
 
@@ -615,7 +614,6 @@ mod tests {
         assert!(result.is_none(), "Entry without stream_events must act as a cache miss");
     }
     #[tokio::test]
-    #[cfg(feature = "cache-ephemeral")]
     async fn test_stream_stats_separation() {
         let store = Arc::new(CacheStore::ephemeral(4).await.expect("ephemeral init"));
         let service = SemanticCacheService::new_with_store(store.as_ref().clone(), crate::config::CacheConfig::default());
