@@ -31,9 +31,9 @@ categories = ["web-programming", "authentication", "api-bindings"]
 # SurrealDB crates
 # WARNING: Using beta version in production. API breakage possible between point releases.
 srrldb = { version = "0.1.0", path = "src/srrldb" }
-surrealdb-core = { version = "3.0.0-beta", path = "src/srrldb/core", default-features = false }
-surrealdb-types = { version = "3.0.0-beta", path = "src/srrldb/types" }
-surrealdb-types-derive = { version = "3.0.0-beta", path = "src/srrldb/types/derive" }
+surrealdb-core = { version = "0.1.0", path = "src/srrldb/core", default-features = false }
+surrealdb-types = { version = "0.1.0", path = "src/srrldb/types" }
+surrealdb-types-derive = { version = "0.1.0", path = "src/srrldb/types/derive" }
 
 
 # External surreal crates
