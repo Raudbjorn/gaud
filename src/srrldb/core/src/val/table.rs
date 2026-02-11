@@ -14,7 +14,7 @@ use crate::fmt::EscapeIdent;
 #[derive(Clone, Debug, Default, Eq, PartialEq, Ord, PartialOrd, Hash, DeepSizeOf)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[repr(transparent)]
-pub struct TableName(pub String);
+pub struct TableName(String);
 
 impl TableName {
 	/// Create a new strand, returns None if the string contains a null byte.

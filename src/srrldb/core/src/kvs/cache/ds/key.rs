@@ -105,7 +105,7 @@ mod tests {
 
 	#[rstest]
 	#[case(DbCacheKeyRef("test-ns", "test-db"))]
-	#[case(ForiegnTablesCacheKeyRef(NamespaceId(1), DatabaseId(2), &TableName("test-table".to_string())))]
+	#[case(ForiegnTablesCacheKeyRef(NamespaceId(1), DatabaseId(2), &TableName::from("test-table")))]
 	fn test_hash_equality<L: CacheKeyLookup<K> + Clone, K: CacheKey>(#[case] lookup: L) {
 		let key = lookup.clone().to_owned_key();
 		// calculate the hash of the lookup and key
