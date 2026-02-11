@@ -147,7 +147,7 @@ pub struct Usage {
 }
 
 /// Streaming chunk (SSE format).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatChunk {
     pub id: String,
     pub object: String,
@@ -158,14 +158,14 @@ pub struct ChatChunk {
     pub usage: Option<Usage>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunkChoice {
     pub index: u32,
     pub delta: Delta,
     pub finish_reason: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Delta {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,

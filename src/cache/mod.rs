@@ -12,7 +12,10 @@ pub mod store;
 pub mod types;
 
 use crate::config::{CacheConfig, CacheMode};
-use crate::providers::types::{ChatRequest, ChatResponse};
+use crate::providers::types::{
+    ChatRequest, ChatResponse, ChatChunk, ChatMessage, MessageRole, MessageContent,
+    Choice, ResponseMessage, Usage
+};
 
 use std::future::Future;
 use std::pin::Pin;
@@ -75,7 +78,7 @@ impl SemanticCacheService {
     /// Check whether this *streaming* request should be checked against the
     /// streaming replay cache.
     pub fn should_check_stream(&self, request: &ChatRequest) -> bool {
-        self.config.stream_cache_enabled && !key::should_skip_stream(request, &self.config)
+        self.config.enabled && self.config.stream_cache_enabled && !key::should_skip_stream(request, &self.config)
     }
 
     /// Look up a cached response for the given request.
@@ -328,10 +331,12 @@ impl SemanticCacheService {
             CacheLookupResult::Hit(_, _) => {
                 // Entry exists but has no stream events — treat as miss.
                 self.stats.record_miss();
+                self.stats.record_stream_miss();
                 Ok(CacheLookupResult::Miss)
             }
             CacheLookupResult::Miss => {
                 self.stats.record_miss();
+                self.stats.record_stream_miss();
                 Ok(CacheLookupResult::Miss)
             }
         }
@@ -368,6 +373,14 @@ impl SemanticCacheService {
             stream_format: Some("openai_sse_v1".to_string()),
         };
 
+        // Try to reconstruct a full response for non-stream compatibility
+        let mut entry = entry;
+        if let Ok(full_resp) = Self::reconstruct_response(request, events) {
+             if let Ok(json) = serde_json::to_string(&full_resp) {
+                 entry.response_json = json;
+             }
+        }
+
         self.store.insert_stream(&entry, &metadata, events).await?;
 
         // Enforce max_entries limit
@@ -383,9 +396,65 @@ impl SemanticCacheService {
         self.config.stream_cache_max_events
     }
 
-    /// Stream cache config: max bytes per request.
     pub fn stream_cache_max_bytes(&self) -> usize {
         self.config.stream_cache_max_bytes
+    }
+
+    /// Reconstruct a full ChatResponse from a sequence of SSE chunks.
+    fn reconstruct_response(
+        request: &ChatRequest,
+        events: &[String],
+    ) -> Result<ChatResponse, CacheError> {
+        let mut full_content = String::new();
+        let mut id = String::new();
+        let mut model = String::new();
+        let mut created = 0;
+        let mut finish_reason = None;
+        let mut final_usage = Usage::default();
+
+        for event_str in events {
+            // events are raw JSON strings (payloads)
+            if let Ok(chunk) = serde_json::from_str::<ChatChunk>(event_str) {
+                if id.is_empty() {
+                    id = chunk.id.clone();
+                    model = chunk.model.clone();
+                    created = chunk.created;
+                }
+                if let Some(choices) = chunk.choices.first() {
+                    if let Some(ref content) = choices.delta.content {
+                        full_content.push_str(content);
+                    }
+                    if choices.finish_reason.is_some() {
+                        finish_reason = choices.finish_reason.clone();
+                    }
+                }
+                if let Some(usage) = chunk.usage {
+                    final_usage = usage;
+                }
+            }
+        }
+
+        if id.is_empty() {
+             return Err(CacheError::Serialization("Empty stream or invalid chunks".into()));
+        }
+
+        Ok(ChatResponse {
+            id,
+            object: "chat.completion".into(),
+            created,
+            model,
+            choices: vec![Choice {
+                index: 0,
+                message: ResponseMessage {
+                    role: "assistant".into(),
+                    content: Some(full_content),
+                    reasoning_content: None,
+                    tool_calls: None, // TODO: support tool calls reconstruction
+                },
+                finish_reason,
+            }],
+            usage: final_usage,
+        })
     }
 }
 
