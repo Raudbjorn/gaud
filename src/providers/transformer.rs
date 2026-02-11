@@ -56,6 +56,21 @@ pub trait StreamState: Send {
     /// (already stripped of the `data: ` prefix by `SseParser`).
     fn process_event(&mut self, data: &str) -> Result<Option<ChatChunk>, ProviderError>;
 
+    /// Process a pre-parsed JSON value and return an optional OpenAI chunk.
+    ///
+    /// Override this in providers that already have a typed/parsed event to
+    /// avoid a redundant `Value → String → Value` round-trip.  The default
+    /// implementation serializes the value to a string and delegates to
+    /// [`process_event`](Self::process_event).
+    fn process_event_value(
+        &mut self,
+        value: &serde_json::Value,
+    ) -> Result<Option<ChatChunk>, ProviderError> {
+        let s = serde_json::to_string(value)
+            .map_err(|e| ProviderError::Other(format!("JSON serialization error: {e}")))?;
+        self.process_event(&s)
+    }
+
     /// Return accumulated token usage at the end of stream.
     fn final_usage(&self) -> Usage;
 
