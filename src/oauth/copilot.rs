@@ -82,7 +82,7 @@ pub struct DeviceCodeResponse {
 struct TokenPollResponse {
     #[serde(default)]
     access_token: Option<String>,
-    #[serde(default)]
+    #[serde(default, rename = "token_type")]
     _token_type: Option<String>,
     #[serde(default)]
     error: Option<String>,
