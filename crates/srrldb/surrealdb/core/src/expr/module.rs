@@ -120,7 +120,7 @@ impl SurrealismExecutable {
 		_db: &DatabaseId,
 		_sub: Option<&str>,
 	) -> Result<Signature> {
-		bail!("Surrealism modules are not supported in WASM environments")
+		bail!("Surrealism module signatures are not enabled in this build")
 	}
 
 	pub(crate) async fn run(
@@ -132,7 +132,7 @@ impl SurrealismExecutable {
 		_args: Vec<Value>,
 		_sub: Option<&str>,
 	) -> Result<Value> {
-		bail!("Surrealism functions are not supported in WASM environments")
+		bail!("Surrealism module execution is not enabled in this build")
 	}
 }
 
@@ -183,7 +183,7 @@ impl SiloExecutable {
 		_ctx: &FrozenContext,
 		_sub: Option<&str>,
 	) -> Result<Signature> {
-		bail!("Surrealism functions are not supported in WASM environments")
+		bail!("Silo module signatures are not enabled in this build")
 	}
 
 	pub(crate) async fn run(
@@ -195,7 +195,7 @@ impl SiloExecutable {
 		_args: Vec<Value>,
 		_sub: Option<&str>,
 	) -> Result<Value> {
-		bail!("Surrealism functions are not supported in WASM environments")
+		bail!("Silo module execution is not enabled in this build")
 	}
 }
 
