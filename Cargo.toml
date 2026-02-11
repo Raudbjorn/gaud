@@ -8,22 +8,24 @@ members = [
 ]
 
 [workspace.package]
-authors = ["Tobie Morgan Hitchcock <tobie@surrealdb.com>"]
+# NOTE: workspace.package is inherited by the embedded srrldb sub-crates.
+# Original SurrealDB author: Tobie Morgan Hitchcock <tobie@surrealdb.com>
+authors = ["Sveinbjorn Geirsson <sveinbjorn@sveinbjorn.dev>"]
 edition = "2024"
 license-file = "LICENSE"
 publish = false
-version = "3.0.0-beta"
-description = "A scalable, distributed, collaborative, document-graph database, for the realtime web"
-repository = "https://github.com/surrealdb/surrealdb"
-homepage = "https://github.com/surrealdb/surrealdb"
+version = "0.1.0"
+description = "Multi-user LLM proxy with OpenAI-compatible API, OAuth provider auth, and budget management"
+repository = "https://github.com/Raudbjorn/gaud"
+homepage = "https://github.com/Raudbjorn/gaud"
 keywords = [
-    "database",
-    "embedded-database",
-    "key-value",
-    "key-value-store",
-    "kv-store",
+    "llm",
+    "proxy",
+    "openai",
+    "oauth",
+    "ai",
 ]
-categories = ["database-implementations", "data-structures", "embedded"]
+categories = ["web-programming", "authentication", "api-bindings"]
 
 [workspace.dependencies]
 # SurrealDB crates
@@ -204,6 +206,7 @@ unwrap_used = "warn"
 
 [package]
 name = "gaud"
+authors = ["Sveinbjorn Geirsson <sveinbjorn@sveinbjorn.dev>"]
 version = "0.1.0"
 edition = "2024"
 description = "Multi-user LLM proxy with OpenAI-compatible API, OAuth provider auth, and budget management"
