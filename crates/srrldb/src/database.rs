@@ -5,7 +5,7 @@
 
 use surrealdb_core::dbs::Session;
 use surrealdb_core::kvs::Datastore;
-use crate::types::{Value, Variables};
+use crate::types::{SurrealValue, Value, Variables};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -88,10 +88,10 @@ pub struct QueryBuilder<'a> {
 }
 
 impl<'a> QueryBuilder<'a> {
-    /// Bind a named parameter. The value must be convertible into the
-    /// public SurrealDB `Value` type.
-    pub fn bind(mut self, (key, val): (&str, impl Into<Value>)) -> Self {
-        self.vars.insert(key.to_string(), val.into());
+    /// Bind a named parameter. The value must implement the `SurrealValue`
+    /// trait (which all core types — String, u64, f32, Vec, Option, etc — do).
+    pub fn bind(mut self, (key, val): (&str, impl SurrealValue)) -> Self {
+        self.vars.insert(key.to_string(), val.into_value());
         self
     }
 
