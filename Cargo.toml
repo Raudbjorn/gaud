@@ -3,9 +3,9 @@ members = [
     ".",
     "kiro-gateway-rs",
     "crates/srrldb",
-    "crates/srrldb/surrealdb/core",
-    "crates/srrldb/surrealdb/types",
-    "crates/srrldb/surrealdb/types/derive",
+    "crates/srrldb/core",
+    "crates/srrldb/types",
+    "crates/srrldb/types/derive",
 ]
 
 [workspace.package]
@@ -30,9 +30,9 @@ categories = ["database-implementations", "data-structures", "embedded"]
 # SurrealDB crates
 # WARNING: Using beta version in production. API breakage possible between point releases.
 srrldb = { version = "0.1.0", path = "crates/srrldb" }
-surrealdb-core = { version = "3.0.0-beta", path = "crates/srrldb/surrealdb/core", default-features = false }
-surrealdb-types = { version = "3.0.0-beta", path = "crates/srrldb/surrealdb/types" }
-surrealdb-types-derive = { version = "3.0.0-beta", path = "crates/srrldb/surrealdb/types/derive" }
+surrealdb-core = { version = "3.0.0-beta", path = "crates/srrldb/core", default-features = false }
+surrealdb-types = { version = "3.0.0-beta", path = "crates/srrldb/types" }
+surrealdb-types-derive = { version = "3.0.0-beta", path = "crates/srrldb/types/derive" }
 
 
 # External surreal crates
