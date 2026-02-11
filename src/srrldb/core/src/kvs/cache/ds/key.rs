@@ -105,10 +105,19 @@ mod tests {
 
 	#[rstest]
 	#[case(DbCacheKeyRef("test-ns", "test-db"))]
-	#[case(ForiegnTablesCacheKeyRef(NamespaceId(1), DatabaseId(2), &TableName::from("test-table")))]
 	fn test_hash_equality<L: CacheKeyLookup<K> + Clone, K: CacheKey>(#[case] lookup: L) {
 		let key = lookup.clone().to_owned_key();
 		// calculate the hash of the lookup and key
+		let lookup_hash = hash(&lookup);
+		let key_hash = hash(&key);
+		assert_eq!(lookup_hash, key_hash);
+	}
+
+	#[test]
+	fn test_foreign_tables_hash_equality() {
+		let table = TableName::from("test-table");
+		let lookup = ForiegnTablesCacheKeyRef(NamespaceId(1), DatabaseId(2), &table);
+		let key = lookup.clone().to_owned_key();
 		let lookup_hash = hash(&lookup);
 		let key_hash = hash(&key);
 		assert_eq!(lookup_hash, key_hash);
