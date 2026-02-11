@@ -1,7 +1,6 @@
 [workspace]
 members = [
     ".",
-    "kiro-gateway-rs",
     "src/srrldb",
     "src/srrldb/core",
     "src/srrldb/types",
