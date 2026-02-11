@@ -5513,11 +5513,15 @@ dependencies = [
 name = "srrldb"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "semver",
+ "serde",
+ "serde_json",
  "surrealdb-core",
  "surrealdb-types",
  "thiserror 2.0.18",
  "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
