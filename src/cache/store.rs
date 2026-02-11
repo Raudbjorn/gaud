@@ -339,12 +339,7 @@ impl CacheStore {
         } ON DUPLICATE KEY UPDATE
             stream_events = $stream_events,
             stream_format = $stream_format,
-            embedding = $emb,
-            system_prompt_hash = $sys_hash,
-            tool_definitions_hash = $tool_hash,
-            temperature = $temp,
-            confidence = $conf,
-            hash_version = $hash_ver";
+            response_json = $resp_json";
 
         self.db.query(sql)
             .bind(("exact_hash", entry.exact_hash.clone()))
