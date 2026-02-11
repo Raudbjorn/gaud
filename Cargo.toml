@@ -2,16 +2,10 @@
 members = [
     ".",
     "kiro-gateway-rs",
-    "surrealdb",
-    "surrealdb/core",
-    "surrealdb/server",
-    "surrealdb/types",
-    "surrealdb/types/derive",
-    "surrealml/core",
-    "surrealism",
-    "surrealism/macros",
-    "surrealism/runtime",
-    "surrealism/types",
+    "crates/srrldb",
+    "crates/srrldb/surrealdb/core",
+    "crates/srrldb/surrealdb/types",
+    "crates/srrldb/surrealdb/types/derive",
 ]
 
 [workspace.package]
@@ -35,18 +29,11 @@ categories = ["database-implementations", "data-structures", "embedded"]
 [workspace.dependencies]
 # SurrealDB crates
 # WARNING: Using beta version in production. API breakage possible between point releases.
-surrealdb = { version = "3.0.0-beta", path = "surrealdb" }
-surrealdb-core = { version = "3.0.0-beta", path = "surrealdb/core", default-features = false }
-surrealdb-server = { version = "3.0.0-beta", path = "surrealdb/server", default-features = false }
-surrealdb-types = { version = "3.0.0-beta", path = "surrealdb/types" }
-surrealdb-types-derive = { version = "3.0.0-beta", path = "surrealdb/types/derive" }
-# SurrealML crates
-surrealml-core = { version = "0.1", path = "surrealml/core" }
-# Surrealism crates
-surrealism = { version = "0.1", path = "surrealism" }
-surrealism-macros = { version = "0.1", path = "surrealism/macros", default-features = false }
-surrealism-runtime = { version = "0.1", path = "surrealism/runtime" }
-surrealism-types = { version = "0.1", path = "surrealism/types", default-features = false }
+srrldb = { version = "0.1.0", path = "crates/srrldb" }
+surrealdb-core = { version = "3.0.0-beta", path = "crates/srrldb/surrealdb/core", default-features = false }
+surrealdb-types = { version = "3.0.0-beta", path = "crates/srrldb/surrealdb/types" }
+surrealdb-types-derive = { version = "3.0.0-beta", path = "crates/srrldb/surrealdb/types/derive" }
+
 
 # External surreal crates
 affinitypool = "0.4.0"
@@ -186,17 +173,8 @@ time = "0.3.47"
 tracing-subscriber = "0.3.22"
 wiremock = "0.6.5"
 
-# SurrealML specific dependencies
+# SurrealML specific dependencies (only resolved when ml feature enabled)
 ort = { version = "2.0.0-rc.11", features = ["cuda", "ndarray"] }
-
-# Surrealism specific dependencies
-tar = "0.4.44"
-toml = "0.9.11"
-walrus = "0.24.4"
-wasm-opt = "0.116.1"
-wasmtime = { version = "41.0.0", default-features = false, features = ["cranelift", "winch", "runtime", "std", "wat"] }
-wasmtime-wasi = { version = "41.0.0", features = ["p1"] }
-zstd = "0.13.3"
 
 [workspace.lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
@@ -266,7 +244,7 @@ reqwest = { version = "0.12", features = ["json", "stream"] }
 kiro-gateway = { path = "kiro-gateway-rs" }
 
 # Embedded SurrealDB for semantic cache (HNSW vector index)
-surrealdb = { version = "3.0.0-beta", default-features = false, features = ["allocator"] }
+srrldb = { workspace = true, features = ["allocator"] }
 
 # Logging
 tracing = "0.1"
@@ -299,8 +277,8 @@ default = ["system-keyring", "cache-persistent"]
 system-keyring = ["dep:keyring"]
 
 # Mutually exclusive: do not enable both.
-cache-persistent = ["surrealdb/kv-rocksdb"]
-cache-ephemeral = ["surrealdb/kv-mem"]
+cache-persistent = ["srrldb/kv-rocksdb"]
+cache-ephemeral = ["srrldb/kv-mem"]
 
 
 

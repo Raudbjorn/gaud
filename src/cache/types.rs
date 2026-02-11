@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use surrealdb::types::SurrealValue;
+use srrldb::types::SurrealValue;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 // ---------------------------------------------------------------------------
@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 /// A cached request→response pair.
 #[derive(Debug, Clone, Serialize, Deserialize, SurrealValue)]
-#[surreal(crate = "surrealdb::types")]
+#[surreal(crate = "srrldb::types")]
 pub struct CacheEntry {
     pub exact_hash: String,
     pub model: String,
@@ -18,9 +18,9 @@ pub struct CacheEntry {
     pub embedding: Option<Vec<f32>>,
     pub request_json: String,
     pub response_json: String,
-    pub created_at: surrealdb::types::Datetime,
+    pub created_at: srrldb::types::Datetime,
     pub hit_count: u64,
-    pub last_hit: Option<surrealdb::types::Datetime>,
+    pub last_hit: Option<srrldb::types::Datetime>,
     pub hash_version: String,
 }
 
@@ -47,7 +47,7 @@ pub enum CacheHitKind {
 
 /// Metadata attached to cached entries for validation and analysis.
 #[derive(Debug, Clone, Serialize, Deserialize, SurrealValue)]
-#[surreal(crate = "surrealdb::types")]
+#[surreal(crate = "srrldb::types")]
 pub struct CacheMetadata {
     pub model: String,
     pub system_prompt_hash: String,
@@ -225,7 +225,7 @@ mod tests {
             embedding: None,
             request_json: "{}".into(),
             response_json: "{}".into(),
-            created_at: surrealdb::types::Datetime::now(),
+            created_at: srrldb::types::Datetime::now(),
             hit_count: 0,
             last_hit: None,
             hash_version: "v1".into(),

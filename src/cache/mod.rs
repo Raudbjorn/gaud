@@ -172,7 +172,7 @@ impl SemanticCacheService {
             embedding,
             request_json,
             response_json,
-            created_at: surrealdb::types::Datetime::now(), // Set by SurrealDB but placeholder here
+            created_at: srrldb::types::Datetime::now(), // Set by SurrealDB but placeholder here
             hit_count: 0,
             last_hit: None,
             hash_version: "v1".to_string(),
