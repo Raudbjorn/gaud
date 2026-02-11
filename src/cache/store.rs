@@ -134,6 +134,7 @@ impl CacheStore {
     ///
     /// Only called from `persistent()`. Ephemeral stores start empty, so
     /// there is nothing to warm up.
+    #[cfg(feature = "cache-persistent")]
     async fn warmup(&self) -> Result<(), CacheError> {
         let count = self.entry_count().await?;
 
@@ -465,10 +466,11 @@ impl CacheStore {
 }
 
 #[cfg(test)]
+#[cfg(feature = "cache-ephemeral")]
 mod tests {
+    use super::*;
 
     #[tokio::test]
-    #[cfg(feature = "cache-ephemeral")]
     async fn test_cache_store_basic() -> Result<(), CacheError> {
         let store = CacheStore::ephemeral(3).await?;
 
@@ -532,7 +534,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[cfg(feature = "cache-ephemeral")]
     async fn test_vector_validation() -> Result<(), CacheError> {
         let store = CacheStore::ephemeral(3).await?;
 

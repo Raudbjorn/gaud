@@ -539,6 +539,9 @@ impl StreamCacheOps for SemanticCacheService {
 #[cfg(feature = "cache-ephemeral")]
 mod tests {
     use crate::cache::store::CacheStore;
+    use std::sync::Arc;
+    use crate::SemanticCacheService;
+    use crate::cache::StreamCacheOps;
     use crate::providers::types::{ChatRequest, ChatMessage, MessageRole, MessageContent};
 
     #[allow(dead_code)]
