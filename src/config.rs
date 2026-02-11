@@ -316,6 +316,8 @@ impl KiroProviderConfig {
             || self.credentials_file.is_some()
             || std::env::var("GAUD_KIRO_REFRESH_TOKEN").is_ok()
             || std::env::var("GAUD_KIRO_CREDS_FILE").is_ok()
+            // Deprecated: kept as fallback for users migrating from older configs.
+            || std::env::var("KIRO_REFRESH_TOKEN").is_ok()
     }
 
     /// Resolve the effective refresh token (config value → env var → creds file).
@@ -328,21 +330,15 @@ impl KiroProviderConfig {
         if let Ok(t) = std::env::var("GAUD_KIRO_REFRESH_TOKEN") {
             return Some(t);
         }
-        // 3. Credentials JSON file
-        let creds_path = self
-            .credentials_file
-            .clone()
-            .or_else(|| std::env::var("GAUD_KIRO_CREDS_FILE").ok());
-        if let Some(path) = creds_path {
-            if let Ok(contents) = std::fs::read_to_string(shellexpand::tilde(&path).as_ref()) {
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&contents) {
-                    if let Some(t) = json["refreshToken"].as_str() {
-                        return Some(t.to_string());
-                    }
-                }
-            }
+        // 3. Deprecated env var (fallback for older configs)
+        if let Ok(t) = std::env::var("KIRO_REFRESH_TOKEN") {
+            tracing::warn!(
+                "KIRO_REFRESH_TOKEN is deprecated, use GAUD_KIRO_REFRESH_TOKEN instead"
+            );
+            return Some(t);
         }
-        None
+        // 4. Credentials JSON file
+        self.read_creds_json_field("refreshToken")
     }
 
     /// Resolve the effective AWS region.
@@ -358,20 +354,68 @@ impl KiroProviderConfig {
         if let Ok(arn) = std::env::var("GAUD_KIRO_PROFILE_ARN") {
             return Some(arn);
         }
+        self.read_creds_json_field("profileArn")
+    }
+
+    /// Read a string field from the credentials JSON file.
+    ///
+    /// Resolves the credentials file path from config or the
+    /// `GAUD_KIRO_CREDS_FILE` env var, reads and parses the file, and
+    /// extracts the requested top-level string field. Logs warnings on
+    /// any failures so misconfigurations are diagnosable.
+    fn read_creds_json_field(&self, field: &str) -> Option<String> {
         let creds_path = self
             .credentials_file
             .clone()
-            .or_else(|| std::env::var("GAUD_KIRO_CREDS_FILE").ok());
-        if let Some(path) = creds_path {
-            if let Ok(contents) = std::fs::read_to_string(shellexpand::tilde(&path).as_ref()) {
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&contents) {
-                    if let Some(arn) = json["profileArn"].as_str() {
-                        return Some(arn.to_string());
-                    }
-                }
+            .or_else(|| std::env::var("GAUD_KIRO_CREDS_FILE").ok())?;
+
+        let expanded = match shellexpand::full(&creds_path) {
+            Ok(p) => p.into_owned(),
+            Err(e) => {
+                tracing::warn!(
+                    path = %creds_path,
+                    error = %e,
+                    "failed to expand Kiro credentials file path"
+                );
+                return None;
+            }
+        };
+
+        let contents = match std::fs::read_to_string(&expanded) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    path = %expanded,
+                    error = %e,
+                    "failed to read Kiro credentials file"
+                );
+                return None;
+            }
+        };
+
+        let json: serde_json::Value = match serde_json::from_str(&contents) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(
+                    path = %expanded,
+                    error = %e,
+                    "failed to parse Kiro credentials file as JSON"
+                );
+                return None;
+            }
+        };
+
+        match json[field].as_str() {
+            Some(val) => Some(val.to_string()),
+            None => {
+                tracing::warn!(
+                    path = %expanded,
+                    field = %field,
+                    "Kiro credentials file does not contain the expected field"
+                );
+                None
             }
         }
-        None
     }
 }
 

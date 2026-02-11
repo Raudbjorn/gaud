@@ -28,8 +28,9 @@ keywords = [
 categories = ["web-programming", "authentication", "api-bindings"]
 
 [workspace.dependencies]
-# SurrealDB crates
-# WARNING: Using beta version in production. API breakage possible between point releases.
+# Vendored SurrealDB fork (srrldb-*) — local crates with a stripped-down API
+# surface tailored for gaud's embedded use-case. The public interface may
+# diverge from upstream SurrealDB.
 srrldb = { version = "0.1.0", path = "src/srrldb" }
 srrldb-core = { version = "0.1.0", path = "src/srrldb/core", default-features = false }
 srrldb-types = { version = "0.1.0", path = "src/srrldb/types" }
