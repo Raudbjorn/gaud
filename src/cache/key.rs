@@ -27,6 +27,24 @@ pub fn should_skip(request: &ChatRequest, config: &CacheConfig) -> bool {
     false
 }
 
+/// Returns `true` if this *streaming* request should bypass the stream cache.
+///
+/// Same rules as [`should_skip`] except `request.stream` is not checked
+/// (streaming is the whole point).
+pub fn should_skip_stream(request: &ChatRequest, config: &CacheConfig) -> bool {
+    // Tool-calling requests when configured to skip.
+    if config.skip_tool_requests && request.tools.is_some() {
+        return true;
+    }
+
+    // Model in skip list.
+    if config.skip_models.iter().any(|m| m == &request.model) {
+        return true;
+    }
+
+    false
+}
+
 // ---------------------------------------------------------------------------
 // Exact-match hash (SHA-256 of canonical request fields)
 // ---------------------------------------------------------------------------
@@ -246,6 +264,35 @@ mod tests {
 
         req2.stream = true;
         assert!(should_skip(&req2, &config));
+    }
+
+    #[test]
+    fn test_should_skip_stream() {
+        let mut config = CacheConfig::default();
+        config.skip_models = vec!["skipped-model".into()];
+        config.skip_tool_requests = true;
+
+        // Streaming requests are NOT skipped by should_skip_stream
+        let mut req = default_request();
+        req.stream = true;
+        assert!(!should_skip_stream(&req, &config));
+
+        // But tool requests still are
+        req.tools = Some(vec![Tool {
+            r#type: "function".into(),
+            function: FunctionDef {
+                name: "test".into(),
+                description: None,
+                parameters: None,
+            },
+        }]);
+        assert!(should_skip_stream(&req, &config));
+
+        // And skipped models still are
+        let mut req2 = default_request();
+        req2.model = "skipped-model".into();
+        req2.stream = true;
+        assert!(should_skip_stream(&req2, &config));
     }
 
     #[test]

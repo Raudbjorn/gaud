@@ -14,6 +14,9 @@ pub mod types;
 use crate::config::{CacheConfig, CacheMode};
 use crate::providers::types::{ChatRequest, ChatResponse};
 
+use std::future::Future;
+use std::pin::Pin;
+
 use self::store::CacheStore;
 use self::types::{
     CacheEntry, CacheError, CacheHitKind, CacheLookupResult, CacheMetadata,
@@ -54,9 +57,25 @@ impl SemanticCacheService {
         })
     }
 
+    /// Helper for tests to inject a pre-populated store.
+    #[cfg(test)]
+    pub(crate) fn new_with_store(store: CacheStore, config: CacheConfig) -> Self {
+        Self {
+            store,
+            config,
+            stats: CacheStats::new(),
+        }
+    }
+
     /// Check whether this request should be checked against the cache.
     pub fn should_check(&self, request: &ChatRequest) -> bool {
         !key::should_skip(request, &self.config)
+    }
+
+    /// Check whether this *streaming* request should be checked against the
+    /// streaming replay cache.
+    pub fn should_check_stream(&self, request: &ChatRequest) -> bool {
+        self.config.stream_cache_enabled && !key::should_skip_stream(request, &self.config)
     }
 
     /// Look up a cached response for the given request.
@@ -176,6 +195,8 @@ impl SemanticCacheService {
             hit_count: 0,
             last_hit: None,
             hash_version: "v1".to_string(),
+            stream_events: None,
+            stream_format: None,
         };
 
         self.store.insert(&entry, &metadata).await?;
@@ -239,5 +260,287 @@ impl SemanticCacheService {
         if mag > 1e-6 {
             v.iter_mut().for_each(|x| *x /= mag);
         }
+    }
+
+    fn build_metadata(&self, request: &ChatRequest) -> CacheMetadata {
+        CacheMetadata {
+            model: request.model.clone(),
+            system_prompt_hash: key::system_prompt_hash(request),
+            tool_definitions_hash: key::tool_definitions_hash(request),
+            temperature: request.temperature,
+            confidence: None,
+        }
+    }
+
+    async fn resolve_embedding(&self, request: &ChatRequest) -> Option<Vec<f32>> {
+        if self.config.mode == CacheMode::Exact {
+            return None;
+        }
+        let url = self.config.embedding_url.as_ref()?;
+        let sem_text = key::semantic_text(request);
+        if sem_text.is_empty() {
+            return None;
+        }
+        match self.embed(&sem_text, url).await {
+            Ok(emb) => Some(emb),
+            Err(e) => {
+                tracing::warn!(error = %e, "Embedding lookup failed, falling back to exact-only");
+                None
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Streaming cache methods
+// ---------------------------------------------------------------------------
+
+impl SemanticCacheService {
+    /// Look up cached stream events for the given request.
+    ///
+    /// Returns `CacheLookupResult::Hit` only if the matched entry contains
+    /// `stream_events`. Otherwise returns `Miss`.
+    pub async fn lookup_stream(
+        &self,
+        request: &ChatRequest,
+    ) -> Result<CacheLookupResult, CacheError> {
+        let exact_hash = key::exact_hash(request);
+        let metadata = self.build_metadata(request);
+        let embedding = self.resolve_embedding(request).await;
+
+        let result = self.store.lookup(
+            &exact_hash,
+            embedding.as_deref(),
+            &metadata,
+            self.config.similarity_threshold,
+            self.config.ttl_secs,
+        ).await?;
+
+        match &result {
+            CacheLookupResult::Hit(entry, info) if entry.stream_events.is_some() => {
+                self.store.record_hit(&entry.exact_hash).await.ok();
+                match info.kind {
+                    CacheHitKind::Exact => self.stats.record_stream_exact_hit(),
+                    CacheHitKind::Semantic => self.stats.record_stream_semantic_hit(),
+                }
+                Ok(result)
+            }
+            CacheLookupResult::Hit(_, _) => {
+                // Entry exists but has no stream events — treat as miss.
+                self.stats.record_miss();
+                Ok(CacheLookupResult::Miss)
+            }
+            CacheLookupResult::Miss => {
+                self.stats.record_miss();
+                Ok(CacheLookupResult::Miss)
+            }
+        }
+    }
+
+    /// Store stream events for a completed streaming response.
+    ///
+    /// Called in a background task after the stream finishes successfully.
+    pub async fn store_stream(
+        &self,
+        request: &ChatRequest,
+        events: &[String],
+    ) -> Result<(), CacheError> {
+        let exact_hash = key::exact_hash(request);
+        let sem_text = key::semantic_text(request);
+        let request_json = serde_json::to_string(request)?;
+        let metadata = self.build_metadata(request);
+        let embedding = self.resolve_embedding(request).await;
+
+        let entry = CacheEntry {
+            exact_hash,
+            model: request.model.clone(),
+            system_prompt_hash: metadata.system_prompt_hash.clone(),
+            tool_definitions_hash: metadata.tool_definitions_hash.clone(),
+            semantic_text: sem_text,
+            embedding,
+            request_json,
+            response_json: String::new(), // No assembled response for stream-only
+            created_at: srrldb::types::Datetime::now(),
+            hit_count: 0,
+            last_hit: None,
+            hash_version: "v1".to_string(),
+            stream_events: Some(events.to_vec()),
+            stream_format: Some("openai_sse_v1".to_string()),
+        };
+
+        self.store.insert_stream(&entry, &metadata, events).await?;
+
+        // Enforce max_entries limit
+        if self.config.max_entries > 0 {
+            self.store.evict_lru(self.config.max_entries).await.ok();
+        }
+
+        Ok(())
+    }
+
+    /// Stream cache config: max events per request.
+    pub fn stream_cache_max_events(&self) -> usize {
+        self.config.stream_cache_max_events
+    }
+
+    /// Stream cache config: max bytes per request.
+    pub fn stream_cache_max_bytes(&self) -> usize {
+        self.config.stream_cache_max_bytes
+    }
+}
+
+// ---------------------------------------------------------------------------
+// StreamCacheOps trait — testable interface
+// ---------------------------------------------------------------------------
+
+/// Trait for streaming cache operations.
+///
+/// Implemented by [`SemanticCacheService`] in production and by fakes in tests.
+/// Using a trait here avoids coupling the stream handler to the concrete cache
+/// implementation, making it possible to test without SurrealDB.
+pub trait StreamCacheOps: Send + Sync {
+    /// Whether this streaming request should be checked against the cache.
+    fn check_stream(&self, request: &ChatRequest) -> bool;
+
+    /// Look up cached stream events. Returns `Some((events, hit_kind))` on hit.
+    fn get_cached_events<'a>(
+        &'a self,
+        request: &'a ChatRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<(Vec<String>, &'static str)>, CacheError>> + Send + 'a>>;
+
+    /// Store stream events for a completed streaming response.
+    fn put_stream_events<'a>(
+        &'a self,
+        request: &'a ChatRequest,
+        events: Vec<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<(), CacheError>> + Send + 'a>>;
+
+    /// Max events to buffer per streaming request.
+    fn max_stream_events(&self) -> usize;
+
+    /// Max bytes to buffer per streaming request.
+    fn max_stream_bytes(&self) -> usize;
+}
+
+impl StreamCacheOps for SemanticCacheService {
+    fn check_stream(&self, request: &ChatRequest) -> bool {
+        self.should_check_stream(request)
+    }
+
+    fn get_cached_events<'a>(
+        &'a self,
+        request: &'a ChatRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<(Vec<String>, &'static str)>, CacheError>> + Send + 'a>> {
+        Box::pin(async move {
+            match self.lookup_stream(request).await? {
+                CacheLookupResult::Hit(entry, info) => {
+                    let kind = match info.kind {
+                        CacheHitKind::Exact => "exact",
+                        CacheHitKind::Semantic => "semantic",
+                    };
+                    Ok(entry.stream_events.map(|events| (events, kind)))
+                }
+                CacheLookupResult::Miss => Ok(None),
+            }
+        })
+    }
+
+    fn put_stream_events<'a>(
+        &'a self,
+        request: &'a ChatRequest,
+        events: Vec<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<(), CacheError>> + Send + 'a>> {
+        Box::pin(async move {
+            self.store_stream(request, &events).await
+        })
+    }
+
+    fn max_stream_events(&self) -> usize {
+        self.stream_cache_max_events()
+    }
+
+    fn max_stream_bytes(&self) -> usize {
+        self.stream_cache_max_bytes()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cache::store::CacheStore;
+    use crate::providers::types::{ChatRequest, ChatMessage, MessageRole, MessageContent};
+    use std::sync::Arc;
+
+    fn test_request() -> ChatRequest {
+        ChatRequest {
+            model: "test-model".into(),
+            messages: vec![ChatMessage {
+                role: MessageRole::User,
+                content: Some(MessageContent::Text("hello".into())),
+                name: None,
+                tool_calls: None,
+                tool_call_id: None,
+            }],
+            temperature: None,
+            top_p: None,
+            stream: true,
+            stop: None,
+            max_tokens: None,
+            tools: None,
+            tool_choice: None,
+            stream_options: None,
+        }
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "cache-ephemeral")]
+    async fn test_service_stream_hit_no_events_returns_miss() {
+        let store = Arc::new(CacheStore::ephemeral(3).await.expect("ephemeral init"));
+
+        let request = test_request();
+        let exact = crate::cache::key::exact_hash(&request);
+        let sys = crate::cache::key::system_prompt_hash(&request);
+        let tools = crate::cache::key::tool_definitions_hash(&request);
+        let sem = crate::cache::key::semantic_text(&request);
+
+        // Insert entry with NO stream_events
+        let metadata = crate::cache::types::CacheMetadata {
+            model: "test-model".into(),
+            system_prompt_hash: sys.clone(),
+            tool_definitions_hash: tools.clone(),
+            temperature: None,
+            confidence: None,
+        };
+        let entry = crate::cache::types::CacheEntry {
+            exact_hash: exact,
+            model: "test-model".into(),
+            system_prompt_hash: sys,
+            tool_definitions_hash: tools,
+            semantic_text: sem,
+            embedding: Some(vec![1.0, 0.0, 0.0]),
+            request_json: "{}".into(),
+            response_json: "{}".into(),
+            created_at: srrldb::types::Datetime::now(),
+            hit_count: 0,
+            last_hit: None,
+            hash_version: "v1".into(),
+            stream_events: None, // KEY: This is what triggers the miss behavior
+            stream_format: None,
+        };
+        store.insert(&entry, &metadata).await.expect("insert failed");
+
+        let service = SemanticCacheService::new_with_store(store.as_ref().clone(), crate::config::CacheConfig::default());
+        let ops: &dyn StreamCacheOps = &service;
+
+        // Verify check_stream passes (assuming config defaults allow it)
+        // Default CacheConfig has enabled=true? Let's check.
+        // If not, we might need to configure it.
+        // But assuming check_stream=true:
+
+        // Act: Lookup
+        let result = ops.get_cached_events(&request).await.expect("lookup failed");
+
+        // Assert: Should be None even though we found an exact match, because stream_events is None
+        assert!(result.is_none(), "Entry without stream_events must act as a cache miss");
     }
 }

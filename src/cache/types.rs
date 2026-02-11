@@ -22,6 +22,10 @@ pub struct CacheEntry {
     pub hit_count: u64,
     pub last_hit: Option<srrldb::types::Datetime>,
     pub hash_version: String,
+    /// Optional SSE event log for streaming replay cache.
+    pub stream_events: Option<Vec<String>>,
+    /// Format version tag for the stream event log (e.g. "openai_sse_v1").
+    pub stream_format: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -96,6 +100,8 @@ impl CacheLookupResult {
 pub struct CacheStats {
     pub hits_exact: AtomicU64,
     pub hits_semantic: AtomicU64,
+    pub hits_stream_exact: AtomicU64,
+    pub hits_stream_semantic: AtomicU64,
     pub misses: AtomicU64,
 }
 
@@ -104,6 +110,8 @@ impl CacheStats {
         Self {
             hits_exact: AtomicU64::new(0),
             hits_semantic: AtomicU64::new(0),
+            hits_stream_exact: AtomicU64::new(0),
+            hits_stream_semantic: AtomicU64::new(0),
             misses: AtomicU64::new(0),
         }
     }
@@ -120,19 +128,31 @@ impl CacheStats {
         self.misses.fetch_add(1, Ordering::Relaxed);
     }
 
+    pub fn record_stream_exact_hit(&self) {
+        self.hits_stream_exact.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn record_stream_semantic_hit(&self) {
+        self.hits_stream_semantic.fetch_add(1, Ordering::Relaxed);
+    }
+
     pub fn snapshot(&self) -> CacheStatsSnapshot {
         let exact = self.hits_exact.load(Ordering::Relaxed);
         let semantic = self.hits_semantic.load(Ordering::Relaxed);
+        let stream_exact = self.hits_stream_exact.load(Ordering::Relaxed);
+        let stream_semantic = self.hits_stream_semantic.load(Ordering::Relaxed);
         let misses = self.misses.load(Ordering::Relaxed);
-        let total = exact + semantic + misses;
+        let total = exact + semantic + stream_exact + stream_semantic + misses;
         let hit_rate = if total > 0 {
-            (exact + semantic) as f64 / total as f64
+            (exact + semantic + stream_exact + stream_semantic) as f64 / total as f64
         } else {
             0.0
         };
         CacheStatsSnapshot {
             hits_exact: exact,
             hits_semantic: semantic,
+            hits_stream_exact: stream_exact,
+            hits_stream_semantic: stream_semantic,
             misses,
             hit_rate,
         }
@@ -144,6 +164,8 @@ impl CacheStats {
 pub struct CacheStatsSnapshot {
     pub hits_exact: u64,
     pub hits_semantic: u64,
+    pub hits_stream_exact: u64,
+    pub hits_stream_semantic: u64,
     pub misses: u64,
     pub hit_rate: f64,
 }
@@ -229,6 +251,8 @@ mod tests {
             hit_count: 0,
             last_hit: None,
             hash_version: "v1".into(),
+            stream_events: None,
+            stream_format: None,
         };
 
         let info = CacheHitInfo {
