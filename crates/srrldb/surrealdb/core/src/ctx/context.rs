@@ -661,7 +661,7 @@ impl Context {
 	}
 
 	/// Check if scripting is allowed
-	#[expect(dead_code)]
+	#[allow(dead_code)]
 	pub(crate) fn check_allowed_scripting(&self) -> Result<()> {
 		if !self.capabilities.allows_scripting() {
 			warn!("Capabilities denied scripting attempt");

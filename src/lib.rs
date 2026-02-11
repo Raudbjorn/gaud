@@ -1,3 +1,10 @@
+// Enforce mutual exclusivity of cache features at compile time.
+#[cfg(all(feature = "cache-persistent", feature = "cache-ephemeral"))]
+compile_error!(
+    "Features `cache-persistent` and `cache-ephemeral` are mutually exclusive. \
+     Please enable only one."
+);
+
 pub mod api;
 pub mod auth;
 pub mod budget;
