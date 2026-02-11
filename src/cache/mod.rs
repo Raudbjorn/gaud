@@ -321,7 +321,9 @@ impl SemanticCacheService {
 
         match &result {
             CacheLookupResult::Hit(entry, info) if entry.stream_events.is_some() => {
-                self.store.record_hit(&entry.exact_hash).await.ok();
+                if let Err(e) = self.store.record_hit(&entry.exact_hash).await {
+                    tracing::warn!("Failed to record cache hit: {}", e);
+                }
                 match info.kind {
                     CacheHitKind::Exact => self.stats.record_stream_exact_hit(),
                     CacheHitKind::Semantic => self.stats.record_stream_semantic_hit(),
@@ -329,13 +331,12 @@ impl SemanticCacheService {
                 Ok(result)
             }
             CacheLookupResult::Hit(_, _) => {
-                // Entry exists but has no stream events — treat as miss.
-                self.stats.record_miss();
+                // Entry exists but has no stream events — treat as stream miss.
+                // Do NOT record as a general cache miss to avoid skewing non-stream stats.
                 self.stats.record_stream_miss();
                 Ok(CacheLookupResult::Miss)
             }
             CacheLookupResult::Miss => {
-                self.stats.record_miss();
                 self.stats.record_stream_miss();
                 Ok(CacheLookupResult::Miss)
             }
@@ -611,5 +612,36 @@ mod tests {
 
         // Assert: Should be None even though we found an exact match, because stream_events is None
         assert!(result.is_none(), "Entry without stream_events must act as a cache miss");
+    }
+    #[tokio::test]
+    #[cfg(feature = "cache-ephemeral")]
+    async fn test_stream_stats_separation() {
+        let store = Arc::new(CacheStore::ephemeral(4).await.expect("ephemeral init"));
+        let service = SemanticCacheService::new_with_store(store.as_ref().clone(), crate::config::CacheConfig::default());
+        let request = test_request();
+
+        // 1. Stream lookup miss
+        let _ = service.lookup_stream(&request).await.expect("lookup failed");
+        let stats = service.stats();
+        assert_eq!(stats.misses_stream, 1, "Should increment stream misses");
+        assert_eq!(stats.misses, 0, "Should NOT increment global misses");
+
+        // 2. Store stream events
+        let events = vec!["data: event1\n\n".to_string(), "data: [DONE]\n\n".to_string()];
+        service.store_stream(&request, &events).await.expect("store failed");
+
+        // 3. Stream lookup hit
+        let _ = service.lookup_stream(&request).await.expect("lookup failed");
+        let stats = service.stats();
+        assert_eq!(stats.hits_stream_exact, 1, "Should increment stream hits");
+        assert_eq!(stats.hits_exact, 0, "Should NOT increment global hits");
+
+        // 4. Non-stream lookup hit (should hit the same entry because we reconstruct response_json)
+        // Wait, store_stream now reconstructs response_json!
+        // So a normal lookup SHOULD hit.
+        let _ = service.lookup(&request).await.expect("lookup failed");
+        let stats = service.stats();
+        assert_eq!(stats.hits_exact, 1, "Should increment global hits");
+        assert_eq!(stats.hits_stream_exact, 1, "Stream hits should remain same");
     }
 }
