@@ -221,13 +221,7 @@ impl CloudCodeClient {
         request.session_id = Some(session_id);
 
         // Add system instruction with Antigravity identity
-        let mut system_parts = vec![
-            Part::text(ANTIGRAVITY_SYSTEM_INSTRUCTION),
-            Part::text(format!(
-                "Please ignore the following [ignore]{}[/ignore]",
-                ANTIGRAVITY_SYSTEM_INSTRUCTION
-            )),
-        ];
+        let mut system_parts = vec![Part::text(ANTIGRAVITY_SYSTEM_INSTRUCTION)];
 
         // Append existing system instruction
         if let Some(sys) = &request.system_instruction {
