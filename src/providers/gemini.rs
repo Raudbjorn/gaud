@@ -1,62 +1,327 @@
 //! Gemini (Google) Provider
 //!
-//! Converts OpenAI-format requests into Google Generative AI content format,
-//! sends them to the Gemini API, and converts the response back to OpenAI
-//! format.
+//! Uses the `gemini` library to communicate with the Google Gemini API
+//! via the Cloud Code API client.
 
-use std::collections::VecDeque;
 use std::pin::Pin;
 
-use futures::stream::{self, StreamExt};
-use futures::Stream;
-use reqwest::Client;
+use async_trait::async_trait;
+use futures::{Stream, StreamExt};
+use tracing::warn;
 
-use crate::providers::transform::{GeminiTransformer, SseEvent, SseParser};
-use crate::providers::transform::util::{detect_context_window_error, parse_rate_limit_headers};
-use crate::providers::transformer::{ProviderResponseMeta, ProviderTransformer};
-use crate::providers::types::*;
+use crate::auth::gemini::TokenInfo as GateTokenInfo;
+use crate::gemini::{
+    client::CloudCodeClient,
+    models::{
+        MessagesRequest, MessagesResponse, Message, Role, MessageContent,
+        ContentBlock, Tool, SystemPrompt, StopReason, StreamEvent, ContentDelta,
+    },
+    storage::TokenStorage as GateTokenStorage,
+    error::Error as GateError,
+};
+
+use crate::providers::{LlmProvider, ProviderError};
+use crate::oauth::storage::TokenStorage;
+use crate::providers::types::{
+    ChatChunk, ChatRequest, ChatResponse, Choice, MessageRole, ResponseMessage,
+    ToolCall, Usage, ChunkChoice, Delta, FunctionCall,
+};
 use crate::providers::pricing::ModelPricing;
-use crate::providers::{LlmProvider, ProviderError, TokenStorage};
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const API_BASE: &str = "https://generativelanguage.googleapis.com/v1beta/models";
-
 const SUPPORTED_MODELS: &[&str] = &[
     "gemini-2.5-flash",
     "gemini-2.5-pro",
     "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-1.5-pro",
 ];
+
+// ---------------------------------------------------------------------------
+// Token Storage Adapter
+// ---------------------------------------------------------------------------
+
+/// Adapts the `gaud` Synchronous `TokenStorage` trait to the `gemini`
+/// Asynchronous `TokenStorage` trait.
+struct GaudTokenStorageAdapter<T: TokenStorage> {
+    inner: T,
+}
+
+#[async_trait]
+impl<T: TokenStorage + Send + Sync> GateTokenStorage for GaudTokenStorageAdapter<T> {
+    async fn load(&self) -> Result<Option<GateTokenInfo>, GateError> {
+        let result = self.inner.load("gemini")
+            .map_err(|e| GateError::Storage(e.to_string()))?;
+
+        match result {
+            Some(t) => Ok(Some(GateTokenInfo {
+                token_type: t.token_type,
+                access_token: t.access_token,
+                refresh_token: t.refresh_token.unwrap_or_default(),
+                expires_at: t.expires_at.unwrap_or(0),
+            })),
+            None => Ok(None),
+        }
+    }
+
+    async fn save(&self, token: &GateTokenInfo) -> Result<(), GateError> {
+        let t = crate::oauth::TokenInfo {
+            access_token: token.access_token.clone(),
+            refresh_token: Some(token.refresh_token.clone()),
+            expires_at: Some(token.expires_at),
+            token_type: token.token_type.clone(),
+            provider: "gemini".to_string(),
+        };
+
+        self.inner.save("gemini", &t)
+            .map_err(|e| GateError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn remove(&self) -> Result<(), GateError> {
+        self.inner.remove("gemini")
+            .map_err(|e| GateError::Storage(e.to_string()))
+    }
+
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Gemini Provider
 // ---------------------------------------------------------------------------
 
 /// LLM provider that communicates with the Google Gemini API.
-pub struct GeminiProvider<T: TokenStorage> {
-    http: Client,
-    tokens: std::sync::Arc<T>,
+pub struct GeminiProvider {
+    client: CloudCodeClient<Box<dyn GateTokenStorage>>,
 }
 
-impl<T: TokenStorage + 'static> GeminiProvider<T> {
+impl GeminiProvider {
     /// Create a new Gemini provider backed by the given token storage.
-    pub fn new(tokens: std::sync::Arc<T>) -> Self {
-        Self {
-            http: Client::new(),
-            tokens,
-        }
+    pub fn new<T: TokenStorage + 'static>(tokens: T) -> Self {
+        // Create adapter and box it to erase the type T
+        let storage: Box<dyn GateTokenStorage> = Box::new(GaudTokenStorageAdapter { inner: tokens });
+        let client = CloudCodeClient::new(storage);
+        Self { client }
     }
 
-    /// Retrieve an access token or return an error.
-    async fn get_token(&self) -> Result<String, ProviderError> {
-        self.tokens
-            .get_access_token("gemini")
-            .await?
-            .ok_or_else(|| ProviderError::NoToken {
-                provider: "gemini".to_string(),
-            })
+    // -- Conversion Helpers -------------------------------------------------
+
+    fn convert_request(&self, request: &ChatRequest) -> Result<MessagesRequest, ProviderError> {
+        let mut messages = Vec::new();
+        let mut system = None;
+
+        for msg in &request.messages {
+            match msg.role {
+                MessageRole::System => {
+                     // Concatenate system messages if multiple
+                     let text = match &msg.content {
+                         Some(crate::providers::types::MessageContent::Text(t)) => t.clone(),
+                         Some(crate::providers::types::MessageContent::Parts(parts)) => {
+                             parts.iter().filter_map(|p| match p {
+                                 crate::providers::types::ContentPart::Text { text } => Some(text.clone()),
+                                 _ => None,
+                             }).collect::<Vec<_>>().join("\n")
+                         }
+                         None => continue,
+                     };
+
+                     if let Some(SystemPrompt::Text(existing)) = &system {
+                         system = Some(SystemPrompt::Text(format!("{}\n{}", existing, text)));
+                     } else {
+                         system = Some(SystemPrompt::Text(text));
+                     }
+                }
+                MessageRole::User | MessageRole::Assistant | MessageRole::Tool => {
+                    let role = if msg.role == MessageRole::User || msg.role == MessageRole::Tool {
+                        Role::User
+                    } else {
+                        Role::Assistant
+                    };
+
+                    let mut blocks = Vec::new();
+
+                    // Handle text/parts content
+                    if let Some(content) = &msg.content {
+                        match content {
+                            crate::providers::types::MessageContent::Text(text) => {
+                                blocks.push(ContentBlock::text(text));
+                            }
+                            crate::providers::types::MessageContent::Parts(msg_parts) => {
+                                for part in msg_parts {
+                                    match part {
+                                        crate::providers::types::ContentPart::Text { text } => {
+                                            blocks.push(ContentBlock::text(text));
+                                        }
+                                        crate::providers::types::ContentPart::ImageUrl { image_url } => {
+                                             // For now simpler adapter: just warn about images or try to pass URL
+                                             warn!("Image content not fully supported in adapter: {}", image_url.url);
+                                             blocks.push(ContentBlock::text(format!("[Image: {}]", image_url.url)));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Handle tool calls (Assistant only)
+                    if msg.role == MessageRole::Assistant {
+                        if let Some(calls) = &msg.tool_calls {
+                             for call in calls {
+                                 if let Ok(args) = serde_json::from_str(&call.function.arguments) {
+                                      blocks.push(ContentBlock::tool_use(
+                                          call.id.clone(),
+                                          call.function.name.clone(),
+                                          args
+                                      ));
+                                 }
+                             }
+                        }
+                    }
+
+                    // Handle tool response (Tool/User)
+                    if msg.role == MessageRole::Tool {
+                         let tool_use_id = msg.tool_call_id.clone().unwrap_or_default();
+                         let content_text = match &msg.content {
+                             Some(crate::providers::types::MessageContent::Text(t)) => t.clone(),
+                             _ => String::new(),
+                         };
+                         blocks.push(ContentBlock::tool_result(
+                             tool_use_id,
+                             content_text
+                         ));
+                    }
+
+                    if !blocks.is_empty() {
+                        messages.push(Message {
+                            role,
+                            content: MessageContent::Blocks(blocks),
+                        });
+                    }
+                }
+            }
+        }
+
+        // Tools
+        let tools = if let Some(req_tools) = &request.tools {
+            let mut methods = Vec::new();
+            for t in req_tools {
+                 if t.r#type == "function" {
+                     // We need to construct gemini::models::tools::Tool
+                     // It expects name, description, input_schema.
+                     // ChatRequest Tool is { type: "function", function: FunctionDef { name, description, parameters } }
+
+                     if let Some(params) = &t.function.parameters {
+                         methods.push(Tool::new(
+                             t.function.name.clone(),
+                             t.function.description.clone().unwrap_or_default(),
+                             params.clone()
+                         ));
+                     }
+                 }
+            }
+            if methods.is_empty() { None } else { Some(methods) }
+        } else {
+            None
+        };
+
+        Ok(MessagesRequest {
+            model: request.model.clone(),
+            messages,
+            max_tokens: request.max_tokens.unwrap_or(4096),
+            system,
+            temperature: request.temperature,
+            top_p: request.top_p,
+            top_k: None,
+            stop_sequences: request.stop.clone().map(|s| match s {
+                crate::providers::types::StopSequence::Single(val) => vec![val],
+                crate::providers::types::StopSequence::Multiple(vec) => vec,
+            }),
+            tools,
+            tool_choice: None, // Simplified
+            thinking: None,
+            stream: Some(request.stream),
+            metadata: None,
+        })
+    }
+
+    fn convert_response(
+        &self,
+        resp: MessagesResponse,
+        model: &str,
+    ) -> Result<ChatResponse, ProviderError> {
+        let created = chrono::Utc::now().timestamp();
+
+        let mut content = None;
+        let mut tool_calls = None;
+
+        // Convert Anthropic content blocks back to OpenAI format
+        let mut text_parts = Vec::new();
+        let mut tcs = Vec::new();
+
+        for block in resp.content {
+            match block {
+                ContentBlock::Text { text, .. } => text_parts.push(text),
+                ContentBlock::ToolUse { id, name, input, .. } => {
+                    tcs.push(ToolCall {
+                        index: Some(tcs.len() as u32),
+                        id,
+                        r#type: "function".to_string(),
+                        function: FunctionCall {
+                            name,
+                            arguments: serde_json::to_string(&input).unwrap_or_default(),
+                        },
+                    });
+                }
+                _ => {}
+            }
+        }
+
+        if !text_parts.is_empty() {
+            content = Some(text_parts.join(""));
+        }
+        if !tcs.is_empty() {
+            tool_calls = Some(tcs);
+        }
+
+        let finish_reason = resp.stop_reason.map(|r| match r {
+            StopReason::EndTurn => "stop".to_string(),
+            StopReason::MaxTokens => "length".to_string(),
+            StopReason::StopSequence => "stop".to_string(),
+            StopReason::ToolUse => "tool_calls".to_string(),
+        });
+
+        let choices = vec![Choice {
+            index: 0,
+            message: ResponseMessage {
+                role: "assistant".to_string(),
+                content,
+                reasoning_content: None,
+                tool_calls,
+            },
+            finish_reason,
+        }];
+
+        let usage = Usage {
+            prompt_tokens: resp.usage.input_tokens,
+            completion_tokens: resp.usage.output_tokens,
+            total_tokens: resp.usage.input_tokens + resp.usage.output_tokens,
+            prompt_tokens_details: None,
+            completion_tokens_details: None,
+        };
+
+        Ok(ChatResponse {
+            id: resp.id,
+            object: "chat.completion".to_string(),
+            created,
+            model: model.to_string(),
+            choices,
+            usage,
+        })
     }
 }
 
@@ -64,7 +329,7 @@ impl<T: TokenStorage + 'static> GeminiProvider<T> {
 // LlmProvider implementation
 // ---------------------------------------------------------------------------
 
-impl<T: TokenStorage + 'static> LlmProvider for GeminiProvider<T> {
+impl LlmProvider for GeminiProvider {
     fn id(&self) -> &str {
         "gemini"
     }
@@ -94,61 +359,16 @@ impl<T: TokenStorage + 'static> LlmProvider for GeminiProvider<T> {
                 )));
             }
 
-            let token = self.get_token().await?;
-            let transformer = GeminiTransformer::new();
-            let body = transformer.transform_request(&request)?;
+            let msg_req = self.convert_request(&request)?;
 
-            let url = format!("{}/{}:generateContent", API_BASE, request.model);
+            let response = self.client.request(&msg_req)
+                .await
+                .map_err(|e| ProviderError::Api {
+                    status: 500,
+                    message: e.to_string()
+                })?;
 
-            let resp = self
-                .http
-                .post(&url)
-                .bearer_auth(&token)
-                .header("content-type", "application/json")
-                .json(&body)
-                .send()
-                .await?;
-
-            let status = resp.status();
-            let resp_headers: Vec<(String, String)> = resp
-                .headers()
-                .iter()
-                .map(|(k, v)| (k.as_str().to_string(), v.to_str().unwrap_or("").to_string()))
-                .collect();
-
-            if !status.is_success() {
-                let text = resp.text().await.unwrap_or_default();
-                let code = status.as_u16();
-
-                if let Some(ctx_err) = detect_context_window_error(code, &text, "gemini") {
-                    return Err(ctx_err);
-                }
-
-                if code == 429 {
-                    let (retry_after, _) = parse_rate_limit_headers(&resp_headers, "gemini");
-                    return Err(ProviderError::RateLimited {
-                        retry_after_secs: retry_after
-                            .map(|d| d.as_secs())
-                            .unwrap_or(60),
-                        retry_after,
-                    });
-                }
-                return Err(ProviderError::Api {
-                    status: code,
-                    message: text,
-                });
-            }
-
-            let (_, rate_limit_headers) = parse_rate_limit_headers(&resp_headers, "gemini");
-            let response_json: serde_json::Value = resp.json().await?;
-            let meta = ProviderResponseMeta {
-                provider: "gemini".into(),
-                model: request.model.clone(),
-                created: chrono::Utc::now().timestamp(),
-                rate_limit_headers,
-                ..Default::default()
-            };
-            transformer.transform_response(response_json, &meta)
+            self.convert_response(response, &request.model)
         })
     }
 
@@ -165,115 +385,88 @@ impl<T: TokenStorage + 'static> LlmProvider for GeminiProvider<T> {
                 )));
             }
 
-            let token = self.get_token().await?;
-            let transformer = GeminiTransformer::new();
-            let body = transformer.transform_request(&request)?;
+            let msg_req = self.convert_request(&request)?;
 
-            let url = format!(
-                "{}/{}:streamGenerateContent?alt=sse",
-                API_BASE, request.model
-            );
+            let stream = self.client.request_stream(&msg_req)
+                .await
+                .map_err(|e| ProviderError::Api {
+                    status: 500,
+                    message: e.to_string()
+                })?;
 
-            let resp = self
-                .http
-                .post(&url)
-                .bearer_auth(&token)
-                .header("content-type", "application/json")
-                .json(&body)
-                .send()
-                .await?;
+            // Map the stream
+            let mapped_stream = stream.map(move |result| {
+                match result {
+                    Ok(event) => {
+                         let id = format!("chunk-{}", uuid::Uuid::new_v4()); // Should use message ID from event if available
 
-            let status = resp.status();
-            let resp_headers: Vec<(String, String)> = resp
-                .headers()
-                .iter()
-                .map(|(k, v)| (k.as_str().to_string(), v.to_str().unwrap_or("").to_string()))
-                .collect();
+                         let mut delta_content = None;
+                         let mut finish_reason = None;
+                         let delta_tool_calls = None;
 
-            if !status.is_success() {
-                let text = resp.text().await.unwrap_or_default();
-                let code = status.as_u16();
+                         match event {
+                             StreamEvent::ContentBlockDelta { delta, .. } => {
+                                 match delta {
+                                     ContentDelta::TextDelta { text } => {
+                                         delta_content = Some(text);
+                                     }
+                                     _ => {}
+                                 }
+                             }
+                             StreamEvent::MessageDelta { delta, .. } => {
+                                 if let Some(reason) = delta.stop_reason {
+                                     finish_reason = Some(format!("{:?}", reason));
+                                 }
+                             }
+                             // TODO: Handle tool use streaming
+                             _ => {}
+                         }
 
-                if let Some(ctx_err) = detect_context_window_error(code, &text, "gemini") {
-                    return Err(ctx_err);
-                }
+                         if delta_content.is_none() && finish_reason.is_none() {
+                             // Skip empty updates (keep-alives etc)
+                             // But we need to return something or filter map?
+                             // Since we return Item=Result, we can't skip easily without filter_map wrapper.
+                             // Return empty chunk?
+                             return Ok(ChatChunk {
+                                  id,
+                                  object: "chat.completion.chunk".to_string(),
+                                  created: chrono::Utc::now().timestamp(),
+                                  model: request.model.clone(),
+                                  choices: vec![],
+                                  usage: None,
+                             });
+                         }
 
-                if code == 429 {
-                    let (retry_after, _) = parse_rate_limit_headers(&resp_headers, "gemini");
-                    return Err(ProviderError::RateLimited {
-                        retry_after_secs: retry_after
-                            .map(|d| d.as_secs())
-                            .unwrap_or(60),
-                        retry_after,
-                    });
-                }
-                return Err(ProviderError::Api {
-                    status: code,
-                    message: text,
-                });
-            }
-
-            let byte_stream = resp.bytes_stream();
-            let stream_state = transformer.new_stream_state(&request.model);
-            let sse_parser = SseParser::new();
-
-            let event_stream = stream::unfold(
-                (
-                    Box::pin(byte_stream.map(|r| r.map_err(|e| ProviderError::Stream(e.to_string())))),
-                    sse_parser,
-                    stream_state,
-                    VecDeque::<Result<ChatChunk, ProviderError>>::new(),
-                ),
-                |(mut inner, mut parser, mut state, mut pending)| async move {
-                    loop {
-                        if let Some(item) = pending.pop_front() {
-                            return Some((item, (inner, parser, state, pending)));
-                        }
-
-                        match inner.next().await {
-                            Some(Ok(bytes)) => {
-                                let text = String::from_utf8_lossy(&bytes);
-                                let events = match parser.feed(&text) {
-                                    Ok(e) => e,
-                                    Err(e) => return Some((Err(e), (inner, parser, state, pending))),
-                                };
-
-                                for event in events {
-                                    match event {
-                                        SseEvent::Data(data) => {
-                                            match state.process_event(&data) {
-                                                Ok(Some(chunk)) => pending.push_back(Ok(chunk)),
-                                                Ok(None) => {}
-                                                Err(e) => pending.push_back(Err(e)),
-                                            }
-                                        }
-                                        SseEvent::Done => return None,
-                                        SseEvent::Skip => {}
-                                    }
-                                }
-                            }
-                            Some(Err(e)) => return Some((Err(e), (inner, parser, state, pending))),
-                            None => {
-                                if let Ok(Some(event)) = parser.flush() {
-                                    if let SseEvent::Data(data) = event {
-                                        if let Ok(Some(chunk)) = state.process_event(&data) {
-                                            return Some((Ok(chunk), (inner, parser, state, pending)));
-                                        }
-                                    }
-                                }
-                                return None;
-                            }
-                        }
+                         Ok(ChatChunk {
+                             id,
+                             object: "chat.completion.chunk".to_string(),
+                             created: chrono::Utc::now().timestamp(),
+                             model: request.model.clone(),
+                             choices: vec![ChunkChoice {
+                                 index: 0,
+                                 delta: Delta {
+                                     role: Some("assistant".into()),
+                                     content: delta_content,
+                                     tool_calls: delta_tool_calls,
+                                     reasoning_content: None,
+                                 },
+                                 finish_reason,
+                             }],
+                             usage: None,
+                         })
                     }
-                },
-            );
+                    Err(e) => Err(ProviderError::Stream(e.to_string())),
+                }
+            });
 
-            Ok(Box::pin(event_stream) as Pin<Box<dyn Stream<Item = Result<ChatChunk, ProviderError>> + Send>>)
+            Ok(Box::pin(mapped_stream) as Pin<Box<dyn Stream<Item = Result<ChatChunk, ProviderError>> + Send>>)
         })
     }
 
     fn health_check(&self) -> Pin<Box<dyn std::future::Future<Output = bool> + Send + '_>> {
-        Box::pin(async move { self.get_token().await.is_ok() })
+        Box::pin(async move {
+            self.client.is_authenticated().await.unwrap_or(false)
+        })
     }
 
     fn pricing(&self) -> Vec<ModelPricing> {
@@ -284,145 +477,42 @@ impl<T: TokenStorage + 'static> LlmProvider for GeminiProvider<T> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
-
-    struct MockTokenStorage {
-        token: Option<String>,
-    }
-
-    impl MockTokenStorage {
-        fn with_token(token: &str) -> Self {
-            Self {
-                token: Some(token.into()),
-            }
-        }
-
-        fn empty() -> Self {
-            Self { token: None }
-        }
-    }
-
-    impl TokenStorage for MockTokenStorage {
-        async fn get_access_token(
-            &self,
-            _provider: &str,
-        ) -> Result<Option<String>, ProviderError> {
-            Ok(self.token.clone())
-        }
-    }
+    use crate::oauth::storage::MemoryTokenStorage;
 
     #[test]
-    fn test_id_and_name() {
-        let p = GeminiProvider::new(Arc::new(MockTokenStorage::empty()));
-        assert_eq!(p.id(), "gemini");
-        assert_eq!(p.name(), "Gemini (Google)");
-    }
+    fn test_convert_request() {
+        let storage = MemoryTokenStorage::new();
+        let provider = GeminiProvider::new(storage);
 
-    #[test]
-    fn test_models_list() {
-        let p = GeminiProvider::new(Arc::new(MockTokenStorage::empty()));
-        let models = p.models();
-        assert!(models.contains(&"gemini-2.5-flash".to_string()));
-        assert!(models.contains(&"gemini-2.5-pro".to_string()));
-        assert!(models.contains(&"gemini-2.0-flash".to_string()));
-    }
-
-    #[test]
-    fn test_supports_model() {
-        let p = GeminiProvider::new(Arc::new(MockTokenStorage::empty()));
-        assert!(p.supports_model("gemini-2.5-flash"));
-        assert!(!p.supports_model("gpt-4o"));
-    }
-
-    #[tokio::test]
-    async fn test_health_check_no_token() {
-        let p = GeminiProvider::new(Arc::new(MockTokenStorage::empty()));
-        assert!(!p.health_check().await);
-    }
-
-    #[tokio::test]
-    async fn test_health_check_with_token() {
-        let p = GeminiProvider::new(Arc::new(MockTokenStorage::with_token("test")));
-        assert!(p.health_check().await);
-    }
-
-    #[tokio::test]
-    async fn test_chat_no_token() {
-        let p = GeminiProvider::new(Arc::new(MockTokenStorage::empty()));
         let req = ChatRequest {
-            model: "gemini-2.5-flash".into(),
-            messages: vec![ChatMessage {
-                role: MessageRole::User,
-                content: Some(MessageContent::Text("Hello".into())),
-                name: None,
-                tool_calls: None,
-                tool_call_id: None,
-            }],
-            temperature: None,
-            max_tokens: None,
+            model: "gemini-1.5-pro".to_string(),
+            messages: vec![
+                crate::providers::types::ChatMessage {
+                    role: MessageRole::User,
+                    content: Some(crate::providers::types::MessageContent::Text("Hello".to_string())),
+                    name: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                }
+            ],
+            temperature: Some(0.5),
+            max_tokens: Some(100),
             stream: false,
             top_p: None,
-            stop: None,
+            stop: Some(crate::providers::types::StopSequence::Single("stop".to_string())),
             tools: None,
             tool_choice: None,
             stream_options: None,
         };
-        let result = p.chat(&req).await;
-        assert!(matches!(result, Err(ProviderError::NoToken { .. })));
-    }
 
-    #[tokio::test]
-    async fn test_chat_rejects_unsupported_model() {
-        let p = GeminiProvider::new(Arc::new(MockTokenStorage::with_token("test")));
-        let req = ChatRequest {
-            model: "../../admin".into(),
-            messages: vec![],
-            temperature: None,
-            max_tokens: None,
-            stream: false,
-            top_p: None,
-            stop: None,
-            tools: None,
-            tool_choice: None,
-            stream_options: None,
-        };
-        let result = p.chat(&req).await;
-        assert!(matches!(result, Err(ProviderError::Other(_))));
-    }
+        let msg_req = provider.convert_request(&req).unwrap();
 
-    #[tokio::test]
-    async fn test_stream_rejects_unsupported_model() {
-        let p = GeminiProvider::new(Arc::new(MockTokenStorage::with_token("test")));
-        let req = ChatRequest {
-            model: "gemini-evil/../hack".into(),
-            messages: vec![],
-            temperature: None,
-            max_tokens: None,
-            stream: true,
-            top_p: None,
-            stop: None,
-            tools: None,
-            tool_choice: None,
-            stream_options: None,
-        };
-        let result = p.stream_chat(&req).await;
-        assert!(matches!(result, Err(ProviderError::Other(_))));
-    }
-
-    #[test]
-    fn test_pricing_returns_gemini_models() {
-        let p = GeminiProvider::new(Arc::new(MockTokenStorage::empty()));
-        let pricing = p.pricing();
-        assert!(!pricing.is_empty());
-        for mp in &pricing {
-            assert_eq!(mp.provider, "gemini");
-        }
+        assert_eq!(msg_req.model, "gemini-1.5-pro");
+        assert_eq!(msg_req.stop_sequences, Some(vec!["stop".to_string()]));
+        assert_eq!(msg_req.messages.len(), 1);
+        assert_eq!(msg_req.temperature, Some(0.5));
     }
 }

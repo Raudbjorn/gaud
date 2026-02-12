@@ -724,7 +724,8 @@ mod tests {
         let body = transformer.transform_request(&req).unwrap();
         assert_eq!(body["model"], "claude-sonnet-4");
         assert_eq!(body["max_tokens"], 4096);
-        assert_eq!(body["temperature"], 0.7);
+        let temp = body["temperature"].as_f64().unwrap();
+        assert!((temp - 0.7).abs() < 1e-5, "Temperature mismatch: {} != 0.7", temp);
         assert_eq!(body["messages"].as_array().unwrap().len(), 1);
         assert!(body["system"].is_string() || body["system"].is_array());
     }

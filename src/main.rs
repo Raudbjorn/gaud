@@ -155,6 +155,11 @@ async fn async_main() -> anyhow::Result<()> {
         }
     }
 
+    // 5b. Create OAuth manager (needed for provider registration)
+    let config_arc = Arc::new(config.clone());
+    let oauth_manager = Arc::new(OAuthManager::from_config(config_arc.clone(), db.clone()));
+    tracing::debug!("OAuth manager initialized");
+
     // 6. Create provider router
     //
     //    The ProviderRouter needs concrete LlmProvider instances. Since the
@@ -189,6 +194,14 @@ async fn async_main() -> anyhow::Result<()> {
                 tracing::warn!(error = %e, "Failed to initialize LiteLLM provider, skipping");
             }
         }
+    }
+
+    // Register Gemini provider if configured
+    if config.providers.gemini.is_some() {
+        let storage = oauth_manager.storage();
+        let gemini = gaud::providers::gemini::GeminiProvider::new(storage);
+        provider_router.register(Arc::new(gemini));
+        tracing::info!("Gemini provider registered");
     }
 
     let provider_router = Arc::new(RwLock::new(provider_router));
@@ -248,10 +261,7 @@ async fn async_main() -> anyhow::Result<()> {
         tracing::warn!("Authentication is DISABLED -- all requests treated as admin");
     }
 
-    // 10. Create OAuth manager
-    let config_arc = Arc::new(config.clone());
-    let oauth_manager = Arc::new(OAuthManager::from_config(config_arc.clone(), db.clone()));
-    tracing::debug!("OAuth manager initialized");
+    // (OAuth manager already initialized at step 5b)
 
     // 11. Build shared application state
     let cost_calculator = Arc::new(gaud::providers::cost::CostCalculator::new());
