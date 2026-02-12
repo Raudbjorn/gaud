@@ -8,13 +8,14 @@
 
 use std::time::Duration;
 
-use reqwest::{Client, Response, StatusCode};
+use reqwest::{Response, StatusCode};
+use crate::net::{HttpClient as BaseHttpClient, HttpClientBuilder as BaseHttpClientBuilder};
 use serde::Serialize;
 use tracing::{debug, instrument, warn};
 
 use crate::providers::gemini::constants::{
-    CLIENT_METADATA, CLOUDCODE_ENDPOINT_FALLBACKS, CONNECT_TIMEOUT, GOOG_API_CLIENT, ModelFamily,
-    REQUEST_TIMEOUT, USER_AGENT, get_model_family, is_thinking_model,
+    CLIENT_METADATA, CLOUDCODE_ENDPOINT_FALLBACKS, GOOG_API_CLIENT, ModelFamily, get_model_family, is_thinking_model,
+    USER_AGENT,
 };
 use crate::providers::gemini::error::{Error, Result};
 use crate::providers::gemini::models::google::CloudCodeWrapper;
@@ -33,7 +34,7 @@ use crate::providers::gemini::models::google::CloudCodeWrapper;
 /// ```
 #[derive(Debug, Clone)]
 pub struct HttpClient {
-    inner: Client,
+    inner: BaseHttpClient,
     /// Custom base URL for testing.
     base_url: Option<String>,
 }
@@ -212,6 +213,7 @@ impl HttpClient {
     ) -> Result<Response> {
         let response = self
             .inner
+            .inner()
             .post(url)
             .headers(headers.clone())
             .json(body)
@@ -222,8 +224,8 @@ impl HttpClient {
     }
 
     /// Get the inner reqwest client.
-    pub fn inner(&self) -> &Client {
-        &self.inner
+    pub fn inner(&self) -> &reqwest::Client {
+        self.inner.inner()
     }
 }
 
@@ -254,10 +256,8 @@ fn is_retryable_error(error: &Error) -> bool {
 ///     .request_timeout(Duration::from_secs(300))
 ///     .build();
 /// ```
-#[derive(Debug, Clone)]
 pub struct HttpClientBuilder {
-    connect_timeout: Duration,
-    request_timeout: Duration,
+    base_builder: BaseHttpClientBuilder,
     base_url: Option<String>,
 }
 
@@ -269,13 +269,13 @@ impl HttpClientBuilder {
 
     /// Set the connection timeout.
     pub fn connect_timeout(mut self, timeout: Duration) -> Self {
-        self.connect_timeout = timeout;
+        self.base_builder = self.base_builder.connect_timeout(timeout);
         self
     }
 
     /// Set the request timeout.
     pub fn request_timeout(mut self, timeout: Duration) -> Self {
-        self.request_timeout = timeout;
+        self.base_builder = self.base_builder.request_timeout(timeout);
         self
     }
 
@@ -287,14 +287,8 @@ impl HttpClientBuilder {
 
     /// Build the HTTP client.
     pub fn build(self) -> HttpClient {
-        let client = Client::builder()
-            .connect_timeout(self.connect_timeout)
-            .timeout(self.request_timeout)
-            .build()
-            .expect("Failed to build HTTP client");
-
         HttpClient {
-            inner: client,
+            inner: self.base_builder.build(),
             base_url: self.base_url,
         }
     }
@@ -303,8 +297,7 @@ impl HttpClientBuilder {
 impl Default for HttpClientBuilder {
     fn default() -> Self {
         Self {
-            connect_timeout: CONNECT_TIMEOUT,
-            request_timeout: REQUEST_TIMEOUT,
+            base_builder: BaseHttpClientBuilder::default(),
             base_url: None,
         }
     }

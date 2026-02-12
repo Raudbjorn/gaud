@@ -7,15 +7,18 @@ use std::collections::VecDeque;
 use std::pin::Pin;
 
 use futures::Stream;
+
 use futures::stream::{self, StreamExt};
-use reqwest::Client;
+use crate::net::HttpClient;
 
 use crate::providers::pricing::ModelPricing;
 use crate::providers::transform::util::{detect_context_window_error, parse_rate_limit_headers};
 use crate::providers::transform::{CopilotTransformer, SseEvent, SseParser};
 use crate::providers::transformer::{ProviderResponseMeta, ProviderTransformer};
 use crate::providers::types::*;
-use crate::providers::{LlmProvider, ProviderError, TokenStorage};
+use crate::auth::TokenProvider;
+use crate::providers::traits::LlmProvider;
+use crate::providers::ProviderError;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -30,16 +33,16 @@ const SUPPORTED_MODELS: &[&str] = &["gpt-4o", "gpt-4-turbo", "o1", "o3-mini"];
 // ---------------------------------------------------------------------------
 
 /// LLM provider that communicates with the GitHub Copilot Chat API.
-pub struct CopilotProvider<T: TokenStorage> {
-    http: Client,
+pub struct CopilotProvider<T: TokenProvider> {
+    http: HttpClient,
     tokens: std::sync::Arc<T>,
 }
 
-impl<T: TokenStorage + 'static> CopilotProvider<T> {
+impl<T: TokenProvider + 'static> CopilotProvider<T> {
     /// Create a new Copilot provider backed by the given token storage.
     pub fn new(tokens: std::sync::Arc<T>) -> Self {
         Self {
-            http: Client::new(),
+            http: HttpClient::new(),
             tokens,
         }
     }
@@ -47,10 +50,13 @@ impl<T: TokenStorage + 'static> CopilotProvider<T> {
     /// Retrieve an access token or return an error.
     async fn get_token(&self) -> Result<String, ProviderError> {
         self.tokens
-            .get_access_token("copilot")
-            .await?
-            .ok_or_else(|| ProviderError::NoToken {
-                provider: "copilot".to_string(),
+            .get_token("copilot")
+            .await
+            .map_err(|e| ProviderError::Authentication {
+                provider: "copilot".into(),
+                message: e.to_string(),
+                retry_count: 0,
+                max_retries: 0,
             })
     }
 }
@@ -59,7 +65,7 @@ impl<T: TokenStorage + 'static> CopilotProvider<T> {
 // LlmProvider implementation
 // ---------------------------------------------------------------------------
 
-impl<T: TokenStorage + 'static> LlmProvider for CopilotProvider<T> {
+impl<T: TokenProvider + 'static> LlmProvider for CopilotProvider<T> {
     fn id(&self) -> &str {
         "copilot"
     }
@@ -89,6 +95,7 @@ impl<T: TokenStorage + 'static> LlmProvider for CopilotProvider<T> {
 
             let resp = self
                 .http
+                .inner()
                 .post(API_ENDPOINT)
                 .bearer_auth(&token)
                 .header("content-type", "application/json")
@@ -162,6 +169,7 @@ impl<T: TokenStorage + 'static> LlmProvider for CopilotProvider<T> {
 
             let resp = self
                 .http
+                .inner()
                 .post(API_ENDPOINT)
                 .bearer_auth(&token)
                 .header("content-type", "application/json")
@@ -303,9 +311,12 @@ mod tests {
         }
     }
 
-    impl TokenStorage for MockTokenStorage {
-        async fn get_access_token(&self, _provider: &str) -> Result<Option<String>, ProviderError> {
-            Ok(self.token.clone())
+    #[async_trait::async_trait]
+    impl TokenProvider for MockTokenStorage {
+        async fn get_token(&self, _provider: &str) -> Result<String, crate::auth::error::AuthError> {
+            self.token
+                .clone()
+                .ok_or_else(|| crate::auth::error::AuthError::TokenNotFound("copilot".into()))
         }
     }
 

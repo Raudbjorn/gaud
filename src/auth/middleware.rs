@@ -157,7 +157,7 @@ mod tests {
         let (audit_tx, _audit_rx) = tokio::sync::mpsc::unbounded_channel();
         let budget = crate::budget::BudgetTracker::new(db.clone());
         let router = crate::providers::router::ProviderRouter::new();
-        let oauth_manager = crate::oauth::OAuthManager::from_config(config_arc.clone(), db.clone());
+        let oauth_manager = crate::auth::oauth::OAuthManager::from_config(config_arc.clone(), db.clone());
 
         AppState {
             config: config_arc,

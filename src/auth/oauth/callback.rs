@@ -8,7 +8,7 @@
 use serde::Deserialize;
 use tracing::warn;
 
-use super::OAuthError;
+use crate::auth::error::AuthError;
 
 /// Query parameters from the OAuth callback.
 #[derive(Debug, Deserialize)]
@@ -38,7 +38,7 @@ pub struct CallbackResult {
 ///
 /// Returns an error if the callback contains an error from the provider,
 /// or if the code is missing.
-pub fn validate_callback_params(params: &CallbackParams) -> Result<(String, String), OAuthError> {
+pub fn validate_callback_params(params: &CallbackParams) -> Result<(String, String), AuthError> {
     // Check for OAuth error from provider
     if let Some(ref error) = params.error {
         let desc = params
@@ -46,13 +46,13 @@ pub fn validate_callback_params(params: &CallbackParams) -> Result<(String, Stri
             .as_deref()
             .unwrap_or("Unknown error");
         warn!(error = %error, description = %desc, "OAuth error from provider");
-        return Err(OAuthError::ExchangeFailed(format!("{}: {}", error, desc)));
+        return Err(AuthError::ExchangeFailed(format!("{}: {}", error, desc)));
     }
 
     let code = params
         .code
         .as_ref()
-        .ok_or(OAuthError::ExchangeFailed(
+        .ok_or(AuthError::ExchangeFailed(
             "Missing authorization code in callback".to_string(),
         ))?
         .clone();
@@ -60,7 +60,7 @@ pub fn validate_callback_params(params: &CallbackParams) -> Result<(String, Stri
     let state = params
         .state
         .as_ref()
-        .ok_or(OAuthError::InvalidState)?
+        .ok_or(AuthError::InvalidState)?
         .clone();
 
     Ok((code, state))
@@ -74,7 +74,7 @@ pub fn validate_callback_params(params: &CallbackParams) -> Result<(String, Stri
 pub fn validate_state_from_db(
     db: &crate::db::Database,
     state_token: &str,
-) -> Result<(String, String), OAuthError> {
+) -> Result<(String, String), AuthError> {
     db.with_conn(|conn| {
         // Look up state and verify it hasn't expired
         let mut stmt = conn.prepare(
@@ -99,16 +99,16 @@ pub fn validate_state_from_db(
                 // Check expiry
                 let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
                 if expires_at < now {
-                    return Ok(Err(OAuthError::FlowExpired));
+                    return Ok(Err(AuthError::FlowExpired));
                 }
 
                 Ok(Ok((provider, code_verifier)))
             }
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(Err(OAuthError::InvalidState)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(Err(AuthError::InvalidState)),
             Err(e) => Err(e),
         }
     })
-    .map_err(|e| OAuthError::Storage(format!("Database error: {}", e)))?
+    .map_err(|e| AuthError::Storage(format!("Database error: {}", e)))?
 }
 
 /// Store a new OAuth state token in the database.
@@ -119,7 +119,7 @@ pub fn store_state_in_db(
     state_token: &str,
     provider: &str,
     code_verifier: &str,
-) -> Result<(), OAuthError> {
+) -> Result<(), AuthError> {
     db.with_conn(|conn| {
         conn.execute(
             "INSERT INTO oauth_state (state_token, provider, code_verifier, created_at, expires_at) \
@@ -128,11 +128,11 @@ pub fn store_state_in_db(
         )?;
         Ok(())
     })
-    .map_err(|e| OAuthError::Storage(format!("Failed to store OAuth state: {}", e)))
+    .map_err(|e| AuthError::Storage(format!("Failed to store OAuth state: {}", e)))
 }
 
 /// Clean up expired state tokens from the database.
-pub fn cleanup_expired_states(db: &crate::db::Database) -> Result<u64, OAuthError> {
+pub fn cleanup_expired_states(db: &crate::db::Database) -> Result<u64, AuthError> {
     db.with_conn(|conn| {
         let deleted = conn.execute(
             "DELETE FROM oauth_state WHERE expires_at < datetime('now')",
@@ -140,7 +140,7 @@ pub fn cleanup_expired_states(db: &crate::db::Database) -> Result<u64, OAuthErro
         )?;
         Ok(deleted as u64)
     })
-    .map_err(|e| OAuthError::Storage(format!("Failed to clean up expired states: {}", e)))
+    .map_err(|e| AuthError::Storage(format!("Failed to clean up expired states: {}", e)))
 }
 
 // =============================================================================
@@ -344,7 +344,7 @@ mod tests {
             error_description: None,
         };
         let result = validate_callback_params(&params);
-        assert!(matches!(result, Err(OAuthError::InvalidState)));
+        assert!(matches!(result, Err(AuthError::InvalidState)));
     }
 
     #[test]
@@ -388,14 +388,14 @@ mod tests {
 
         // State should be deleted after use (single-use)
         let result = validate_state_from_db(&db, "test-state-123");
-        assert!(matches!(result, Err(OAuthError::InvalidState)));
+        assert!(matches!(result, Err(AuthError::InvalidState)));
     }
 
     #[test]
     fn test_validate_nonexistent_state() {
         let db = crate::db::Database::open_in_memory().unwrap();
         let result = validate_state_from_db(&db, "nonexistent");
-        assert!(matches!(result, Err(OAuthError::InvalidState)));
+        assert!(matches!(result, Err(AuthError::InvalidState)));
     }
 
     #[test]

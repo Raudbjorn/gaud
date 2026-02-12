@@ -31,7 +31,7 @@ use gaud::budget::{BudgetTracker, spawn_audit_logger};
 use gaud::cache::SemanticCacheService;
 use gaud::config::{Config, KiroProviderConfig, LitellmProviderConfig};
 use gaud::db::Database;
-use gaud::oauth::OAuthManager;
+use gaud::auth::oauth::OAuthManager;
 use gaud::providers::LlmProvider;
 use gaud::providers::kiro::KiroProvider;
 use gaud::providers::litellm::{LitellmConfig, LitellmProvider};

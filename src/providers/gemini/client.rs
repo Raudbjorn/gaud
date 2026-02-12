@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use tokio::sync::RwLock;
 use tracing::{debug, info, instrument};
 
-use crate::oauth::TokenProvider;
+use crate::auth::TokenProvider;
 use crate::providers::gemini::constants::{
     ANTIGRAVITY_SYSTEM_INSTRUCTION, API_PATH_GENERATE_CONTENT, API_PATH_STREAM_GENERATE_CONTENT,
 };
@@ -364,14 +364,12 @@ mod tests {
 
     #[async_trait::async_trait]
     impl TokenProvider for MockTokenProvider {
-        async fn get_token(&self, _provider: &str) -> std::result::Result<String, crate::oauth::OAuthError> {
+        async fn get_token(&self, _provider: &str) -> std::result::Result<String, crate::auth::error::AuthError> {
             Ok("mock-token".to_string())
         }
     }
 
-    fn create_test_client() -> CloudCodeClient {
-        CloudCodeClient::new(Arc::new(MockTokenProvider))
-    }
+
 
     #[test]
     fn test_client_builder() {

@@ -17,8 +17,8 @@
 use serde::Deserialize;
 use tracing::{debug, info};
 
-use super::OAuthError;
-use super::token::TokenInfo;
+use crate::auth::error::AuthError;
+use crate::auth::tokens::TokenInfo;
 
 /// Provider identifier for Copilot.
 pub const PROVIDER_ID: &str = "copilot";
@@ -108,7 +108,7 @@ pub enum PollResult {
 pub async fn request_device_code(
     http_client: &reqwest::Client,
     config: &CopilotOAuthConfig,
-) -> Result<DeviceCodeResponse, OAuthError> {
+) -> Result<DeviceCodeResponse, AuthError> {
     info!("Requesting GitHub device code for Copilot");
 
     let scope = "read:user".to_string();
@@ -123,7 +123,7 @@ pub async fn request_device_code(
     let body = response.text().await?;
 
     if !status.is_success() {
-        return Err(OAuthError::ExchangeFailed(format!(
+        return Err(AuthError::ExchangeFailed(format!(
             "Device code request failed (HTTP {}): {}",
             status.as_u16(),
             body
@@ -131,7 +131,7 @@ pub async fn request_device_code(
     }
 
     let device_response: DeviceCodeResponse = serde_json::from_str(&body).map_err(|e| {
-        OAuthError::ExchangeFailed(format!("Failed to parse device code response: {}", e))
+        AuthError::ExchangeFailed(format!("Failed to parse device code response: {}", e))
     })?;
 
     debug!(
@@ -154,7 +154,7 @@ pub async fn poll_for_token(
     http_client: &reqwest::Client,
     config: &CopilotOAuthConfig,
     device_code: &str,
-) -> Result<PollResult, OAuthError> {
+) -> Result<PollResult, AuthError> {
     let response = http_client
         .post(&config.token_url)
         .header("Accept", "application/json")
@@ -170,7 +170,7 @@ pub async fn poll_for_token(
     let body = response.text().await?;
 
     let poll_response: TokenPollResponse = serde_json::from_str(&body)
-        .map_err(|e| OAuthError::ExchangeFailed(format!("Failed to parse poll response: {}", e)))?;
+        .map_err(|e| AuthError::ExchangeFailed(format!("Failed to parse poll response: {}", e)))?;
 
     // Check for access token first (success)
     if let Some(token) = poll_response.access_token {
@@ -181,16 +181,16 @@ pub async fn poll_for_token(
     match poll_response.error.as_deref() {
         Some("authorization_pending") => Ok(PollResult::Pending),
         Some("slow_down") => Ok(PollResult::SlowDown),
-        Some("expired_token") => Err(OAuthError::FlowExpired),
-        Some("access_denied") => Err(OAuthError::ExchangeFailed(
+        Some("expired_token") => Err(AuthError::FlowExpired),
+        Some("access_denied") => Err(AuthError::ExchangeFailed(
             "User denied authorization".to_string(),
         )),
-        Some(error) => Err(OAuthError::ExchangeFailed(format!(
+        Some(error) => Err(AuthError::ExchangeFailed(format!(
             "Poll error: {} - {}",
             error,
             poll_response.error_description.unwrap_or_default()
         ))),
-        None => Err(OAuthError::ExchangeFailed(format!(
+        None => Err(AuthError::ExchangeFailed(format!(
             "Unexpected poll response (HTTP {}): {}",
             status.as_u16(),
             body
@@ -209,7 +209,7 @@ pub async fn poll_until_complete(
     config: &CopilotOAuthConfig,
     device_response: &DeviceCodeResponse,
     mut on_pending: Option<&mut dyn FnMut(u32)>,
-) -> Result<String, OAuthError> {
+) -> Result<String, AuthError> {
     let mut interval = std::time::Duration::from_secs(device_response.interval.max(5));
     let deadline =
         tokio::time::Instant::now() + std::time::Duration::from_secs(device_response.expires_in);
@@ -217,7 +217,7 @@ pub async fn poll_until_complete(
 
     loop {
         if tokio::time::Instant::now() >= deadline {
-            return Err(OAuthError::FlowExpired);
+            return Err(AuthError::FlowExpired);
         }
 
         tokio::time::sleep(interval).await;

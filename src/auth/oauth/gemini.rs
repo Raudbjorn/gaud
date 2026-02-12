@@ -15,9 +15,9 @@
 use serde::Deserialize;
 use tracing::{debug, warn};
 
-use super::OAuthError;
-use super::pkce::Pkce;
-use super::token::TokenInfo;
+use crate::auth::error::AuthError;
+use super::Pkce;
+use crate::auth::tokens::TokenInfo;
 
 /// Provider identifier for Gemini OAuth.
 pub const PROVIDER_ID: &str = "gemini";
@@ -136,7 +136,7 @@ pub async fn exchange_code(
     config: &GeminiOAuthConfig,
     code: &str,
     verifier: &str,
-) -> Result<TokenInfo, OAuthError> {
+) -> Result<TokenInfo, AuthError> {
     debug!("Exchanging authorization code for Gemini tokens");
 
     let form_data = [
@@ -164,11 +164,11 @@ pub async fn exchange_code(
                 description = ?error.error_description,
                 "Gemini token exchange failed"
             );
-            return Err(OAuthError::ExchangeFailed(
+            return Err(AuthError::ExchangeFailed(
                 error.error_description.unwrap_or(error.error),
             ));
         }
-        return Err(OAuthError::ExchangeFailed(format!(
+        return Err(AuthError::ExchangeFailed(format!(
             "HTTP {}: {}",
             status.as_u16(),
             body
@@ -176,11 +176,11 @@ pub async fn exchange_code(
     }
 
     let token_response: TokenResponse = serde_json::from_str(&body).map_err(|e| {
-        OAuthError::ExchangeFailed(format!("Failed to parse token response: {}", e))
+        AuthError::ExchangeFailed(format!("Failed to parse token response: {}", e))
     })?;
 
     let refresh_token = token_response.refresh_token.ok_or_else(|| {
-        OAuthError::ExchangeFailed(
+        AuthError::ExchangeFailed(
             "No refresh token in response - ensure access_type=offline and prompt=consent"
                 .to_string(),
         )
@@ -203,7 +203,7 @@ pub async fn refresh_token(
     http_client: &reqwest::Client,
     config: &GeminiOAuthConfig,
     refresh_token_value: &str,
-) -> Result<TokenInfo, OAuthError> {
+) -> Result<TokenInfo, AuthError> {
     // Parse composite token format if present
     let parts: Vec<&str> = refresh_token_value.split('|').collect();
     let base_refresh = parts[0];
@@ -234,13 +234,13 @@ pub async fn refresh_token(
                 "Gemini token refresh failed"
             );
             if error.error == "invalid_grant" {
-                return Err(OAuthError::TokenExpired(PROVIDER_ID.to_string()));
+                return Err(AuthError::TokenExpired(PROVIDER_ID.to_string()));
             }
-            return Err(OAuthError::ExchangeFailed(
+            return Err(AuthError::ExchangeFailed(
                 error.error_description.unwrap_or(error.error),
             ));
         }
-        return Err(OAuthError::ExchangeFailed(format!(
+        return Err(AuthError::ExchangeFailed(format!(
             "HTTP {}: {}",
             status.as_u16(),
             body
@@ -248,7 +248,7 @@ pub async fn refresh_token(
     }
 
     let token_response: TokenResponse = serde_json::from_str(&body).map_err(|e| {
-        OAuthError::ExchangeFailed(format!("Failed to parse refresh response: {}", e))
+        AuthError::ExchangeFailed(format!("Failed to parse refresh response: {}", e))
     })?;
 
     debug!("Gemini token refresh successful");

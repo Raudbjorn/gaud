@@ -7,15 +7,18 @@ use std::collections::VecDeque;
 use std::pin::Pin;
 
 use futures::Stream;
+
 use futures::stream::{self, StreamExt};
-use reqwest::Client;
+use crate::net::HttpClient;
 
 use crate::providers::pricing::ModelPricing;
 use crate::providers::transform::util::{detect_context_window_error, parse_rate_limit_headers};
 use crate::providers::transform::{ClaudeTransformer, SseEvent, SseParser};
 use crate::providers::transformer::{ProviderResponseMeta, ProviderTransformer};
 use crate::providers::types::*;
-use crate::providers::{LlmProvider, ProviderError, TokenStorage};
+use crate::auth::TokenProvider;
+use crate::providers::traits::LlmProvider;
+use crate::providers::ProviderError;
 
 const API_BASE: &str = "https://api.anthropic.com/v1";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
@@ -26,16 +29,16 @@ const SUPPORTED_MODELS: &[&str] = &[
 ];
 
 /// LLM provider that communicates with the Anthropic Messages API.
-pub struct ClaudeProvider<T: TokenStorage> {
-    http: Client,
+pub struct ClaudeProvider<T: TokenProvider> {
+    http: HttpClient,
     tokens: std::sync::Arc<T>,
 }
 
-impl<T: TokenStorage + 'static> ClaudeProvider<T> {
+impl<T: TokenProvider + 'static> ClaudeProvider<T> {
     /// Create a new Claude provider backed by the given token storage.
     pub fn new(tokens: std::sync::Arc<T>) -> Self {
         Self {
-            http: Client::new(),
+            http: HttpClient::new(),
             tokens,
         }
     }
@@ -43,15 +46,18 @@ impl<T: TokenStorage + 'static> ClaudeProvider<T> {
     /// Retrieve an access token or return an error.
     async fn get_token(&self) -> Result<String, ProviderError> {
         self.tokens
-            .get_access_token("claude")
-            .await?
-            .ok_or_else(|| ProviderError::NoToken {
-                provider: "claude".to_string(),
+            .get_token("claude")
+            .await
+            .map_err(|e| ProviderError::Authentication {
+                provider: "claude".into(),
+                message: e.to_string(),
+                retry_count: 0,
+                max_retries: 0,
             })
     }
 }
 
-impl<T: TokenStorage + 'static> LlmProvider for ClaudeProvider<T> {
+impl<T: TokenProvider + 'static> LlmProvider for ClaudeProvider<T> {
     fn id(&self) -> &str {
         "claude"
     }
@@ -81,6 +87,7 @@ impl<T: TokenStorage + 'static> LlmProvider for ClaudeProvider<T> {
 
             let resp = self
                 .http
+                .inner()
                 .post(format!("{API_BASE}/messages"))
                 .header("x-api-key", &token)
                 .header("anthropic-version", ANTHROPIC_VERSION)
@@ -154,6 +161,7 @@ impl<T: TokenStorage + 'static> LlmProvider for ClaudeProvider<T> {
 
             let resp = self
                 .http
+                .inner()
                 .post(format!("{API_BASE}/messages"))
                 .header("x-api-key", &token)
                 .header("anthropic-version", ANTHROPIC_VERSION)
@@ -292,9 +300,12 @@ mod tests {
         }
     }
 
-    impl TokenStorage for MockTokenStorage {
-        async fn get_access_token(&self, _provider: &str) -> Result<Option<String>, ProviderError> {
-            Ok(self.token.clone())
+    #[async_trait::async_trait]
+    impl TokenProvider for MockTokenStorage {
+        async fn get_token(&self, _provider: &str) -> Result<String, crate::auth::error::AuthError> {
+            self.token
+                .clone()
+                .ok_or_else(|| crate::auth::error::AuthError::TokenNotFound("claude".into()))
         }
     }
 
