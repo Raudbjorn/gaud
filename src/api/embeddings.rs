@@ -1,5 +1,5 @@
-use axum::http::StatusCode;
 use axum::Json;
+use axum::http::StatusCode;
 use serde::Serialize;
 
 use crate::providers::types::EmbeddingRequest;

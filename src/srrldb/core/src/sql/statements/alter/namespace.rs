@@ -8,29 +8,25 @@ use srrldb_types::{SqlFormat, ToSql, write_sql};
 /// underlying datastore to compact the current namespace keyspace.
 #[derive(DeepSizeOf)]
 pub struct AlterNamespaceStatement {
-	pub compact: bool,
+    pub compact: bool,
 }
 
 impl ToSql for AlterNamespaceStatement {
-	fn fmt_sql(&self, f: &mut String, _fmt: SqlFormat) {
-		write_sql!(f, _fmt, "ALTER NAMESPACE");
-		if self.compact {
-			write_sql!(f, _fmt, " COMPACT");
-		}
-	}
+    fn fmt_sql(&self, f: &mut String, _fmt: SqlFormat) {
+        write_sql!(f, _fmt, "ALTER NAMESPACE");
+        if self.compact {
+            write_sql!(f, _fmt, " COMPACT");
+        }
+    }
 }
 
 impl From<AlterNamespaceStatement> for crate::expr::statements::alter::AlterNamespaceStatement {
-	fn from(v: AlterNamespaceStatement) -> Self {
-		crate::expr::statements::alter::AlterNamespaceStatement {
-			compact: v.compact,
-		}
-	}
+    fn from(v: AlterNamespaceStatement) -> Self {
+        crate::expr::statements::alter::AlterNamespaceStatement { compact: v.compact }
+    }
 }
 impl From<crate::expr::statements::alter::AlterNamespaceStatement> for AlterNamespaceStatement {
-	fn from(v: crate::expr::statements::alter::AlterNamespaceStatement) -> Self {
-		AlterNamespaceStatement {
-			compact: v.compact,
-		}
-	}
+    fn from(v: crate::expr::statements::alter::AlterNamespaceStatement) -> Self {
+        AlterNamespaceStatement { compact: v.compact }
+    }
 }

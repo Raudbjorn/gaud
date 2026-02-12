@@ -1,7 +1,7 @@
 use std::fmt;
 
-use srrldb_types::ToSql;
 use crate::sql::Expr;
+use srrldb_types::ToSql;
 
 /// Cache mode for query results
 #[derive(Clone, Debug, Eq, PartialEq, Hash, PartialOrd)]
@@ -9,25 +9,25 @@ use crate::sql::Expr;
 #[non_exhaustive]
 #[derive(priority_lfu::DeepSizeOf)]
 pub enum CacheMode {
-	/// In-memory cache (volatile, fast)
-	Memory,
-	/// Disk-based cache (persistent, slower)
-	Disk,
+    /// In-memory cache (volatile, fast)
+    Memory,
+    /// Disk-based cache (persistent, slower)
+    Disk,
 }
 
 impl Default for CacheMode {
-	fn default() -> Self {
-		Self::Memory
-	}
+    fn default() -> Self {
+        Self::Memory
+    }
 }
 
 impl fmt::Display for CacheMode {
-	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		match self {
-			Self::Memory => f.write_str("MEMORY"),
-			Self::Disk => f.write_str("DISK"),
-		}
-	}
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Memory => f.write_str("MEMORY"),
+            Self::Disk => f.write_str("DISK"),
+        }
+    }
 }
 
 /// Cache configuration for SELECT statements
@@ -37,14 +37,14 @@ impl fmt::Display for CacheMode {
 #[non_exhaustive]
 #[derive(priority_lfu::DeepSizeOf)]
 pub struct Cache {
-	/// Cache mode (MEMORY or DISK)
-	pub mode: CacheMode,
-	/// Expression that evaluates to Duration or Datetime for expiration
-	pub expiration: Expr,
-	/// Optional custom cache key
-	pub key: Option<String>,
-	/// Whether the cache is global (not scoped to auth)
-	pub global: bool,
+    /// Cache mode (MEMORY or DISK)
+    pub mode: CacheMode,
+    /// Expression that evaluates to Duration or Datetime for expiration
+    pub expiration: Expr,
+    /// Optional custom cache key
+    pub key: Option<String>,
+    /// Whether the cache is global (not scoped to auth)
+    pub global: bool,
 }
 
 use std::hash::{Hash, Hasher};
@@ -64,49 +64,49 @@ impl Hash for Cache {
 }
 
 impl fmt::Display for Cache {
-	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		f.write_str("CACHE")?;
-		// Only show mode if it's not the default (MEMORY)
-		if matches!(self.mode, CacheMode::Disk) {
-			write!(f, " {}", self.mode)?;
-		}
-		if self.global {
-			f.write_str(" GLOBAL")?;
-		}
-		write!(f, " {:?}", self.expiration)?;
-		if let Some(ref key) = self.key {
-			write!(f, " \"{}\"", key)?;
-		}
-		Ok(())
-	}
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("CACHE")?;
+        // Only show mode if it's not the default (MEMORY)
+        if matches!(self.mode, CacheMode::Disk) {
+            write!(f, " {}", self.mode)?;
+        }
+        if self.global {
+            f.write_str(" GLOBAL")?;
+        }
+        write!(f, " {:?}", self.expiration)?;
+        if let Some(ref key) = self.key {
+            write!(f, " \"{}\"", key)?;
+        }
+        Ok(())
+    }
 }
 
 impl From<Cache> for crate::expr::Cache {
-	fn from(v: Cache) -> Self {
-		Self {
-			mode: match v.mode {
-				CacheMode::Memory => crate::expr::CacheMode::Memory,
-				CacheMode::Disk => crate::expr::CacheMode::Disk,
-			},
-			expiration: v.expiration.into(),
-			key: v.key,
-			global: v.global,
-		}
-	}
+    fn from(v: Cache) -> Self {
+        Self {
+            mode: match v.mode {
+                CacheMode::Memory => crate::expr::CacheMode::Memory,
+                CacheMode::Disk => crate::expr::CacheMode::Disk,
+            },
+            expiration: v.expiration.into(),
+            key: v.key,
+            global: v.global,
+        }
+    }
 }
 
 impl From<crate::expr::Cache> for Cache {
-	fn from(v: crate::expr::Cache) -> Self {
-		Self {
-			mode: match v.mode {
-				crate::expr::CacheMode::Memory => CacheMode::Memory,
-				crate::expr::CacheMode::Disk => CacheMode::Disk,
-			},
-			expiration: v.expiration.into(),
-			key: v.key,
-			global: v.global,
-		}
-	}
+    fn from(v: crate::expr::Cache) -> Self {
+        Self {
+            mode: match v.mode {
+                crate::expr::CacheMode::Memory => CacheMode::Memory,
+                crate::expr::CacheMode::Disk => CacheMode::Disk,
+            },
+            expiration: v.expiration.into(),
+            key: v.key,
+            global: v.global,
+        }
+    }
 }
 
 impl ToSql for Cache {

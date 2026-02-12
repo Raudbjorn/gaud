@@ -23,12 +23,12 @@
 
 use serde_json::json;
 
-use crate::gemini::constants::{
+use crate::providers::gemini::constants::{
     get_model_family, ModelFamily, GEMINI_SKIP_SIGNATURE, MIN_SIGNATURE_LENGTH,
 };
-use crate::gemini::models::content::{ContentBlock, ImageSource, ToolResultContent};
-use crate::gemini::models::google::{Content, FunctionCall, FunctionResponse, InlineData, Part};
-use crate::gemini::models::request::Role;
+use crate::providers::gemini::models::content::{ContentBlock, ImageSource, ToolResultContent};
+use crate::providers::gemini::models::google::{Content, FunctionCall, FunctionResponse, InlineData, Part};
+use crate::providers::gemini::models::request::Role;
 
 use super::thinking::GLOBAL_SIGNATURE_CACHE;
 

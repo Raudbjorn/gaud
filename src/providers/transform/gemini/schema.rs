@@ -29,7 +29,7 @@
 //!
 //! ```rust
 //! use serde_json::json;
-//! use gaud::gemini::convert::sanitize_schema;
+//! use gaud::providers::gemini::convert::sanitize_schema;
 //!
 //! let schema = json!({
 //!     "type": "object",
@@ -511,12 +511,16 @@ mod tests {
         let result = sanitize_schema(&schema);
 
         // Nested additionalProperties and minLength should be removed
-        assert!(result["properties"]["user"]
-            .get("additionalProperties")
-            .is_none());
-        assert!(result["properties"]["user"]["properties"]["name"]
-            .get("minLength")
-            .is_none());
+        assert!(
+            result["properties"]["user"]
+                .get("additionalProperties")
+                .is_none()
+        );
+        assert!(
+            result["properties"]["user"]["properties"]["name"]
+                .get("minLength")
+                .is_none()
+        );
     }
 
     #[test]

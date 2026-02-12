@@ -23,9 +23,9 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::gemini::models::content::ContentBlock;
-use crate::gemini::models::google::GoogleResponse;
-use crate::gemini::models::response::{MessagesResponse, StopReason, Usage};
+use crate::providers::gemini::models::content::ContentBlock;
+use crate::providers::gemini::models::google::GoogleResponse;
+use crate::providers::gemini::models::response::{MessagesResponse, StopReason, Usage};
 
 use super::content::convert_parts_to_content;
 
@@ -46,12 +46,12 @@ use super::content::convert_parts_to_content;
 /// # Example
 ///
 /// ```rust,ignore
-/// use gaud::gemini::convert::convert_response;
+/// use gaud::providers::gemini::convert::convert_response;
 ///
 /// let google_response = /* ... */;
 /// let anthropic_response = convert_response(&google_response, "claude-sonnet-4-5");
 /// ```
-pub(crate) fn convert_response(response: &GoogleResponse, model: &str) -> MessagesResponse {
+pub fn convert_response(response: &GoogleResponse, model: &str) -> MessagesResponse {
     // Extract first candidate (Google may return multiple)
     let candidate = response.candidates.first();
 
@@ -83,7 +83,7 @@ pub(crate) fn convert_response(response: &GoogleResponse, model: &str) -> Messag
     MessagesResponse {
         id,
         response_type: "message".to_string(),
-        role: crate::gemini::models::request::Role::Assistant,
+        role: crate::providers::gemini::models::request::Role::Assistant,
         content,
         model: model.to_string(),
         stop_reason: Some(stop_reason),
@@ -145,7 +145,9 @@ fn generate_message_id() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gemini::models::google::{Candidate, Content, FunctionCall, Part, UsageMetadata};
+    use crate::providers::gemini::models::google::{
+        Candidate, Content, FunctionCall, Part, UsageMetadata,
+    };
     use serde_json::json;
 
     fn create_text_response(text: &str, finish_reason: &str) -> GoogleResponse {
@@ -178,7 +180,10 @@ mod tests {
 
         assert!(result.id.starts_with("msg_"));
         assert_eq!(result.response_type, "message");
-        assert_eq!(result.role, crate::gemini::models::request::Role::Assistant);
+        assert_eq!(
+            result.role,
+            crate::providers::gemini::models::request::Role::Assistant
+        );
         assert_eq!(result.content.len(), 1);
         assert_eq!(result.content[0].as_text(), Some("Hello, world!"));
         assert_eq!(result.stop_reason, Some(StopReason::EndTurn));

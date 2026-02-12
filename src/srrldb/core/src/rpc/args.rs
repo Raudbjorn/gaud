@@ -1,27 +1,27 @@
 use srrldb_types::Value;
 
 pub trait Extractor: Sized {
-	fn take<I>(iterator: &mut I) -> Option<Self>
-	where
-		I: Iterator<Item = Value>;
+    fn take<I>(iterator: &mut I) -> Option<Self>
+    where
+        I: Iterator<Item = Value>;
 }
 
 impl Extractor for Value {
-	fn take<I>(iterator: &mut I) -> Option<Self>
-	where
-		I: Iterator<Item = Value>,
-	{
-		iterator.next()
-	}
+    fn take<I>(iterator: &mut I) -> Option<Self>
+    where
+        I: Iterator<Item = Value>,
+    {
+        iterator.next()
+    }
 }
 
 impl Extractor for Option<Value> {
-	fn take<I>(iterator: &mut I) -> Option<Self>
-	where
-		I: Iterator<Item = Value>,
-	{
-		Some(iterator.next())
-	}
+    fn take<I>(iterator: &mut I) -> Option<Self>
+    where
+        I: Iterator<Item = Value>,
+    {
+        Some(iterator.next())
+    }
 }
 
 macro_rules! impl_tuple{
@@ -56,8 +56,8 @@ impl_tuple!(A, B, C, D, E, F);
 
 pub fn extract_args<E>(args: Vec<Value>) -> Option<E>
 where
-	E: Extractor,
+    E: Extractor,
 {
-	let mut iter = args.into_iter();
-	E::take(&mut iter)
+    let mut iter = args.into_iter();
+    E::take(&mut iter)
 }

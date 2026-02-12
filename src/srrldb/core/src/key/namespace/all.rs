@@ -7,9 +7,9 @@ use crate::kvs::impl_kv_key_storekey;
 
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Encode, BorrowDecode)]
 pub(crate) struct NamespaceRoot {
-	__: u8,
-	_a: u8,
-	pub ns: NamespaceId,
+    __: u8,
+    _a: u8,
+    pub ns: NamespaceId,
 }
 
 // When querying all keys under a namespace, the output value could be any
@@ -17,35 +17,35 @@ pub(crate) struct NamespaceRoot {
 impl_kv_key_storekey!(NamespaceRoot => Vec<u8>);
 
 pub fn new(ns: NamespaceId) -> NamespaceRoot {
-	NamespaceRoot::new(ns)
+    NamespaceRoot::new(ns)
 }
 
 impl Categorise for NamespaceRoot {
-	fn categorise(&self) -> Category {
-		Category::NamespaceRoot
-	}
+    fn categorise(&self) -> Category {
+        Category::NamespaceRoot
+    }
 }
 
 impl NamespaceRoot {
-	#[inline]
-	pub fn new(ns: NamespaceId) -> Self {
-		Self {
-			__: b'/',
-			_a: b'*',
-			ns,
-		}
-	}
+    #[inline]
+    pub fn new(ns: NamespaceId) -> Self {
+        Self {
+            __: b'/',
+            _a: b'*',
+            ns,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use crate::kvs::KVKey;
+    use super::*;
+    use crate::kvs::KVKey;
 
-	#[test]
-	fn key() {
-		let val = NamespaceRoot::new(NamespaceId(1));
-		let enc = NamespaceRoot::encode_key(&val).unwrap();
-		assert_eq!(enc, b"/*\x00\x00\x00\x01");
-	}
+    #[test]
+    fn key() {
+        let val = NamespaceRoot::new(NamespaceId(1));
+        let enc = NamespaceRoot::encode_key(&val).unwrap();
+        assert_eq!(enc, b"/*\x00\x00\x00\x01");
+    }
 }

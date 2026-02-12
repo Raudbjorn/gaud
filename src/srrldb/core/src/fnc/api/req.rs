@@ -46,16 +46,16 @@ use crate::val::{Closure, Value};
 ///         };
 /// ```
 pub async fn body(
-	(stk, ctx, opt, doc): (&mut Stk, &FrozenContext, &Options, Option<&CursorDoc>),
-	(FromPublic(mut req), next, Optional(strategy)): (
-		FromPublic<ApiRequest>,
-		Box<Closure>,
-		Optional<FromPublic<BodyStrategy>>,
-	),
+    (stk, ctx, opt, doc): (&mut Stk, &FrozenContext, &Options, Option<&CursorDoc>),
+    (FromPublic(mut req), next, Optional(strategy)): (
+        FromPublic<ApiRequest>,
+        Box<Closure>,
+        Optional<FromPublic<BodyStrategy>>,
+    ),
 ) -> Result<Value> {
-	let strategy = strategy.map(|x| x.0).unwrap_or_default();
-	let mut parser = BodyParser::from((&mut req, strategy));
-	parser.process().await?;
+    let strategy = strategy.map(|x| x.0).unwrap_or_default();
+    let mut parser = BodyParser::from((&mut req, strategy));
+    parser.process().await?;
 
-	next.invoke(stk, ctx, opt, doc, vec![req.into()]).await
+    next.invoke(stk, ctx, opt, doc, vec![req.into()]).await
 }

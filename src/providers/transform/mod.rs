@@ -11,9 +11,9 @@ pub mod sse;
 pub mod util;
 
 // Re-export commonly used items.
+pub use crate::providers::transform::gemini::GeminiTransformer;
 pub use claude::ClaudeTransformer;
 pub use copilot::CopilotTransformer;
-pub use crate::providers::transform::gemini::GeminiTransformer;
 pub use kiro::KiroTransformer;
 pub use sse::{SseEvent, SseParser};
 pub use util::*;

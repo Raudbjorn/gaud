@@ -160,7 +160,11 @@ pub fn semantic_text(request: &ChatRequest) -> String {
     }
 
     // Last user message
-    if let Some(msg) = request.messages.iter().rev().find(|m| matches!(m.role, MessageRole::User))
+    if let Some(msg) = request
+        .messages
+        .iter()
+        .rev()
+        .find(|m| matches!(m.role, MessageRole::User))
     {
         if let Some(ref content) = msg.content {
             let text = flatten_content(content);
@@ -209,7 +213,9 @@ pub(crate) fn flatten_content(content: &MessageContent) -> String {
 mod tests {
     use super::*;
     use crate::config::CacheConfig;
-    use crate::providers::types::{ChatRequest, ChatMessage, MessageContent, MessageRole, ContentPart, Tool, FunctionDef};
+    use crate::providers::types::{
+        ChatMessage, ChatRequest, ContentPart, FunctionDef, MessageContent, MessageRole, Tool,
+    };
 
     fn default_request() -> ChatRequest {
         ChatRequest {
@@ -301,8 +307,12 @@ mod tests {
         assert_eq!(flatten_content(&content), "  hello   world  "); // Caller trims if needed
 
         let parts = MessageContent::Parts(vec![
-            ContentPart::Text { text: "part1".into() },
-            ContentPart::Text { text: "part2".into() },
+            ContentPart::Text {
+                text: "part1".into(),
+            },
+            ContentPart::Text {
+                text: "part2".into(),
+            },
         ]);
         assert_eq!(flatten_content(&parts), "part1 part2");
     }

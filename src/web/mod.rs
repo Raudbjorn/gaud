@@ -6,12 +6,12 @@
 
 pub mod templates;
 
+use axum::Router;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
-use axum::Router;
-use minijinja::{context, Environment};
+use minijinja::{Environment, context};
 use serde::Deserialize;
 use tracing::warn;
 
@@ -65,7 +65,10 @@ fn render(template_name: &str, ctx: minijinja::Value) -> Response {
         },
         Err(err) => {
             tracing::error!(template = template_name, error = %err, "Template not found");
-            (StatusCode::INTERNAL_SERVER_ERROR, Html("<h1>Template Not Found</h1>".to_string()))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Html("<h1>Template Not Found</h1>".to_string()),
+            )
                 .into_response()
         }
     }
@@ -106,7 +109,10 @@ pub fn build_web_router() -> Router<AppState> {
         .route("/ui/api/oauth/start/{provider}", post(api_oauth_start))
         .route("/ui/api/oauth/status/{provider}", get(api_oauth_status))
         // Copilot device code flow endpoints
-        .route("/ui/api/oauth/copilot/device", post(api_copilot_device_start))
+        .route(
+            "/ui/api/oauth/copilot/device",
+            post(api_copilot_device_start),
+        )
         .route("/ui/api/oauth/copilot/poll", post(api_copilot_poll))
 }
 
@@ -133,7 +139,10 @@ async fn dashboard_page() -> Response {
 async fn oauth_page(State(state): State<AppState>) -> Response {
     let providers = configured_providers(&state);
     let providers_json = serde_json::to_string(&providers).unwrap_or_else(|_| "[]".to_string());
-    render("oauth", context! { providers_json => minijinja::Value::from_safe_string(providers_json) })
+    render(
+        "oauth",
+        context! { providers_json => minijinja::Value::from_safe_string(providers_json) },
+    )
 }
 
 /// User management page -- HTML shell, data via AJAX.
@@ -237,7 +246,11 @@ async fn oauth_callback(
     };
 
     // Exchange the authorization code for tokens via OAuthManager
-    match state.oauth_manager.complete_flow(&provider, &code, &state_token).await {
+    match state
+        .oauth_manager
+        .complete_flow(&provider, &code, &state_token)
+        .await
+    {
         Ok(_token) => {
             tracing::info!(%provider, "OAuth flow completed successfully");
             render(
@@ -276,10 +289,7 @@ async fn oauth_callback(
 /// authorization URL with state token. For Copilot, returns info about the
 /// device code flow (caller should use the /copilot/device endpoint instead).
 /// For Kiro, returns info that auth is managed internally.
-async fn api_oauth_start(
-    Path(provider): Path<String>,
-    State(state): State<AppState>,
-) -> Response {
+async fn api_oauth_start(Path(provider): Path<String>, State(state): State<AppState>) -> Response {
     // Validate auth from the Authorization header
     if let Err(resp) = validate_web_auth(&state).await {
         return resp;
@@ -290,7 +300,9 @@ async fn api_oauth_start(
     if !is_configured {
         return (
             StatusCode::BAD_REQUEST,
-            axum::Json(serde_json::json!({ "error": format!("Provider '{provider}' is not configured") })),
+            axum::Json(
+                serde_json::json!({ "error": format!("Provider '{provider}' is not configured") }),
+            ),
         )
             .into_response();
     }
@@ -352,10 +364,7 @@ async fn api_oauth_start(
 ///
 /// Uses OAuthManager to check token storage and report authentication state,
 /// including expiry and refresh status.
-async fn api_oauth_status(
-    Path(provider): Path<String>,
-    State(state): State<AppState>,
-) -> Response {
+async fn api_oauth_status(Path(provider): Path<String>, State(state): State<AppState>) -> Response {
     // Validate auth from the Authorization header
     if let Err(resp) = validate_web_auth(&state).await {
         return resp;
@@ -739,9 +748,11 @@ mod tests {
         }
         // OAuth uses a context variable, test separately.
         let tmpl = env.get_template("oauth").unwrap();
-        let html = tmpl.render(context! {
-            providers_json => minijinja::Value::from_safe_string("[]".to_string()),
-        }).unwrap();
+        let html = tmpl
+            .render(context! {
+                providers_json => minijinja::Value::from_safe_string("[]".to_string()),
+            })
+            .unwrap();
         assert!(
             html.contains(r#"href="/ui/settings"#),
             "Template 'oauth' is missing Settings nav link"
@@ -778,7 +789,9 @@ mod tests {
             config: std::sync::Arc::new(config),
             config_path: std::path::PathBuf::from("test.toml"),
             db: db.clone(),
-            router: std::sync::Arc::new(tokio::sync::RwLock::new(crate::providers::router::ProviderRouter::new())),
+            router: std::sync::Arc::new(tokio::sync::RwLock::new(
+                crate::providers::router::ProviderRouter::new(),
+            )),
             budget: std::sync::Arc::new(crate::budget::BudgetTracker::new(db.clone())),
             audit_tx,
             cost_calculator: std::sync::Arc::new(crate::providers::cost::CostCalculator::new()),

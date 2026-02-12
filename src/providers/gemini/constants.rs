@@ -110,7 +110,7 @@ impl std::fmt::Display for ModelFamily {
 /// # Examples
 ///
 /// ```
-/// use gaud::gemini::constants::{get_model_family, ModelFamily};
+/// use gaud::providers::gemini::constants::{get_model_family, ModelFamily};
 ///
 /// assert_eq!(get_model_family("claude-sonnet-4-5-thinking"), ModelFamily::Claude);
 /// assert_eq!(get_model_family("gemini-3-flash"), ModelFamily::Gemini);
@@ -137,7 +137,7 @@ pub fn get_model_family(model: &str) -> ModelFamily {
 /// # Examples
 ///
 /// ```
-/// use gaud::gemini::constants::is_thinking_model;
+/// use gaud::providers::gemini::constants::is_thinking_model;
 ///
 /// assert!(is_thinking_model("claude-sonnet-4-5-thinking"));
 /// assert!(is_thinking_model("gemini-3-flash"));
@@ -214,7 +214,7 @@ pub const MIN_SIGNATURE_LENGTH: usize = 50;
 // ============================================================================
 
 /// User-Agent header value for API requests.
-pub const USER_AGENT: &str = "gemini/0.1.0";
+pub const USER_AGENT: &str = crate::config::GAUD_USER_AGENT;
 
 /// X-Goog-Api-Client header value.
 pub const GOOG_API_CLIENT: &str = "google-cloud-sdk vscode_cloudshelleditor/0.1";

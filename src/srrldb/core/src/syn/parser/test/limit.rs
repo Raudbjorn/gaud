@@ -106,13 +106,13 @@ use crate::syn::parser::{Parser, ParserSettings};
 	false
 )]
 fn test_parse_depth(
-	#[case] parser_settings: ParserSettings,
-	#[case] source: &str,
-	#[case] expected: bool,
+    #[case] parser_settings: ParserSettings,
+    #[case] source: &str,
+    #[case] expected: bool,
 ) {
-	let mut stack = Stack::new();
+    let mut stack = Stack::new();
 
-	let mut parser = Parser::new_with_settings(source.as_bytes(), parser_settings);
-	let result = stack.enter(|stk| parser.parse_query(stk)).finish();
-	assert_eq!(result.is_ok(), expected);
+    let mut parser = Parser::new_with_settings(source.as_bytes(), parser_settings);
+    let result = stack.enter(|stk| parser.parse_query(stk)).finish();
+    assert_eq!(result.is_ok(), expected);
 }

@@ -97,7 +97,7 @@ pub(crate) use self::param::Param;
 pub(crate) use self::part::Part;
 pub(crate) use self::plan::{LogicalPlan, TopLevelExpr};
 pub(crate) use self::record_id::{
-	RecordIdKeyGen, RecordIdKeyLit, RecordIdKeyRangeLit, RecordIdLit,
+    RecordIdKeyGen, RecordIdKeyLit, RecordIdKeyRangeLit, RecordIdLit,
 };
 pub(crate) use self::script::Script;
 pub(crate) use self::split::{Split, Splits};
@@ -115,38 +115,38 @@ pub(crate) type FlowResult<T> = Result<T, ControlFlow>;
 /// Returned by compute functions which can impact control flow.
 #[derive(Debug)]
 pub(crate) enum ControlFlow {
-	Break,
-	Continue,
-	Return(Value),
-	Err(anyhow::Error),
+    Break,
+    Continue,
+    Return(Value),
+    Err(anyhow::Error),
 }
 
 impl From<anyhow::Error> for ControlFlow {
-	fn from(error: anyhow::Error) -> Self {
-		ControlFlow::Err(error)
-	}
+    fn from(error: anyhow::Error) -> Self {
+        ControlFlow::Err(error)
+    }
 }
 
 /// Helper trait to catch controlflow return unwinding.
 pub(crate) trait FlowResultExt {
-	/// Function which catches `ControlFlow::Return(x)` and turns it into
-	/// `Ok(x)`.
-	///
-	/// If the error value is either `ControlFlow::Break` or
-	/// `ControlFlow::Continue` it will instead create an error that
-	/// break/continue was used within an invalid location.
-	fn catch_return(self) -> Result<Value, anyhow::Error>;
+    /// Function which catches `ControlFlow::Return(x)` and turns it into
+    /// `Ok(x)`.
+    ///
+    /// If the error value is either `ControlFlow::Break` or
+    /// `ControlFlow::Continue` it will instead create an error that
+    /// break/continue was used within an invalid location.
+    fn catch_return(self) -> Result<Value, anyhow::Error>;
 }
 
 impl FlowResultExt for FlowResult<Value> {
-	fn catch_return(self) -> Result<Value, anyhow::Error> {
-		match self {
-			Err(ControlFlow::Break) | Err(ControlFlow::Continue) => {
-				Err(anyhow::Error::new(Error::InvalidControlFlow))
-			}
-			Err(ControlFlow::Return(x)) => Ok(x),
-			Err(ControlFlow::Err(e)) => Err(e),
-			Ok(x) => Ok(x),
-		}
-	}
+    fn catch_return(self) -> Result<Value, anyhow::Error> {
+        match self {
+            Err(ControlFlow::Break) | Err(ControlFlow::Continue) => {
+                Err(anyhow::Error::new(Error::InvalidControlFlow))
+            }
+            Err(ControlFlow::Return(x)) => Ok(x),
+            Err(ControlFlow::Err(e)) => Err(e),
+            Ok(x) => Ok(x),
+        }
+    }
 }

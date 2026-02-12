@@ -1,5 +1,3 @@
-pub mod gemini;
-
 pub mod keys;
 pub mod middleware;
 pub mod users;

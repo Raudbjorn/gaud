@@ -17,8 +17,10 @@ pub use response::{DbResponse, DbResult, DbResultError, DbResultStats};
 use crate::cnf::PROTECTED_PARAM_NAMES;
 
 pub fn check_protected_param(key: &str) -> Result<(), RpcError> {
-	if PROTECTED_PARAM_NAMES.contains(&key) {
-		return Err(RpcError::InvalidParams(format!("Cannot set protected variable: {key}")));
-	}
-	Ok(())
+    if PROTECTED_PARAM_NAMES.contains(&key) {
+        return Err(RpcError::InvalidParams(format!(
+            "Cannot set protected variable: {key}"
+        )));
+    }
+    Ok(())
 }

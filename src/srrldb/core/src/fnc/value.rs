@@ -8,21 +8,26 @@ use crate::expr::Operation;
 use crate::val::{Closure, Value};
 
 pub async fn chain(
-	(stk, ctx, opt, doc): (&mut Stk, &FrozenContext, Option<&Options>, Option<&CursorDoc>),
-	(value, worker): (Value, Box<Closure>),
+    (stk, ctx, opt, doc): (
+        &mut Stk,
+        &FrozenContext,
+        Option<&Options>,
+        Option<&CursorDoc>,
+    ),
+    (value, worker): (Value, Box<Closure>),
 ) -> Result<Value> {
-	if let Some(opt) = opt {
-		worker.invoke(stk, ctx, opt, doc, vec![value]).await
-	} else {
-		Ok(Value::None)
-	}
+    if let Some(opt) = opt {
+        worker.invoke(stk, ctx, opt, doc, vec![value]).await
+    } else {
+        Ok(Value::None)
+    }
 }
 
 pub async fn diff((val1, val2): (Value, Value)) -> Result<Value> {
-	Ok(Operation::operations_to_value(val1.diff(&val2)))
+    Ok(Operation::operations_to_value(val1.diff(&val2)))
 }
 
 pub async fn patch((mut val, diff): (Value, Value)) -> Result<Value> {
-	val.patch(diff)?;
-	Ok(val)
+    val.patch(diff)?;
+    Ok(val)
 }

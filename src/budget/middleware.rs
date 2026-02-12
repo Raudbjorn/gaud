@@ -3,10 +3,10 @@ use axum::http::Request;
 use axum::middleware::Next;
 use axum::response::Response;
 
+use crate::AppState;
 use crate::auth::AuthUser;
 use crate::budget::tracker::BudgetStatus;
 use crate::error::AppError;
-use crate::AppState;
 
 /// Axum middleware that enforces per-user budget limits.
 ///
@@ -28,10 +28,7 @@ pub async fn budget_middleware(
         return Ok(next.run(request).await);
     }
 
-    let user = request
-        .extensions()
-        .get::<AuthUser>()
-        .cloned();
+    let user = request.extensions().get::<AuthUser>().cloned();
 
     let user = match user {
         Some(u) => u,
@@ -40,7 +37,9 @@ pub async fn budget_middleware(
     };
 
     let warning_threshold = state.config.budget.warning_threshold_percent;
-    let status = state.budget.check_budget(&user.user_id, warning_threshold)?;
+    let status = state
+        .budget
+        .check_budget(&user.user_id, warning_threshold)?;
 
     match status {
         BudgetStatus::Exceeded => {

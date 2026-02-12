@@ -26,14 +26,14 @@
 //! - For Claude thinking models: `{ budgetTokens: N }`
 //! - For Gemini thinking models: `{ includeThoughts: true, thinkingBudget: N }`
 
-use crate::gemini::constants::{
+use crate::providers::gemini::constants::{
     get_model_family, is_thinking_model, ModelFamily, GEMINI_MAX_OUTPUT_TOKENS,
 };
-use crate::gemini::models::google::{
+use crate::providers::gemini::models::google::{
     Content, FunctionDeclaration, GenerationConfig, GoogleRequest, GoogleThinkingConfig,
     GoogleTool, Part, ToolConfig,
 };
-use crate::gemini::models::request::{Message, MessageContent, MessagesRequest, SystemPrompt};
+use crate::providers::gemini::models::request::{Message, MessageContent, MessagesRequest, SystemPrompt};
 
 use super::content::{convert_content_to_parts, convert_role, text_to_parts};
 use super::schema::sanitize_schema;
@@ -55,8 +55,8 @@ use super::schema::sanitize_schema;
 /// # Example
 ///
 /// ```rust,ignore
-/// use gaud::gemini::convert::convert_request;
-/// use gaud::gemini::MessagesRequest;
+/// use gaud::providers::gemini::convert::convert_request;
+/// use gaud::providers::gemini::MessagesRequest;
 ///
 /// let anthropic_request = MessagesRequest::simple("claude-sonnet-4-5", 1024, "Hello!");
 /// let google_request = convert_request(&anthropic_request);
@@ -159,7 +159,7 @@ pub(crate) fn convert_request(request: &MessagesRequest) -> GoogleRequest {
             // For Claude models, set VALIDATED mode for strict parameter validation
             if is_claude {
                 google_request.tool_config = Some(ToolConfig {
-                    function_calling_config: crate::gemini::models::google::FunctionCallingConfig {
+                    function_calling_config: crate::providers::gemini::models::google::FunctionCallingConfig {
                         mode: "VALIDATED".to_string(),
                         allowed_function_names: None,
                     },
@@ -189,7 +189,7 @@ fn convert_system_prompt(system: &SystemPrompt) -> Vec<Part> {
         SystemPrompt::Blocks(blocks) => blocks
             .iter()
             .filter_map(|block| {
-                let crate::gemini::models::request::SystemBlock::Text { text, .. } = block;
+                let crate::providers::gemini::models::request::SystemBlock::Text { text, .. } = block;
                 if text.is_empty() {
                     None
                 } else {
@@ -239,7 +239,7 @@ fn convert_message_content(content: &MessageContent, model: &str) -> Vec<Part> {
 }
 
 /// Convert tools to FunctionDeclarations.
-fn convert_tools(tools: &[crate::gemini::models::tools::Tool]) -> Vec<FunctionDeclaration> {
+fn convert_tools(tools: &[crate::providers::gemini::models::tools::Tool]) -> Vec<FunctionDeclaration> {
     tools
         .iter()
         .enumerate()
@@ -281,19 +281,19 @@ fn sanitize_tool_name(name: &str, fallback_idx: usize) -> String {
 }
 
 /// Convert tool choice to Google ToolConfig.
-fn convert_tool_choice(choice: &crate::gemini::models::tools::ToolChoice) -> ToolConfig {
+fn convert_tool_choice(choice: &crate::providers::gemini::models::tools::ToolChoice) -> ToolConfig {
     match choice {
-        crate::gemini::models::tools::ToolChoice::Auto => ToolConfig::auto(),
-        crate::gemini::models::tools::ToolChoice::Any => ToolConfig::any(),
-        crate::gemini::models::tools::ToolChoice::None => ToolConfig::none(),
-        crate::gemini::models::tools::ToolChoice::Tool { name } => ToolConfig::force(name),
+        crate::providers::gemini::models::tools::ToolChoice::Auto => ToolConfig::auto(),
+        crate::providers::gemini::models::tools::ToolChoice::Any => ToolConfig::any(),
+        crate::providers::gemini::models::tools::ToolChoice::None => ToolConfig::none(),
+        crate::providers::gemini::models::tools::ToolChoice::Tool { name } => ToolConfig::force(name),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gemini::models::tools::Tool;
+    use crate::providers::gemini::models::tools::Tool;
     use serde_json::json;
 
     #[test]
@@ -443,25 +443,25 @@ mod tests {
 
     #[test]
     fn test_convert_tool_choice_auto() {
-        let config = convert_tool_choice(&crate::gemini::models::tools::ToolChoice::Auto);
+        let config = convert_tool_choice(&crate::providers::gemini::models::tools::ToolChoice::Auto);
         assert_eq!(config.function_calling_config.mode, "AUTO");
     }
 
     #[test]
     fn test_convert_tool_choice_any() {
-        let config = convert_tool_choice(&crate::gemini::models::tools::ToolChoice::Any);
+        let config = convert_tool_choice(&crate::providers::gemini::models::tools::ToolChoice::Any);
         assert_eq!(config.function_calling_config.mode, "ANY");
     }
 
     #[test]
     fn test_convert_tool_choice_none() {
-        let config = convert_tool_choice(&crate::gemini::models::tools::ToolChoice::None);
+        let config = convert_tool_choice(&crate::providers::gemini::models::tools::ToolChoice::None);
         assert_eq!(config.function_calling_config.mode, "NONE");
     }
 
     #[test]
     fn test_convert_tool_choice_specific() {
-        let config = convert_tool_choice(&crate::gemini::models::tools::ToolChoice::tool("my_tool"));
+        let config = convert_tool_choice(&crate::providers::gemini::models::tools::ToolChoice::tool("my_tool"));
         assert_eq!(config.function_calling_config.mode, "ANY");
         assert_eq!(
             config.function_calling_config.allowed_function_names,
@@ -582,7 +582,7 @@ mod tests {
 
     #[test]
     fn test_convert_system_blocks() {
-        use crate::gemini::models::request::SystemBlock;
+        use crate::providers::gemini::models::request::SystemBlock;
 
         let request = MessagesRequest::builder()
             .model("claude-sonnet-4-5")

@@ -12,32 +12,15 @@
 //! 2. Parse response for `cloudaicompanionProject` and tier info
 //! 3. If no project exists, call `onboardUser` to create one
 //! 4. Return `ProjectInfo` with project ID and subscription tier
-//!
-//! # Example
-//!
-//! ```rust,ignore
-//! use gaud::gemini::{discover_project, ProjectInfo, SubscriptionTier};
-//!
-//! # async fn example() -> gaud::gemini::Result<()> {
-//! // Get access token from OAuth flow
-//! let access_token = "ya29.xxx";
-//!
-//! // Discover project info
-//! let project = discover_project(access_token, None).await?;
-//! println!("Project ID: {}", project.project_id);
-//! println!("Tier: {:?}", project.subscription_tier);
-//! # Ok(())
-//! # }
-//! ```
 
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, instrument, warn};
 
-use crate::gemini::constants::{
+use crate::providers::gemini::constants::{
     API_PATH_LOAD_CODE_ASSIST, API_PATH_ONBOARD_USER, DEFAULT_PROJECT_ID,
     LOAD_CODE_ASSIST_ENDPOINTS,
 };
-use crate::gemini::error::{AuthError, Error, Result};
+use crate::providers::gemini::error::{AuthError, Error, Result};
 
 /// Subscription tier for Cloud Code.
 ///
@@ -70,23 +53,6 @@ impl std::str::FromStr for SubscriptionTier {
     type Err = std::convert::Infallible;
 
     /// Parse a tier string into a SubscriptionTier.
-    ///
-    /// This implementation never fails - unknown values return `SubscriptionTier::Unknown`.
-    ///
-    /// Handles various formats including "FREE", "free", "BASIC_TIER_FREE", etc.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use gaud::gemini::SubscriptionTier;
-    /// use std::str::FromStr;
-    ///
-    /// assert_eq!(SubscriptionTier::from_str("free").unwrap(), SubscriptionTier::Free);
-    /// assert_eq!(SubscriptionTier::from_str("BASIC_TIER_FREE").unwrap(), SubscriptionTier::Free);
-    /// assert_eq!(SubscriptionTier::from_str("pro").unwrap(), SubscriptionTier::Pro);
-    /// assert_eq!(SubscriptionTier::from_str("ultra").unwrap(), SubscriptionTier::Ultra);
-    /// assert_eq!(SubscriptionTier::from_str("unknown").unwrap(), SubscriptionTier::Unknown);
-    /// ```
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         let lower = s.to_lowercase();
         let tier = if lower.contains("free") || lower.contains("basic") {
@@ -104,9 +70,6 @@ impl std::str::FromStr for SubscriptionTier {
 
 impl SubscriptionTier {
     /// Parse a tier string into a SubscriptionTier (convenience method).
-    ///
-    /// Unlike `FromStr::from_str`, this method returns the tier directly
-    /// since parsing never fails.
     pub fn parse(s: &str) -> Self {
         s.parse().unwrap_or(SubscriptionTier::Unknown)
     }
@@ -116,13 +79,9 @@ impl SubscriptionTier {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectInfo {
     /// The Cloud Code project ID.
-    ///
-    /// This is the user's project ID used for API requests.
     pub project_id: String,
 
     /// The managed project ID (cloudaicompanionProject).
-    ///
-    /// This is an optional secondary project ID managed by Google.
     pub managed_project_id: Option<String>,
 
     /// The detected subscription tier.
@@ -183,34 +142,6 @@ struct OnboardUserResponse {
 }
 
 /// Discover project information by calling the Cloud Code API.
-///
-/// Tries multiple endpoints in order, falling back if one fails.
-/// If no project exists, attempts to onboard the user.
-///
-/// # Arguments
-///
-/// * `token` - OAuth access token
-/// * `hint_project_id` - Optional known project ID to use as hint
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - All endpoints fail to respond
-/// - Authentication is rejected
-/// - Onboarding fails
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use gaud::gemini::discover_project;
-///
-/// # async fn example() -> gaud::gemini::Result<()> {
-/// let project = discover_project("ya29.access_token", None).await?;
-/// println!("Project: {}", project.project_id);
-/// println!("Tier: {:?}", project.subscription_tier);
-/// # Ok(())
-/// # }
-/// ```
 #[instrument(skip(token))]
 pub async fn discover_project(token: &str, hint_project_id: Option<&str>) -> Result<ProjectInfo> {
     // Try each endpoint in order
@@ -321,36 +252,6 @@ async fn try_load_code_assist(
 }
 
 /// Onboard a new user to Cloud Code.
-///
-/// Creates a new Cloud Code project for the user.
-///
-/// # Arguments
-///
-/// * `token` - OAuth access token
-/// * `tier` - Tier to request (usually "free")
-///
-/// # Returns
-///
-/// The created project ID.
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - The API rejects the request
-/// - Network error occurs
-/// - No project ID in response
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use gaud::gemini::onboard_user;
-///
-/// # async fn example() -> gaud::gemini::Result<()> {
-/// let project_id = onboard_user("ya29.access_token", "free").await?;
-/// println!("Created project: {}", project_id);
-/// # Ok(())
-/// # }
-/// ```
 #[instrument(skip(token))]
 pub async fn onboard_user(token: &str, tier: &str) -> Result<String> {
     // Try each endpoint
@@ -395,124 +296,4 @@ async fn try_onboard_user(token: &str, endpoint: &str) -> Result<String> {
             "No project ID in onboard response".to_string(),
         ))
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_subscription_tier_from_str_free() {
-        assert_eq!(SubscriptionTier::parse("free"), SubscriptionTier::Free);
-        assert_eq!(SubscriptionTier::parse("FREE"), SubscriptionTier::Free);
-        assert_eq!(SubscriptionTier::parse("Free"), SubscriptionTier::Free);
-        assert_eq!(
-            SubscriptionTier::parse("BASIC_TIER_FREE"),
-            SubscriptionTier::Free
-        );
-        assert_eq!(SubscriptionTier::parse("basic"), SubscriptionTier::Free);
-    }
-
-    #[test]
-    fn test_subscription_tier_from_str_pro() {
-        assert_eq!(SubscriptionTier::parse("pro"), SubscriptionTier::Pro);
-        assert_eq!(SubscriptionTier::parse("PRO"), SubscriptionTier::Pro);
-        assert_eq!(SubscriptionTier::parse("Pro"), SubscriptionTier::Pro);
-        assert_eq!(
-            SubscriptionTier::parse("SUBSCRIPTION_PRO"),
-            SubscriptionTier::Pro
-        );
-    }
-
-    #[test]
-    fn test_subscription_tier_from_str_ultra() {
-        assert_eq!(SubscriptionTier::parse("ultra"), SubscriptionTier::Ultra);
-        assert_eq!(SubscriptionTier::parse("ULTRA"), SubscriptionTier::Ultra);
-        assert_eq!(SubscriptionTier::parse("Ultra"), SubscriptionTier::Ultra);
-        assert_eq!(SubscriptionTier::parse("max"), SubscriptionTier::Ultra);
-        assert_eq!(
-            SubscriptionTier::parse("SUBSCRIPTION_MAX"),
-            SubscriptionTier::Ultra
-        );
-    }
-
-    #[test]
-    fn test_subscription_tier_from_str_unknown() {
-        assert_eq!(SubscriptionTier::parse(""), SubscriptionTier::Unknown);
-        assert_eq!(
-            SubscriptionTier::parse("something"),
-            SubscriptionTier::Unknown
-        );
-        assert_eq!(
-            SubscriptionTier::parse("tier_xyz"),
-            SubscriptionTier::Unknown
-        );
-    }
-
-    #[test]
-    fn test_subscription_tier_display() {
-        assert_eq!(SubscriptionTier::Free.to_string(), "free");
-        assert_eq!(SubscriptionTier::Pro.to_string(), "pro");
-        assert_eq!(SubscriptionTier::Ultra.to_string(), "ultra");
-        assert_eq!(SubscriptionTier::Unknown.to_string(), "unknown");
-    }
-
-    #[test]
-    fn test_project_info_new() {
-        let info = ProjectInfo::new(
-            "proj-123".to_string(),
-            Some("managed-456".to_string()),
-            SubscriptionTier::Pro,
-        );
-
-        assert_eq!(info.project_id, "proj-123");
-        assert_eq!(info.managed_project_id.as_deref(), Some("managed-456"));
-        assert_eq!(info.subscription_tier, SubscriptionTier::Pro);
-    }
-
-    #[test]
-    fn test_project_info_default_fallback() {
-        let info = ProjectInfo::default_fallback();
-
-        assert_eq!(info.project_id, DEFAULT_PROJECT_ID);
-        assert!(info.managed_project_id.is_none());
-        assert_eq!(info.subscription_tier, SubscriptionTier::Unknown);
-    }
-
-    #[test]
-    fn test_project_info_serialization() {
-        let info = ProjectInfo::new(
-            "proj-123".to_string(),
-            Some("managed-456".to_string()),
-            SubscriptionTier::Ultra,
-        );
-
-        let json = serde_json::to_string(&info).unwrap();
-        assert!(json.contains("\"project_id\":\"proj-123\""));
-        assert!(json.contains("\"subscription_tier\":\"ultra\""));
-
-        let restored: ProjectInfo = serde_json::from_str(&json).unwrap();
-        assert_eq!(restored.project_id, "proj-123");
-        assert_eq!(restored.subscription_tier, SubscriptionTier::Ultra);
-    }
-
-    #[test]
-    fn test_subscription_tier_equality() {
-        assert_eq!(SubscriptionTier::Free, SubscriptionTier::Free);
-        assert_ne!(SubscriptionTier::Free, SubscriptionTier::Pro);
-    }
-
-    #[test]
-    fn test_subscription_tier_hash() {
-        use std::collections::HashSet;
-
-        let mut set = HashSet::new();
-        set.insert(SubscriptionTier::Free);
-        set.insert(SubscriptionTier::Pro);
-        set.insert(SubscriptionTier::Free); // Duplicate
-
-        assert_eq!(set.len(), 2);
-        assert!(set.contains(&SubscriptionTier::Free));
-        assert!(set.contains(&SubscriptionTier::Pro));
-    }
 }

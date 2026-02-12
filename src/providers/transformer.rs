@@ -8,8 +8,8 @@
 
 use std::time::Duration;
 
-use super::types::*;
 use super::ProviderError;
+use super::types::*;
 
 // Re-export utilities from the new location for backward compatibility.
 pub use super::transform::util::{

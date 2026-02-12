@@ -5,15 +5,15 @@
 //! `converters_anthropic.py` / `streaming_anthropic.py` logic in the
 //! kiro-gateway project.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
+use crate::providers::ProviderError;
 use crate::providers::transformer::{
-    ProviderResponseMeta, ProviderTransformer, StreamState,
-    convert_tools_to_anthropic, convert_tool_choice, extract_system_message,
-    filter_system_messages, normalize_stop_sequences, parse_image_url,
+    ProviderResponseMeta, ProviderTransformer, StreamState, convert_tool_choice,
+    convert_tools_to_anthropic, extract_system_message, filter_system_messages,
+    normalize_stop_sequences, parse_image_url,
 };
 use crate::providers::types::*;
-use crate::providers::ProviderError;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -75,8 +75,7 @@ impl KiroTransformer {
                             }
                         }
                         ContentPart::ImageUrl { image_url } => {
-                            let (source_type, media_type, data) =
-                                parse_image_url(&image_url.url);
+                            let (source_type, media_type, data) = parse_image_url(&image_url.url);
                             if source_type == "base64" {
                                 Some(json!({
                                     "type": "image",
@@ -122,8 +121,8 @@ impl KiroTransformer {
         // Tool calls → tool_use blocks.
         if let Some(ref tool_calls) = msg.tool_calls {
             for tc in tool_calls {
-                let input: Value = serde_json::from_str(&tc.function.arguments)
-                    .unwrap_or(json!({}));
+                let input: Value =
+                    serde_json::from_str(&tc.function.arguments).unwrap_or(json!({}));
                 blocks.push(json!({
                     "type": "tool_use",
                     "id": tc.id,
@@ -135,7 +134,9 @@ impl KiroTransformer {
 
         if blocks.is_empty() {
             json!({"role": "assistant", "content": ""})
-        } else if blocks.len() == 1 && blocks[0].get("type").and_then(|t| t.as_str()) == Some("text") {
+        } else if blocks.len() == 1
+            && blocks[0].get("type").and_then(|t| t.as_str()) == Some("text")
+        {
             // Single text block → use string shorthand.
             let text = blocks[0]["text"].as_str().unwrap_or_default();
             json!({"role": "assistant", "content": text})
@@ -154,9 +155,8 @@ impl KiroTransformer {
             .unwrap_or_default();
 
         // Infer error status from content (matches Python gateway heuristic).
-        let is_error = text.starts_with("Error:")
-            || text.starts_with("error:")
-            || text.starts_with("ERROR:");
+        let is_error =
+            text.starts_with("Error:") || text.starts_with("error:") || text.starts_with("ERROR:");
 
         json!({
             "role": "user",
@@ -250,7 +250,10 @@ impl ProviderTransformer for KiroTransformer {
         let stop_sequences = normalize_stop_sequences(&request.stop);
 
         // Tools.
-        let tools = request.tools.as_ref().map(|ts| Value::Array(convert_tools_to_anthropic(ts)));
+        let tools = request
+            .tools
+            .as_ref()
+            .map(|ts| Value::Array(convert_tools_to_anthropic(ts)));
 
         // Tool choice.
         let tool_choice = convert_tool_choice(&request.tool_choice, None);
@@ -290,10 +293,7 @@ impl ProviderTransformer for KiroTransformer {
         response: Value,
         meta: &ProviderResponseMeta,
     ) -> Result<ChatResponse, ProviderError> {
-        let id = response["id"]
-            .as_str()
-            .unwrap_or("msg_unknown")
-            .to_string();
+        let id = response["id"].as_str().unwrap_or("msg_unknown").to_string();
 
         let content_blocks = response["content"].as_array();
 
@@ -306,9 +306,7 @@ impl ProviderTransformer for KiroTransformer {
                 match block["type"].as_str() {
                     Some("text") => {
                         let text = block["text"].as_str().unwrap_or_default();
-                        content_text
-                            .get_or_insert_with(String::new)
-                            .push_str(text);
+                        content_text.get_or_insert_with(String::new).push_str(text);
                     }
                     Some("tool_use") => {
                         tool_calls.push(ToolCall {
@@ -316,10 +314,7 @@ impl ProviderTransformer for KiroTransformer {
                             id: block["id"].as_str().unwrap_or_default().to_string(),
                             r#type: "function".to_string(),
                             function: FunctionCall {
-                                name: block["name"]
-                                    .as_str()
-                                    .unwrap_or_default()
-                                    .to_string(),
+                                name: block["name"].as_str().unwrap_or_default().to_string(),
                                 arguments: {
                                     let default_input = json!({});
                                     serde_json::to_string(
@@ -341,9 +336,9 @@ impl ProviderTransformer for KiroTransformer {
             }
         }
 
-        let finish_reason = response["stop_reason"].as_str().map(|sr| {
-            self.map_finish_reason(sr).to_string()
-        });
+        let finish_reason = response["stop_reason"]
+            .as_str()
+            .map(|sr| self.map_finish_reason(sr).to_string());
 
         // Parse usage, including cache token details.
         let usage_val = &response["usage"];
@@ -497,19 +492,13 @@ impl StreamState for KiroStreamState {
         &mut self,
         event: &serde_json::Value,
     ) -> Result<Option<ChatChunk>, ProviderError> {
-
         let event_type = event["type"].as_str().unwrap_or("");
 
         match event_type {
             "message_start" => {
                 let msg = &event["message"];
-                self.response_id = msg["id"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_string();
-                self.input_tokens = msg["usage"]["input_tokens"]
-                    .as_u64()
-                    .unwrap_or(0) as u32;
+                self.response_id = msg["id"].as_str().unwrap_or_default().to_string();
+                self.input_tokens = msg["usage"]["input_tokens"].as_u64().unwrap_or(0) as u32;
 
                 Ok(Some(self.make_chunk(
                     Delta {
@@ -564,10 +553,7 @@ impl StreamState for KiroStreamState {
 
                 match delta_type {
                     "text_delta" => {
-                        let text = delta["text"]
-                            .as_str()
-                            .unwrap_or_default()
-                            .to_string();
+                        let text = delta["text"].as_str().unwrap_or_default().to_string();
                         Ok(Some(self.make_chunk(
                             Delta {
                                 role: None,
@@ -606,10 +592,7 @@ impl StreamState for KiroStreamState {
                         )))
                     }
                     "thinking_delta" => {
-                        let thinking = delta["thinking"]
-                            .as_str()
-                            .unwrap_or_default()
-                            .to_string();
+                        let thinking = delta["thinking"].as_str().unwrap_or_default().to_string();
                         Ok(Some(self.make_chunk(
                             Delta {
                                 role: None,
@@ -664,9 +647,7 @@ impl StreamState for KiroStreamState {
             "message_stop" | "ping" => Ok(None),
 
             "error" => {
-                let error_type = event["error"]["type"]
-                    .as_str()
-                    .unwrap_or("unknown");
+                let error_type = event["error"]["type"].as_str().unwrap_or("unknown");
                 let error_msg = event["error"]["message"]
                     .as_str()
                     .unwrap_or("Unknown error");
@@ -675,9 +656,7 @@ impl StreamState for KiroStreamState {
                     error_message = %error_msg,
                     "Kiro stream error event"
                 );
-                Err(ProviderError::Stream(format!(
-                    "{error_type}: {error_msg}"
-                )))
+                Err(ProviderError::Stream(format!("{error_type}: {error_msg}")))
             }
 
             _ => {
@@ -727,8 +706,14 @@ mod tests {
 
     #[test]
     fn test_strip_model_prefix() {
-        assert_eq!(KiroTransformer::strip_model_prefix("kiro:claude-sonnet-4"), "claude-sonnet-4");
-        assert_eq!(KiroTransformer::strip_model_prefix("claude-sonnet-4"), "claude-sonnet-4");
+        assert_eq!(
+            KiroTransformer::strip_model_prefix("kiro:claude-sonnet-4"),
+            "claude-sonnet-4"
+        );
+        assert_eq!(
+            KiroTransformer::strip_model_prefix("claude-sonnet-4"),
+            "claude-sonnet-4"
+        );
         assert_eq!(KiroTransformer::strip_model_prefix("kiro:auto"), "auto");
     }
 
@@ -1071,10 +1056,7 @@ mod tests {
             result.choices[0].message.content.as_deref(),
             Some("Hello there!")
         );
-        assert_eq!(
-            result.choices[0].finish_reason.as_deref(),
-            Some("stop")
-        );
+        assert_eq!(result.choices[0].finish_reason.as_deref(), Some("stop"));
         assert_eq!(result.usage.prompt_tokens, 10);
         assert_eq!(result.usage.completion_tokens, 5);
         assert_eq!(result.usage.total_tokens, 15);
@@ -1153,10 +1135,7 @@ mod tests {
 
         let meta = make_meta();
         let result = transformer.transform_response(response, &meta).unwrap();
-        assert_eq!(
-            result.choices[0].finish_reason.as_deref(),
-            Some("length")
-        );
+        assert_eq!(result.choices[0].finish_reason.as_deref(), Some("length"));
     }
 
     #[test]
@@ -1262,10 +1241,7 @@ mod tests {
         let result = state.process_event(data).unwrap();
         assert!(result.is_some());
         let chunk = result.unwrap();
-        assert_eq!(
-            chunk.choices[0].finish_reason.as_deref(),
-            Some("stop")
-        );
+        assert_eq!(chunk.choices[0].finish_reason.as_deref(), Some("stop"));
         let usage = chunk.usage.as_ref().unwrap();
         assert_eq!(usage.prompt_tokens, 42);
         assert_eq!(usage.completion_tokens, 15);
@@ -1313,7 +1289,9 @@ mod tests {
     fn test_stream_state_content_block_stop_resets_tool() {
         let mut state = KiroStreamState::new("kiro:auto");
         state.current_tool_index = Some(0);
-        let result = state.process_event(r#"{"type":"content_block_stop","index":0}"#).unwrap();
+        let result = state
+            .process_event(r#"{"type":"content_block_stop","index":0}"#)
+            .unwrap();
         assert!(result.is_none());
         assert!(state.current_tool_index.is_none());
     }
@@ -1504,16 +1482,25 @@ mod tests {
                 ChatMessage {
                     role: MessageRole::System,
                     content: Some(MessageContent::Text("You are a helpful assistant.".into())),
-                    name: None, tool_calls: None, tool_call_id: None,
+                    name: None,
+                    tool_calls: None,
+                    tool_call_id: None,
                 },
                 ChatMessage {
                     role: MessageRole::User,
                     content: Some(MessageContent::Text("Hi".into())),
-                    name: None, tool_calls: None, tool_call_id: None,
+                    name: None,
+                    tool_calls: None,
+                    tool_call_id: None,
                 },
             ],
-            temperature: None, max_tokens: None, stream: false,
-            top_p: None, stop: None, tools: None, tool_choice: None,
+            temperature: None,
+            max_tokens: None,
+            stream: false,
+            top_p: None,
+            stop: None,
+            tools: None,
+            tool_choice: None,
             stream_options: None,
         };
         let body = transformer.transform_request(&req).unwrap();
@@ -1529,10 +1516,17 @@ mod tests {
             messages: vec![ChatMessage {
                 role: MessageRole::User,
                 content: Some(MessageContent::Text("Hi".into())),
-                name: None, tool_calls: None, tool_call_id: None,
+                name: None,
+                tool_calls: None,
+                tool_call_id: None,
             }],
-            temperature: None, max_tokens: None, stream: false,
-            top_p: None, stop: None, tools: None, tool_choice: None,
+            temperature: None,
+            max_tokens: None,
+            stream: false,
+            top_p: None,
+            stop: None,
+            tools: None,
+            tool_choice: None,
             stream_options: None,
         };
         let body = transformer.transform_request(&req).unwrap();
@@ -1551,10 +1545,17 @@ mod tests {
             messages: vec![ChatMessage {
                 role: MessageRole::User,
                 content: Some(MessageContent::Text("Hi".into())),
-                name: None, tool_calls: None, tool_call_id: None,
+                name: None,
+                tool_calls: None,
+                tool_call_id: None,
             }],
-            temperature: None, max_tokens: None, stream: false,
-            top_p: None, stop: None, tools: None, tool_choice: None,
+            temperature: None,
+            max_tokens: None,
+            stream: false,
+            top_p: None,
+            stop: None,
+            tools: None,
+            tool_choice: None,
             stream_options: None,
         };
         let body = transformer.transform_request(&req).unwrap();
@@ -1571,10 +1572,17 @@ mod tests {
             messages: vec![ChatMessage {
                 role: MessageRole::User,
                 content: Some(MessageContent::Text("Hi".into())),
-                name: None, tool_calls: None, tool_call_id: None,
+                name: None,
+                tool_calls: None,
+                tool_call_id: None,
             }],
-            temperature: None, max_tokens: None, stream: false,
-            top_p: Some(0.95), stop: None, tools: None, tool_choice: None,
+            temperature: None,
+            max_tokens: None,
+            stream: false,
+            top_p: Some(0.95),
+            stop: None,
+            tools: None,
+            tool_choice: None,
             stream_options: None,
         };
         let body = transformer.transform_request(&req).unwrap();
@@ -1590,10 +1598,17 @@ mod tests {
             messages: vec![ChatMessage {
                 role: MessageRole::User,
                 content: Some(MessageContent::Text("Hi".into())),
-                name: None, tool_calls: None, tool_call_id: None,
+                name: None,
+                tool_calls: None,
+                tool_call_id: None,
             }],
-            temperature: None, max_tokens: None, stream: false,
-            top_p: None, stop: None, tools: None, tool_choice: None,
+            temperature: None,
+            max_tokens: None,
+            stream: false,
+            top_p: None,
+            stop: None,
+            tools: None,
+            tool_choice: None,
             stream_options: None,
         };
         let body = transformer.transform_request(&req).unwrap();
@@ -1614,10 +1629,14 @@ mod tests {
         let req = ChatRequest {
             model: "kiro:auto".into(),
             messages: vec![],
-            temperature: None, max_tokens: None, stream: false,
+            temperature: None,
+            max_tokens: None,
+            stream: false,
             top_p: None,
             stop: Some(StopSequence::Single("HALT".into())),
-            tools: None, tool_choice: None, stream_options: None,
+            tools: None,
+            tool_choice: None,
+            stream_options: None,
         };
         let body = transformer.transform_request(&req).unwrap();
         let seqs = body["stop_sequences"].as_array().unwrap();
@@ -1637,7 +1656,9 @@ mod tests {
                 function: FunctionDef {
                     name: "search".to_string(),
                     description: Some("Search the web".to_string()),
-                    parameters: Some(json!({"type": "object", "properties": {"q": {"type": "string"}}})),
+                    parameters: Some(
+                        json!({"type": "object", "properties": {"q": {"type": "string"}}}),
+                    ),
                 },
             },
             Tool {
@@ -1645,7 +1666,9 @@ mod tests {
                 function: FunctionDef {
                     name: "get_weather".to_string(),
                     description: Some("Get weather info".to_string()),
-                    parameters: Some(json!({"type": "object", "properties": {"city": {"type": "string"}}})),
+                    parameters: Some(
+                        json!({"type": "object", "properties": {"city": {"type": "string"}}}),
+                    ),
                 },
             },
         ];
@@ -1654,10 +1677,17 @@ mod tests {
             messages: vec![ChatMessage {
                 role: MessageRole::User,
                 content: Some(MessageContent::Text("Search and weather".into())),
-                name: None, tool_calls: None, tool_call_id: None,
+                name: None,
+                tool_calls: None,
+                tool_call_id: None,
             }],
-            temperature: None, max_tokens: None, stream: false,
-            top_p: None, stop: None, tools: Some(tools), tool_choice: None,
+            temperature: None,
+            max_tokens: None,
+            stream: false,
+            top_p: None,
+            stop: None,
+            tools: Some(tools),
+            tool_choice: None,
             stream_options: None,
         };
         let body = transformer.transform_request(&req).unwrap();
@@ -1679,7 +1709,9 @@ mod tests {
             messages: vec![ChatMessage {
                 role: MessageRole::User,
                 content: Some(MessageContent::Parts(vec![
-                    ContentPart::Text { text: "Describe this".into() },
+                    ContentPart::Text {
+                        text: "Describe this".into(),
+                    },
                     ContentPart::ImageUrl {
                         image_url: ImageUrl {
                             url: "data:image/jpeg;base64,/9j/4AAQ".into(),
@@ -1687,10 +1719,17 @@ mod tests {
                         },
                     },
                 ])),
-                name: None, tool_calls: None, tool_call_id: None,
+                name: None,
+                tool_calls: None,
+                tool_call_id: None,
             }],
-            temperature: None, max_tokens: None, stream: false,
-            top_p: None, stop: None, tools: None, tool_choice: None,
+            temperature: None,
+            max_tokens: None,
+            stream: false,
+            top_p: None,
+            stop: None,
+            tools: None,
+            tool_choice: None,
             stream_options: None,
         };
         let body = transformer.transform_request(&req).unwrap();
@@ -1722,10 +1761,17 @@ mod tests {
                         },
                     },
                 ])),
-                name: None, tool_calls: None, tool_call_id: None,
+                name: None,
+                tool_calls: None,
+                tool_call_id: None,
             }],
-            temperature: None, max_tokens: None, stream: false,
-            top_p: None, stop: None, tools: None, tool_choice: None,
+            temperature: None,
+            max_tokens: None,
+            stream: false,
+            top_p: None,
+            stop: None,
+            tools: None,
+            tool_choice: None,
             stream_options: None,
         };
         let body = transformer.transform_request(&req).unwrap();
@@ -1764,7 +1810,10 @@ mod tests {
         });
         let meta = make_meta();
         let result = transformer.transform_response(response, &meta).unwrap();
-        assert_eq!(result.choices[0].finish_reason.as_deref(), Some("tool_calls"));
+        assert_eq!(
+            result.choices[0].finish_reason.as_deref(),
+            Some("tool_calls")
+        );
     }
 
     /// Adapted from stop_reason mapping in Python gateway.
@@ -1856,7 +1905,10 @@ mod tests {
         });
         let meta = make_meta();
         let result = transformer.transform_response(response, &meta).unwrap();
-        assert_eq!(result.choices[0].message.content.as_deref(), Some("I'll search for that."));
+        assert_eq!(
+            result.choices[0].message.content.as_deref(),
+            Some("I'll search for that.")
+        );
         let tc = result.choices[0].message.tool_calls.as_ref().unwrap();
         assert_eq!(tc.len(), 1);
         assert_eq!(tc[0].function.name, "search");
@@ -1988,8 +2040,14 @@ mod tests {
         let r1 = state.process_event(r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}"#).unwrap();
         let r2 = state.process_event(r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" World"}}"#).unwrap();
 
-        assert_eq!(r1.unwrap().choices[0].delta.content.as_deref(), Some("Hello"));
-        assert_eq!(r2.unwrap().choices[0].delta.content.as_deref(), Some(" World"));
+        assert_eq!(
+            r1.unwrap().choices[0].delta.content.as_deref(),
+            Some("Hello")
+        );
+        assert_eq!(
+            r2.unwrap().choices[0].delta.content.as_deref(),
+            Some(" World")
+        );
     }
 
     /// Adapted from TestStreamKiroToAnthropic.test_stop_reason_is_tool_use_when_tools_present
@@ -2002,7 +2060,10 @@ mod tests {
         let result = state.process_event(data).unwrap();
         assert!(result.is_some());
         let chunk = result.unwrap();
-        assert_eq!(chunk.choices[0].finish_reason.as_deref(), Some("tool_calls"));
+        assert_eq!(
+            chunk.choices[0].finish_reason.as_deref(),
+            Some("tool_calls")
+        );
     }
 
     /// Adapted from TestStreamKiroToAnthropic.test_yields_tool_use_block_for_tool_calls
@@ -2101,10 +2162,17 @@ mod tests {
             messages: vec![ChatMessage {
                 role: MessageRole::User,
                 content: Some(MessageContent::Text("Hi".into())),
-                name: None, tool_calls: None, tool_call_id: None,
+                name: None,
+                tool_calls: None,
+                tool_call_id: None,
             }],
-            temperature: None, max_tokens: None, stream: true,
-            top_p: None, stop: None, tools: None, tool_choice: None,
+            temperature: None,
+            max_tokens: None,
+            stream: true,
+            top_p: None,
+            stop: None,
+            tools: None,
+            tool_choice: None,
             stream_options: None,
         };
         let body = transformer.transform_request(&req).unwrap();
@@ -2122,10 +2190,17 @@ mod tests {
             messages: vec![ChatMessage {
                 role: MessageRole::Assistant,
                 content: Some(MessageContent::Text("I understand.".into())),
-                name: None, tool_calls: None, tool_call_id: None,
+                name: None,
+                tool_calls: None,
+                tool_call_id: None,
             }],
-            temperature: None, max_tokens: None, stream: false,
-            top_p: None, stop: None, tools: None, tool_choice: None,
+            temperature: None,
+            max_tokens: None,
+            stream: false,
+            top_p: None,
+            stop: None,
+            tools: None,
+            tool_choice: None,
             stream_options: None,
         };
         let body = transformer.transform_request(&req).unwrap();
@@ -2187,7 +2262,9 @@ mod tests {
     #[test]
     fn test_stream_state_ignores_unknown_event_types() {
         let mut state = KiroStreamState::new("kiro:auto");
-        let result = state.process_event(r#"{"type":"custom_event","data":"stuff"}"#).unwrap();
+        let result = state
+            .process_event(r#"{"type":"custom_event","data":"stuff"}"#)
+            .unwrap();
         assert!(result.is_none());
     }
 

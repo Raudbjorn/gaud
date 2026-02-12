@@ -14,7 +14,7 @@ use serde_json::Value;
 /// # Example
 ///
 /// ```rust
-/// use gaud::gemini::models::Tool;
+/// use gaud::providers::gemini::models::Tool;
 /// use serde_json::json;
 ///
 /// let tool = Tool::new(

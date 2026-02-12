@@ -121,8 +121,7 @@ impl SseParser {
                 self.repeat_count += 1;
                 if self.repeat_count >= MAX_IDENTICAL_CHUNKS {
                     return Err(ProviderError::Stream(
-                        "Infinite loop detected: >100 identical consecutive SSE chunks"
-                            .to_string(),
+                        "Infinite loop detected: >100 identical consecutive SSE chunks".to_string(),
                     ));
                 }
             } else {
@@ -173,9 +172,7 @@ mod tests {
     #[test]
     fn test_basic_data_event() {
         let mut parser = SseParser::new();
-        let events = parser
-            .feed("data: {\"text\": \"hello\"}\n\n")
-            .unwrap();
+        let events = parser.feed("data: {\"text\": \"hello\"}\n\n").unwrap();
         assert_eq!(events.len(), 1);
         assert_eq!(
             events[0],
@@ -213,10 +210,7 @@ mod tests {
         // Second chunk: completes the line
         let events = parser.feed("l\": true}\n").unwrap();
         assert_eq!(events.len(), 1);
-        assert_eq!(
-            events[0],
-            SseEvent::Data("{\"partial\": true}".to_string())
-        );
+        assert_eq!(events[0], SseEvent::Data("{\"partial\": true}".to_string()));
     }
 
     #[test]
@@ -252,10 +246,7 @@ mod tests {
         let mut parser = SseParser::new();
         let events = parser.feed("data: {\"cr\": true}\r\n").unwrap();
         assert_eq!(events.len(), 1);
-        assert_eq!(
-            events[0],
-            SseEvent::Data("{\"cr\": true}".to_string())
-        );
+        assert_eq!(events[0], SseEvent::Data("{\"cr\": true}".to_string()));
     }
 
     #[test]
@@ -315,10 +306,7 @@ mod tests {
 
         // Flush
         let event = parser.flush().unwrap();
-        assert_eq!(
-            event,
-            Some(SseEvent::Data("{\"final\": true}".to_string()))
-        );
+        assert_eq!(event, Some(SseEvent::Data("{\"final\": true}".to_string())));
     }
 
     #[test]
@@ -334,9 +322,9 @@ mod tests {
         // Simulate a real stream broken across TCP chunks
         let full = "data: {\"id\": \"msg_01\"}\n\ndata: {\"text\": \"Hello\"}\n\ndata: [DONE]\n";
         let chunks = vec![
-            &full[0..10],   // "data: {\"id"
-            &full[10..30],  // "\": \"msg_01\"}\n\nda"
-            &full[30..],    // "ta: {\"text\": \"Hello\"}\n\ndata: [DONE]\n"
+            &full[0..10],  // "data: {\"id"
+            &full[10..30], // "\": \"msg_01\"}\n\nda"
+            &full[30..],   // "ta: {\"text\": \"Hello\"}\n\ndata: [DONE]\n"
         ];
 
         let mut all_events = Vec::new();

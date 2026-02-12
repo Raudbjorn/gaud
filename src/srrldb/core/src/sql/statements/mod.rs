@@ -26,9 +26,9 @@ pub(crate) use self::access::AccessStatement;
 pub(crate) use self::alter::{AlterStatement, AlterTableStatement};
 pub(crate) use self::create::CreateStatement;
 pub(crate) use self::define::{
-	DefineApiStatement, DefineEventStatement, DefineFieldStatement, DefineFunctionStatement,
-	DefineIndexStatement, DefineModelStatement, DefineModuleStatement, DefineNamespaceStatement,
-	DefineStatement, DefineTableStatement,
+    DefineApiStatement, DefineEventStatement, DefineFieldStatement, DefineFunctionStatement,
+    DefineIndexStatement, DefineModelStatement, DefineModuleStatement, DefineNamespaceStatement,
+    DefineStatement, DefineTableStatement,
 };
 pub(crate) use self::delete::DeleteStatement;
 pub(crate) use self::foreach::ForeachStatement;
@@ -42,9 +42,9 @@ pub(crate) use self::output::OutputStatement;
 pub(crate) use self::rebuild::RebuildStatement;
 pub(crate) use self::relate::RelateStatement;
 pub(crate) use self::remove::{
-	RemoveAccessStatement, RemoveDatabaseStatement, RemoveEventStatement, RemoveFieldStatement,
-	RemoveFunctionStatement, RemoveIndexStatement, RemoveNamespaceStatement, RemoveParamStatement,
-	RemoveStatement, RemoveTableStatement, RemoveUserStatement,
+    RemoveAccessStatement, RemoveDatabaseStatement, RemoveEventStatement, RemoveFieldStatement,
+    RemoveFunctionStatement, RemoveIndexStatement, RemoveNamespaceStatement, RemoveParamStatement,
+    RemoveStatement, RemoveTableStatement, RemoveUserStatement,
 };
 pub(crate) use self::select::SelectStatement;
 pub(crate) use self::set::SetStatement;

@@ -51,43 +51,43 @@ pub trait BucketStoreProviderRequirements: Send + Sync + 'static {}
 #[cfg_attr(target_family = "wasm", async_trait::async_trait(?Send))]
 #[cfg_attr(not(target_family = "wasm"), async_trait::async_trait)]
 pub trait BucketStoreProvider: BucketStoreProviderRequirements {
-	/// Connect to a bucket storage backend.
-	///
-	/// # Arguments
-	/// * `url` - The storage backend URL (e.g., `memory://`, `file:///path/to/dir`)
-	/// * `global` - Whether this is a global bucket connection
-	/// * `readonly` - Whether the bucket should be opened in read-only mode
-	///
-	/// # Returns
-	/// An `Arc<dyn ObjectStore>` on success, or an error if the URL is invalid
-	/// or the backend is not supported.
-	async fn connect(
-		&self,
-		url: &str,
-		global: bool,
-		readonly: bool,
-	) -> Result<Arc<dyn ObjectStore>>;
+    /// Connect to a bucket storage backend.
+    ///
+    /// # Arguments
+    /// * `url` - The storage backend URL (e.g., `memory://`, `file:///path/to/dir`)
+    /// * `global` - Whether this is a global bucket connection
+    /// * `readonly` - Whether the bucket should be opened in read-only mode
+    ///
+    /// # Returns
+    /// An `Arc<dyn ObjectStore>` on success, or an error if the URL is invalid
+    /// or the backend is not supported.
+    async fn connect(
+        &self,
+        url: &str,
+        global: bool,
+        readonly: bool,
+    ) -> Result<Arc<dyn ObjectStore>>;
 }
 
 impl BucketStoreProviderRequirements for CommunityComposer {}
 #[cfg_attr(target_family = "wasm", async_trait::async_trait(?Send))]
 #[cfg_attr(not(target_family = "wasm"), async_trait::async_trait)]
 impl BucketStoreProvider for CommunityComposer {
-	async fn connect(
-		&self,
-		url: &str,
-		_global: bool,
-		_readonly: bool,
-	) -> Result<Arc<dyn ObjectStore>> {
-		if MemoryStore::parse_url(url) {
-			return Ok(Arc::new(MemoryStore::new()));
-		}
+    async fn connect(
+        &self,
+        url: &str,
+        _global: bool,
+        _readonly: bool,
+    ) -> Result<Arc<dyn ObjectStore>> {
+        if MemoryStore::parse_url(url) {
+            return Ok(Arc::new(MemoryStore::new()));
+        }
 
-		#[cfg(not(target_arch = "wasm32"))]
-		if let Some(opts) = FileStore::parse_url(url).await? {
-			return Ok(Arc::new(FileStore::new(opts)));
-		}
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(opts) = FileStore::parse_url(url).await? {
+            return Ok(Arc::new(FileStore::new(opts)));
+        }
 
-		bail!(Error::UnsupportedBackend)
-	}
+        bail!(Error::UnsupportedBackend)
+    }
 }

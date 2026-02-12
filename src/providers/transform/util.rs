@@ -64,8 +64,7 @@ pub fn enforce_message_alternation(messages: Vec<ChatMessage>) -> Vec<ChatMessag
             if same_role {
                 // Merge: concatenate text content
                 if let (Some(existing), Some(new)) = (&last.content, &msg.content) {
-                    let merged_text =
-                        format!("{}\n\n{}", existing.as_text(), new.as_text());
+                    let merged_text = format!("{}\n\n{}", existing.as_text(), new.as_text());
                     last.content = Some(MessageContent::Text(merged_text));
                 }
 
@@ -343,7 +342,10 @@ pub fn detect_context_window_error(
     ];
 
     let body_lower = body.to_lowercase();
-    if patterns.iter().any(|p| body_lower.contains(&p.to_lowercase())) {
+    if patterns
+        .iter()
+        .any(|p| body_lower.contains(&p.to_lowercase()))
+    {
         Some(crate::providers::ProviderError::ContextWindowExceeded {
             provider: provider.to_string(),
             message: body.to_string(),
@@ -688,14 +690,17 @@ mod tests {
         let body = r#"{"error": {"type": "invalid_request_error", "message": "prompt is too long: 210000 tokens > 200000 maximum"}}"#;
         let result = detect_context_window_error(400, body, "claude");
         assert!(result.is_some());
-        if let Some(crate::providers::ProviderError::ContextWindowExceeded { provider, .. }) = result {
+        if let Some(crate::providers::ProviderError::ContextWindowExceeded { provider, .. }) =
+            result
+        {
             assert_eq!(provider, "claude");
         }
     }
 
     #[test]
     fn test_detect_context_window_error_openai_pattern() {
-        let body = r#"{"error": {"message": "This model's maximum context length is 128000 tokens"}}"#;
+        let body =
+            r#"{"error": {"message": "This model's maximum context length is 128000 tokens"}}"#;
         let result = detect_context_window_error(400, body, "copilot");
         assert!(result.is_some());
     }
@@ -734,14 +739,28 @@ mod tests {
     #[test]
     fn test_parse_rate_limit_headers_anthropic() {
         let headers = vec![
-            ("anthropic-ratelimit-requests-remaining".to_string(), "10".to_string()),
-            ("anthropic-ratelimit-requests-limit".to_string(), "100".to_string()),
+            (
+                "anthropic-ratelimit-requests-remaining".to_string(),
+                "10".to_string(),
+            ),
+            (
+                "anthropic-ratelimit-requests-limit".to_string(),
+                "100".to_string(),
+            ),
         ];
         let (retry, normalized) = parse_rate_limit_headers(&headers, "claude");
         assert!(retry.is_none());
         assert_eq!(normalized.len(), 2);
-        assert!(normalized.iter().any(|(k, _)| k == "x-ratelimit-requests-remaining"));
-        assert!(normalized.iter().any(|(k, _)| k == "x-ratelimit-requests-limit"));
+        assert!(
+            normalized
+                .iter()
+                .any(|(k, _)| k == "x-ratelimit-requests-remaining")
+        );
+        assert!(
+            normalized
+                .iter()
+                .any(|(k, _)| k == "x-ratelimit-requests-limit")
+        );
     }
 
     #[test]

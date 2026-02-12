@@ -94,17 +94,17 @@ pub(crate) use self::param::Param;
 pub(crate) use self::part::Part;
 pub(crate) use self::permission::{Permission, Permissions};
 pub(crate) use self::record_id::{
-	RecordIdKeyGen, RecordIdKeyLit, RecordIdKeyRangeLit, RecordIdLit,
+    RecordIdKeyGen, RecordIdKeyLit, RecordIdKeyRangeLit, RecordIdLit,
 };
 pub(crate) use self::scoring::Scoring;
 pub(crate) use self::script::Script;
 pub(crate) use self::split::{Split, Splits};
 pub(crate) use self::start::Start;
 pub(crate) use self::statements::{
-	CreateStatement, DefineEventStatement, DefineFieldStatement, DefineFunctionStatement,
-	DefineIndexStatement, DefineModelStatement, DefineModuleStatement, DeleteStatement,
-	InsertStatement, KillStatement, LiveStatement, RelateStatement, SelectStatement,
-	UpdateStatement, UpsertStatement,
+    CreateStatement, DefineEventStatement, DefineFieldStatement, DefineFunctionStatement,
+    DefineIndexStatement, DefineModelStatement, DefineModuleStatement, DeleteStatement,
+    InsertStatement, KillStatement, LiveStatement, RelateStatement, SelectStatement,
+    UpdateStatement, UpsertStatement,
 };
 pub(crate) use self::table_type::TableType;
 pub(crate) use self::view::View;

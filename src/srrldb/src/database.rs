@@ -3,9 +3,9 @@
 //! Wraps `srrldb_core`'s [`Datastore`] behind a single opaque [`Database`]
 //! struct so callers don't need to carry generic engine parameters.
 
+use crate::types::{SurrealValue, Value, Variables};
 use srrldb_core::dbs::Session;
 use srrldb_core::kvs::Datastore;
-use crate::types::{SurrealValue, Value, Variables};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -119,9 +119,8 @@ impl<'a> QueryBuilder<'a> {
 // Allow `builder.await` as a shorthand for `builder.execute().await`.
 impl<'a> std::future::IntoFuture for QueryBuilder<'a> {
     type Output = Result<QueryResponse, Box<dyn std::error::Error>>;
-    type IntoFuture = std::pin::Pin<
-        Box<dyn std::future::Future<Output = Self::Output> + Send + 'a>,
-    >;
+    type IntoFuture =
+        std::pin::Pin<Box<dyn std::future::Future<Output = Self::Output> + Send + 'a>>;
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(self.execute())
     }

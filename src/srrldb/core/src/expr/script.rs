@@ -7,28 +7,28 @@ use priority_lfu::DeepSizeOf;
 pub(crate) struct Script(pub String);
 
 impl From<String> for Script {
-	fn from(s: String) -> Self {
-		Self(s)
-	}
+    fn from(s: String) -> Self {
+        Self(s)
+    }
 }
 
 impl From<&str> for Script {
-	fn from(s: &str) -> Self {
-		Self::from(String::from(s))
-	}
+    fn from(s: &str) -> Self {
+        Self::from(String::from(s))
+    }
 }
 
 impl Deref for Script {
-	type Target = String;
+    type Target = String;
 
-	fn deref(&self) -> &Self::Target {
-		&self.0
-	}
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 impl srrldb_types::ToSql for Script {
-	fn fmt_sql(&self, f: &mut String, fmt: srrldb_types::SqlFormat) {
-		let sql_script: crate::sql::Script = self.clone().into();
-		sql_script.fmt_sql(f, fmt);
-	}
+    fn fmt_sql(&self, f: &mut String, fmt: srrldb_types::SqlFormat) {
+        let sql_script: crate::sql::Script = self.clone().into();
+        sql_script.fmt_sql(f, fmt);
+    }
 }

@@ -18,7 +18,7 @@
 //! ## Example
 //!
 //! ```rust,ignore
-//! use gaud::gemini::convert::{convert_request, convert_response};
+//! use gaud::providers::gemini::convert::{convert_request, convert_response};
 //!
 //! // Convert Anthropic request to Google format
 //! let google_request = convert_request(&anthropic_request)?;

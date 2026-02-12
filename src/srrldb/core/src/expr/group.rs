@@ -11,13 +11,13 @@ use crate::expr::idiom::Idiom;
 pub(crate) struct Groups(pub(crate) Vec<Group>);
 
 impl Groups {
-	pub(crate) fn is_group_all_only(&self) -> bool {
-		self.0.is_empty()
-	}
+    pub(crate) fn is_group_all_only(&self) -> bool {
+        self.0.is_empty()
+    }
 
-	pub(crate) fn len(&self) -> usize {
-		self.0.len()
-	}
+    pub(crate) fn len(&self) -> usize {
+        self.0.len()
+    }
 }
 
 #[revisioned(revision = 1)]
@@ -25,22 +25,22 @@ impl Groups {
 pub(crate) struct Group(pub(crate) Idiom);
 
 impl Deref for Group {
-	type Target = Idiom;
-	fn deref(&self) -> &Self::Target {
-		&self.0
-	}
+    type Target = Idiom;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 impl srrldb_types::ToSql for Groups {
-	fn fmt_sql(&self, f: &mut String, fmt: srrldb_types::SqlFormat) {
-		let sql_groups: crate::sql::Groups = self.clone().into();
-		sql_groups.fmt_sql(f, fmt);
-	}
+    fn fmt_sql(&self, f: &mut String, fmt: srrldb_types::SqlFormat) {
+        let sql_groups: crate::sql::Groups = self.clone().into();
+        sql_groups.fmt_sql(f, fmt);
+    }
 }
 
 impl srrldb_types::ToSql for Group {
-	fn fmt_sql(&self, f: &mut String, fmt: srrldb_types::SqlFormat) {
-		let sql_group: crate::sql::Group = self.clone().into();
-		sql_group.fmt_sql(f, fmt);
-	}
+    fn fmt_sql(&self, f: &mut String, fmt: srrldb_types::SqlFormat) {
+        let sql_group: crate::sql::Group = self.clone().into();
+        sql_group.fmt_sql(f, fmt);
+    }
 }

@@ -1,9 +1,9 @@
-use axum::extract::State;
 use axum::Json;
+use axum::extract::State;
 use serde::Serialize;
 
-use crate::providers::types::ProviderStatus;
 use crate::AppState;
+use crate::providers::types::ProviderStatus;
 
 #[derive(Debug, Serialize)]
 pub struct HealthResponse {

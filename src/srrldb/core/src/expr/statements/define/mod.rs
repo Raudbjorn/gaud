@@ -44,61 +44,61 @@ use crate::val::Value;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, PartialOrd, Hash, priority_lfu::DeepSizeOf)]
 pub enum DefineKind {
-	#[default]
-	Default,
-	Overwrite,
-	IfNotExists,
+    #[default]
+    Default,
+    Overwrite,
+    IfNotExists,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, priority_lfu::DeepSizeOf)]
 pub(crate) enum DefineStatement {
-	Namespace(DefineNamespaceStatement),
-	Database(DefineDatabaseStatement),
-	Function(DefineFunctionStatement),
-	Analyzer(DefineAnalyzerStatement),
-	Param(DefineParamStatement),
-	Table(DefineTableStatement),
-	Event(DefineEventStatement),
-	Field(DefineFieldStatement),
-	Index(DefineIndexStatement),
-	User(DefineUserStatement),
-	Model(DefineModelStatement),
-	Access(DefineAccessStatement),
-	Config(DefineConfigStatement),
-	Api(DefineApiStatement),
-	Bucket(DefineBucketStatement),
-	Sequence(DefineSequenceStatement),
-	Module(DefineModuleStatement),
+    Namespace(DefineNamespaceStatement),
+    Database(DefineDatabaseStatement),
+    Function(DefineFunctionStatement),
+    Analyzer(DefineAnalyzerStatement),
+    Param(DefineParamStatement),
+    Table(DefineTableStatement),
+    Event(DefineEventStatement),
+    Field(DefineFieldStatement),
+    Index(DefineIndexStatement),
+    User(DefineUserStatement),
+    Model(DefineModelStatement),
+    Access(DefineAccessStatement),
+    Config(DefineConfigStatement),
+    Api(DefineApiStatement),
+    Bucket(DefineBucketStatement),
+    Sequence(DefineSequenceStatement),
+    Module(DefineModuleStatement),
 }
 
 impl DefineStatement {
-	/// Process this type returning a computed simple Value
-	#[instrument(level = "trace", name = "DefineStatement::compute", skip_all)]
-	pub(crate) async fn compute(
-		&self,
-		stk: &mut Stk,
-		ctx: &FrozenContext,
-		opt: &Options,
-		doc: Option<&CursorDoc>,
-	) -> Result<Value> {
-		match self {
-			Self::Namespace(v) => v.compute(stk, ctx, opt, doc).await,
-			Self::Database(v) => v.compute(stk, ctx, opt, doc).await,
-			Self::Function(v) => v.compute(stk, ctx, opt, doc).await,
-			Self::Param(v) => v.compute(stk, ctx, opt, doc).await,
-			Self::Table(v) => v.compute(stk, ctx, opt, doc).await,
-			Self::Event(v) => v.compute(stk, ctx, opt, doc).await,
-			Self::Field(v) => v.compute(stk, ctx, opt, doc).await,
-			Self::Index(v) => v.compute(stk, ctx, opt, doc).await,
-			Self::Analyzer(v) => v.compute(stk, ctx, opt, doc).await,
-			Self::User(v) => v.compute(stk, ctx, opt, doc).await,
-			Self::Model(v) => v.compute(stk, ctx, opt, doc).await,
-			Self::Access(v) => v.compute(stk, ctx, opt, doc).await,
-			Self::Config(v) => v.compute(stk, ctx, opt, doc).await,
-			Self::Api(v) => v.compute(stk, ctx, opt, doc).await,
-			Self::Bucket(v) => v.compute(stk, ctx, opt, doc).await,
-			Self::Sequence(v) => v.compute(stk, ctx, opt, doc).await,
-			Self::Module(v) => v.compute(stk, ctx, opt, doc).await,
-		}
-	}
+    /// Process this type returning a computed simple Value
+    #[instrument(level = "trace", name = "DefineStatement::compute", skip_all)]
+    pub(crate) async fn compute(
+        &self,
+        stk: &mut Stk,
+        ctx: &FrozenContext,
+        opt: &Options,
+        doc: Option<&CursorDoc>,
+    ) -> Result<Value> {
+        match self {
+            Self::Namespace(v) => v.compute(stk, ctx, opt, doc).await,
+            Self::Database(v) => v.compute(stk, ctx, opt, doc).await,
+            Self::Function(v) => v.compute(stk, ctx, opt, doc).await,
+            Self::Param(v) => v.compute(stk, ctx, opt, doc).await,
+            Self::Table(v) => v.compute(stk, ctx, opt, doc).await,
+            Self::Event(v) => v.compute(stk, ctx, opt, doc).await,
+            Self::Field(v) => v.compute(stk, ctx, opt, doc).await,
+            Self::Index(v) => v.compute(stk, ctx, opt, doc).await,
+            Self::Analyzer(v) => v.compute(stk, ctx, opt, doc).await,
+            Self::User(v) => v.compute(stk, ctx, opt, doc).await,
+            Self::Model(v) => v.compute(stk, ctx, opt, doc).await,
+            Self::Access(v) => v.compute(stk, ctx, opt, doc).await,
+            Self::Config(v) => v.compute(stk, ctx, opt, doc).await,
+            Self::Api(v) => v.compute(stk, ctx, opt, doc).await,
+            Self::Bucket(v) => v.compute(stk, ctx, opt, doc).await,
+            Self::Sequence(v) => v.compute(stk, ctx, opt, doc).await,
+            Self::Module(v) => v.compute(stk, ctx, opt, doc).await,
+        }
+    }
 }

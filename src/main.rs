@@ -13,8 +13,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::middleware;
 use axum::Router;
+use axum::middleware;
 use tokio::net::TcpListener;
 use tokio::signal;
 use tokio::sync::RwLock;
@@ -23,20 +23,20 @@ use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetReques
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 
+use gaud::AppState;
 use gaud::api;
 use gaud::auth::middleware::require_auth;
 use gaud::auth::users::bootstrap_admin;
-use gaud::budget::{spawn_audit_logger, BudgetTracker};
+use gaud::budget::{BudgetTracker, spawn_audit_logger};
 use gaud::cache::SemanticCacheService;
 use gaud::config::{Config, KiroProviderConfig, LitellmProviderConfig};
 use gaud::db::Database;
 use gaud::oauth::OAuthManager;
+use gaud::providers::LlmProvider;
 use gaud::providers::kiro::KiroProvider;
 use gaud::providers::litellm::{LitellmConfig, LitellmProvider};
 use gaud::providers::router::ProviderRouter;
-use gaud::providers::LlmProvider;
 use gaud::web;
-use gaud::AppState;
 
 // ---------------------------------------------------------------------------
 // CLI argument parsing (minimal, no clap dependency)
@@ -198,8 +198,7 @@ async fn async_main() -> anyhow::Result<()> {
 
     // Register Gemini provider if configured
     if config.providers.gemini.is_some() {
-        let storage = oauth_manager.storage();
-        let gemini = gaud::providers::gemini::GeminiProvider::new(storage);
+        let gemini = gaud::providers::gemini::provider::GeminiProvider::new(oauth_manager.clone());
         provider_router.register(Arc::new(gemini));
         tracing::info!("Gemini provider registered");
     }
@@ -315,12 +314,12 @@ async fn async_main() -> anyhow::Result<()> {
 /// Constructs a `KiroClient` using the refresh-token auth flow that matches
 /// the kiro-aws reference implementation.
 async fn build_kiro_provider(kiro_config: &KiroProviderConfig) -> anyhow::Result<KiroProvider> {
-    let refresh_token = kiro_config
-        .effective_refresh_token()
-        .ok_or_else(|| anyhow::anyhow!(
+    let refresh_token = kiro_config.effective_refresh_token().ok_or_else(|| {
+        anyhow::anyhow!(
             "Kiro provider requires a refresh token. Set `refresh_token` in config, \
              provide a `credentials_file`, or set the GAUD_KIRO_REFRESH_TOKEN environment variable."
-        ))?;
+        )
+    })?;
 
     let client_config = gaud::providers::kiro::KiroClientConfig {
         refresh_token,
@@ -340,9 +339,7 @@ async fn build_kiro_provider(kiro_config: &KiroProviderConfig) -> anyhow::Result
 ///
 /// The provider connects to the LiteLLM proxy at the configured URL and
 /// optionally discovers available models from its `/v1/models` endpoint.
-async fn build_litellm_provider(
-    config: &LitellmProviderConfig,
-) -> anyhow::Result<LitellmProvider> {
+async fn build_litellm_provider(config: &LitellmProviderConfig) -> anyhow::Result<LitellmProvider> {
     let litellm_config = LitellmConfig {
         url: config.url.clone(),
         api_key: config.api_key.clone(),
@@ -377,8 +374,8 @@ fn build_app(state: AppState) -> Router {
     let trace = TraceLayer::new_for_http();
 
     // -- API routes (require auth) --------------------------------------------
-    let api_routes = api::build_api_router()
-        .layer(middleware::from_fn_with_state(state.clone(), require_auth));
+    let api_routes =
+        api::build_api_router().layer(middleware::from_fn_with_state(state.clone(), require_auth));
 
     // -- Web UI routes (no API auth middleware) --------------------------------
     let web_routes = web::build_web_router();

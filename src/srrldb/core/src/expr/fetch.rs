@@ -32,38 +32,41 @@ use crate::val::Value;
 pub(crate) struct Fetchs(Vec<Fetch>);
 
 impl Fetchs {
-	pub(crate) fn new(fetches: Vec<Fetch>) -> Self {
-		Self(fetches)
-	}
+    pub(crate) fn new(fetches: Vec<Fetch>) -> Self {
+        Self(fetches)
+    }
 
-	pub(crate) fn iter(&self) -> impl Iterator<Item = &Fetch> {
-		self.0.iter()
-	}
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &Fetch> {
+        self.0.iter()
+    }
 
-	pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut Fetch> {
-		self.0.iter_mut()
-	}
+    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut Fetch> {
+        self.0.iter_mut()
+    }
 }
 
 impl IntoIterator for Fetchs {
-	type Item = Fetch;
-	type IntoIter = std::vec::IntoIter<Self::Item>;
-	fn into_iter(self) -> Self::IntoIter {
-		self.0.into_iter()
-	}
+    type Item = Fetch;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
 }
 
 impl srrldb_types::ToSql for Fetchs {
-	fn fmt_sql(&self, f: &mut String, fmt: srrldb_types::SqlFormat) {
-		let sql_fetchs: crate::sql::Fetchs = self.clone().into();
-		sql_fetchs.fmt_sql(f, fmt);
-	}
+    fn fmt_sql(&self, f: &mut String, fmt: srrldb_types::SqlFormat) {
+        let sql_fetchs: crate::sql::Fetchs = self.clone().into();
+        sql_fetchs.fmt_sql(f, fmt);
+    }
 }
 
 impl InfoStructure for Fetchs {
-	fn structure(self) -> Value {
-		self.into_iter().map(Fetch::structure).collect::<Vec<_>>().into()
-	}
+    fn structure(self) -> Value {
+        self.into_iter()
+            .map(Fetch::structure)
+            .collect::<Vec<_>>()
+            .into()
+    }
 }
 
 #[revisioned(revision = 1)]
@@ -71,102 +74,100 @@ impl InfoStructure for Fetchs {
 pub(crate) struct Fetch(pub(crate) Expr);
 
 impl Fetch {
-	#[instrument(level = "trace", name = "Fetch::compute", skip_all)]
-	pub(crate) async fn compute(
-		&self,
-		stk: &mut Stk,
-		ctx: &FrozenContext,
-		opt: &Options,
-		idioms: &mut BTreeSet<Idiom>,
-	) -> Result<()> {
-		match &self.0 {
-			Expr::Idiom(idiom) => {
-				idioms.insert(idiom.to_owned());
-				Ok(())
-			}
-			Expr::Param(param) => {
-				let v = param.compute(stk, ctx, opt, None).await?;
-				idioms.insert(
-					syn::idiom(
-						v.clone()
-							.coerce_to::<String>()
-							.map_err(|_| Error::InvalidFetch {
-								value: v.into_literal(),
-							})?
-							.as_str(),
-					)?
-					.into(),
-				);
-				Ok(())
-			}
-			Expr::FunctionCall(f) => {
-				// NOTE: Behavior here changed with value inversion PR.
-				// Previously `type::field(a.b)` would produce a fetch `a.b`.
-				// This is somewhat weird because elsewhere this wouldn't work.
-				match f.receiver {
-					Function::Normal(ref x) if x == "type::field" => {
-						// Some manual reimplemenation of type::field to make it
-						// more efficient.
-						let mut arguments = Vec::new();
-						for arg in f.arguments.iter() {
-							arguments.push(
-								stk.run(|stk| arg.compute(stk, ctx, opt, None))
-									.await
-									.catch_return()?,
-							);
-						}
+    #[instrument(level = "trace", name = "Fetch::compute", skip_all)]
+    pub(crate) async fn compute(
+        &self,
+        stk: &mut Stk,
+        ctx: &FrozenContext,
+        opt: &Options,
+        idioms: &mut BTreeSet<Idiom>,
+    ) -> Result<()> {
+        match &self.0 {
+            Expr::Idiom(idiom) => {
+                idioms.insert(idiom.to_owned());
+                Ok(())
+            }
+            Expr::Param(param) => {
+                let v = param.compute(stk, ctx, opt, None).await?;
+                idioms.insert(
+                    syn::idiom(
+                        v.clone()
+                            .coerce_to::<String>()
+                            .map_err(|_| Error::InvalidFetch {
+                                value: v.into_literal(),
+                            })?
+                            .as_str(),
+                    )?
+                    .into(),
+                );
+                Ok(())
+            }
+            Expr::FunctionCall(f) => {
+                // NOTE: Behavior here changed with value inversion PR.
+                // Previously `type::field(a.b)` would produce a fetch `a.b`.
+                // This is somewhat weird because elsewhere this wouldn't work.
+                match f.receiver {
+                    Function::Normal(ref x) if x == "type::field" => {
+                        // Some manual reimplemenation of type::field to make it
+                        // more efficient.
+                        let mut arguments = Vec::new();
+                        for arg in f.arguments.iter() {
+                            arguments.push(
+                                stk.run(|stk| arg.compute(stk, ctx, opt, None))
+                                    .await
+                                    .catch_return()?,
+                            );
+                        }
 
-						// replicate the same error that would happen with normal
-						// function calls
-						let (arg,) = <(String,)>::from_args("type::field", arguments)?;
+                        // replicate the same error that would happen with normal
+                        // function calls
+                        let (arg,) = <(String,)>::from_args("type::field", arguments)?;
 
-						// manually do the implementation of type::field
-						let idiom: Idiom = syn::idiom(&arg)?.into();
-						idioms.insert(idiom);
-						Ok(())
-					}
-					Function::Normal(ref x) if x == "type::fields" => {
-						let mut arguments = Vec::new();
-						for arg in f.arguments.iter() {
-							arguments.push(
-								stk.run(|stk| arg.compute(stk, ctx, opt, None))
-									.await
-									.catch_return()?,
-							);
-						}
+                        // manually do the implementation of type::field
+                        let idiom: Idiom = syn::idiom(&arg)?.into();
+                        idioms.insert(idiom);
+                        Ok(())
+                    }
+                    Function::Normal(ref x) if x == "type::fields" => {
+                        let mut arguments = Vec::new();
+                        for arg in f.arguments.iter() {
+                            arguments.push(
+                                stk.run(|stk| arg.compute(stk, ctx, opt, None))
+                                    .await
+                                    .catch_return()?,
+                            );
+                        }
 
-						// replicate the same error that would happen with normal
-						// function calls
-						let (args,) = <(Vec<String>,)>::from_args("type::fields", arguments)?;
+                        // replicate the same error that would happen with normal
+                        // function calls
+                        let (args,) = <(Vec<String>,)>::from_args("type::fields", arguments)?;
 
-						// manually do the implementation of type::fields
-						for arg in args {
-							idioms.insert(syn::idiom(&arg)?.into());
-						}
-						Ok(())
-					}
-					_ => Err(anyhow::Error::new(Error::InvalidFetch {
-						value: Expr::FunctionCall(f.clone()),
-					})),
-				}
-			}
-			v => Err(anyhow::Error::new(Error::InvalidFetch {
-				value: v.clone(),
-			})),
-		}
-	}
+                        // manually do the implementation of type::fields
+                        for arg in args {
+                            idioms.insert(syn::idiom(&arg)?.into());
+                        }
+                        Ok(())
+                    }
+                    _ => Err(anyhow::Error::new(Error::InvalidFetch {
+                        value: Expr::FunctionCall(f.clone()),
+                    })),
+                }
+            }
+            v => Err(anyhow::Error::new(Error::InvalidFetch { value: v.clone() })),
+        }
+    }
 }
 
 impl srrldb_types::ToSql for Fetch {
-	fn fmt_sql(&self, f: &mut String, fmt: srrldb_types::SqlFormat) {
-		let sql_fetch: crate::sql::Fetch = self.clone().into();
-		sql_fetch.fmt_sql(f, fmt);
-	}
+    fn fmt_sql(&self, f: &mut String, fmt: srrldb_types::SqlFormat) {
+        let sql_fetch: crate::sql::Fetch = self.clone().into();
+        sql_fetch.fmt_sql(f, fmt);
+    }
 }
 
 impl InfoStructure for Fetch {
-	fn structure(self) -> Value {
-		use srrldb_types::ToSql;
-		self.to_sql().into()
-	}
+    fn structure(self) -> Value {
+        use srrldb_types::ToSql;
+        self.to_sql().into()
+    }
 }

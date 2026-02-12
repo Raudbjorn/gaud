@@ -1,8 +1,8 @@
+use crate::providers::ProviderError;
 use crate::providers::transform::util;
 use crate::providers::transformer::{ProviderResponseMeta, ProviderTransformer, StreamState};
 use crate::providers::types::*;
-use crate::providers::ProviderError;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 const SUPPORTED_MODELS: &[&str] = &[
@@ -239,10 +239,7 @@ impl ProviderTransformer for GeminiTransformer {
                             index: Some(tool_idx),
                             id: format!("call_{}", Uuid::new_v4()),
                             r#type: "function".to_string(),
-                            function: FunctionCall {
-                                name,
-                                arguments,
-                            },
+                            function: FunctionCall { name, arguments },
                         });
                         tool_idx += 1;
                     }
@@ -279,7 +276,8 @@ impl ProviderTransformer for GeminiTransformer {
         let completion_tokens = usage_meta["candidatesTokenCount"].as_u64().unwrap_or(0) as u32;
         let total_tokens = usage_meta["totalTokenCount"]
             .as_u64()
-            .unwrap_or((prompt_tokens + completion_tokens) as u64) as u32;
+            .unwrap_or((prompt_tokens + completion_tokens) as u64)
+            as u32;
 
         let usage = Usage {
             prompt_tokens,
@@ -421,10 +419,7 @@ impl StreamState for GeminiStreamState {
                     index: Some(self.tool_index as u32),
                     id: format!("call_{}", Uuid::new_v4()),
                     r#type: "function".to_string(),
-                    function: FunctionCall {
-                        name,
-                        arguments,
-                    },
+                    function: FunctionCall { name, arguments },
                 });
             }
         }
@@ -726,10 +721,7 @@ mod tests {
         assert_eq!(chunk.object, "chat.completion.chunk");
         assert_eq!(chunk.model, "gemini-2.0-flash");
         assert_eq!(chunk.choices.len(), 1);
-        assert_eq!(
-            chunk.choices[0].delta.content.as_deref(),
-            Some("Hello")
-        );
+        assert_eq!(chunk.choices[0].delta.content.as_deref(), Some("Hello"));
         assert!(chunk.choices[0].delta.tool_calls.is_none());
         assert!(chunk.choices[0].finish_reason.is_none());
     }
@@ -822,10 +814,7 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        assert_eq!(
-            chunk.choices[0].finish_reason.as_deref(),
-            Some("stop")
-        );
+        assert_eq!(chunk.choices[0].finish_reason.as_deref(), Some("stop"));
 
         let usage = state.final_usage();
         assert_eq!(usage.prompt_tokens, 42);

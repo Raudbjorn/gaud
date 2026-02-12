@@ -1,6 +1,6 @@
+use crate::providers::ProviderError;
 use crate::providers::transformer::{ProviderResponseMeta, ProviderTransformer, StreamState};
 use crate::providers::types::*;
-use crate::providers::ProviderError;
 
 const SUPPORTED_MODELS: &[&str] = &[
     "gpt-4o",
@@ -70,16 +70,10 @@ impl CopilotTransformer {
                 .map(|tc| {
                     let mut tc_obj = serde_json::Map::new();
                     if let Some(idx) = tc.index {
-                        tc_obj.insert(
-                            "index".into(),
-                            serde_json::Value::Number(idx.into()),
-                        );
+                        tc_obj.insert("index".into(), serde_json::Value::Number(idx.into()));
                     }
                     tc_obj.insert("id".into(), serde_json::Value::String(tc.id.clone()));
-                    tc_obj.insert(
-                        "type".into(),
-                        serde_json::Value::String(tc.r#type.clone()),
-                    );
+                    tc_obj.insert("type".into(), serde_json::Value::String(tc.r#type.clone()));
                     let mut fn_obj = serde_json::Map::new();
                     fn_obj.insert(
                         "name".into(),
@@ -151,12 +145,12 @@ impl CopilotTransformer {
             prompt_tokens: prompt,
             completion_tokens: completion,
             total_tokens: total,
-            prompt_tokens_details: val.get("prompt_tokens_details").and_then(|d| {
-                serde_json::from_value::<UsageTokenDetails>(d.clone()).ok()
-            }),
-            completion_tokens_details: val.get("completion_tokens_details").and_then(|d| {
-                serde_json::from_value::<UsageTokenDetails>(d.clone()).ok()
-            }),
+            prompt_tokens_details: val
+                .get("prompt_tokens_details")
+                .and_then(|d| serde_json::from_value::<UsageTokenDetails>(d.clone()).ok()),
+            completion_tokens_details: val
+                .get("completion_tokens_details")
+                .and_then(|d| serde_json::from_value::<UsageTokenDetails>(d.clone()).ok()),
         }
     }
 }
@@ -178,10 +172,7 @@ impl ProviderTransformer for CopilotTransformer {
         body.insert("messages".into(), serde_json::Value::Array(messages));
 
         if let Some(temp) = request.temperature {
-            body.insert(
-                "temperature".into(),
-                serde_json::json!(temp),
-            );
+            body.insert("temperature".into(), serde_json::json!(temp));
         }
 
         if let Some(max_tokens) = request.max_tokens {
@@ -489,7 +480,10 @@ mod tests {
 
         assert_eq!(result["model"], "gpt-4o");
         let temp = result["temperature"].as_f64().unwrap();
-        assert!((temp - 0.7).abs() < 0.001, "temperature should be ~0.7, got {temp}");
+        assert!(
+            (temp - 0.7).abs() < 0.001,
+            "temperature should be ~0.7, got {temp}"
+        );
         assert_eq!(result["max_tokens"], 1024);
         assert_eq!(result["stream"], true);
 
@@ -542,10 +536,7 @@ mod tests {
             result.choices[0].message.content.as_deref(),
             Some("Hello! How can I help?")
         );
-        assert_eq!(
-            result.choices[0].finish_reason.as_deref(),
-            Some("stop")
-        );
+        assert_eq!(result.choices[0].finish_reason.as_deref(), Some("stop"));
         assert_eq!(result.usage.prompt_tokens, 20);
         assert_eq!(result.usage.completion_tokens, 10);
         assert_eq!(result.usage.total_tokens, 30);
@@ -566,10 +557,7 @@ mod tests {
         assert_eq!(chunk.model, "gpt-4o");
         assert_eq!(chunk.choices.len(), 1);
         assert_eq!(chunk.choices[0].delta.content.as_deref(), Some("Hello"));
-        assert_eq!(
-            chunk.choices[0].delta.role.as_deref(),
-            Some("assistant")
-        );
+        assert_eq!(chunk.choices[0].delta.role.as_deref(), Some("assistant"));
         assert!(chunk.choices[0].finish_reason.is_none());
 
         // [DONE] returns None

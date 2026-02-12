@@ -57,7 +57,10 @@ impl std::fmt::Debug for TokenInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TokenInfo")
             .field("access_token", &"[REDACTED]")
-            .field("refresh_token", &self.refresh_token.as_ref().map(|_| "[REDACTED]"))
+            .field(
+                "refresh_token",
+                &self.refresh_token.as_ref().map(|_| "[REDACTED]"),
+            )
             .field("expires_at", &self.expires_at)
             .field("token_type", &self.token_type)
             .field("provider", &self.provider)
@@ -271,7 +274,12 @@ mod tests {
 
     #[test]
     fn test_no_expiry_never_expires() {
-        let token = TokenInfo::new("access".to_string(), Some("refresh".to_string()), None, "claude");
+        let token = TokenInfo::new(
+            "access".to_string(),
+            Some("refresh".to_string()),
+            None,
+            "claude",
+        );
         assert!(!token.is_expired());
         assert!(!token.needs_refresh());
     }
@@ -288,18 +296,19 @@ mod tests {
         assert!(remaining.as_secs() >= 3595);
         assert!(remaining.as_secs() <= 3600);
 
-        let expired = TokenInfo::with_expires_at(
-            "access".into(),
-            Some("refresh".into()),
-            Some(0),
-            "claude",
-        );
+        let expired =
+            TokenInfo::with_expires_at("access".into(), Some("refresh".into()), Some(0), "claude");
         assert_eq!(expired.time_until_expiry(), Duration::ZERO);
     }
 
     #[test]
     fn test_parse_refresh_parts_simple() {
-        let token = TokenInfo::new("access".into(), Some("refresh_token".into()), Some(3600), "claude");
+        let token = TokenInfo::new(
+            "access".into(),
+            Some("refresh_token".into()),
+            Some(3600),
+            "claude",
+        );
         let (base, project, managed) = token.parse_refresh_parts();
         assert_eq!(base, "refresh_token");
         assert!(project.is_none());
@@ -308,7 +317,12 @@ mod tests {
 
     #[test]
     fn test_parse_refresh_parts_with_project() {
-        let token = TokenInfo::new("access".into(), Some("refresh|proj-123".into()), Some(3600), "claude");
+        let token = TokenInfo::new(
+            "access".into(),
+            Some("refresh|proj-123".into()),
+            Some(3600),
+            "claude",
+        );
         let (base, project, managed) = token.parse_refresh_parts();
         assert_eq!(base, "refresh");
         assert_eq!(project.as_deref(), Some("proj-123"));
@@ -340,7 +354,12 @@ mod tests {
 
     #[test]
     fn test_with_project_ids() {
-        let token = TokenInfo::new("access".into(), Some("refresh".into()), Some(3600), "claude");
+        let token = TokenInfo::new(
+            "access".into(),
+            Some("refresh".into()),
+            Some(3600),
+            "claude",
+        );
         let token = token.with_project_ids("proj-123", Some("managed-456"));
         assert_eq!(
             token.refresh_token.as_deref(),
@@ -351,17 +370,24 @@ mod tests {
 
     #[test]
     fn test_with_project_ids_no_managed() {
-        let token = TokenInfo::new("access".into(), Some("refresh".into()), Some(3600), "claude");
-        let token = token.with_project_ids("proj-123", None);
-        assert_eq!(
-            token.refresh_token.as_deref(),
-            Some("refresh|proj-123")
+        let token = TokenInfo::new(
+            "access".into(),
+            Some("refresh".into()),
+            Some(3600),
+            "claude",
         );
+        let token = token.with_project_ids("proj-123", None);
+        assert_eq!(token.refresh_token.as_deref(), Some("refresh|proj-123"));
     }
 
     #[test]
     fn test_composite_round_trip() {
-        let original = TokenInfo::new("access".into(), Some("refresh".into()), Some(3600), "claude");
+        let original = TokenInfo::new(
+            "access".into(),
+            Some("refresh".into()),
+            Some(3600),
+            "claude",
+        );
         let with_ids = original.with_project_ids("proj-123", Some("managed-456"));
 
         let json = serde_json::to_string(&with_ids).unwrap();
@@ -392,7 +418,12 @@ mod tests {
 
     #[test]
     fn test_needs_refresh() {
-        let fresh = TokenInfo::new("access".into(), Some("refresh".into()), Some(3600), "claude");
+        let fresh = TokenInfo::new(
+            "access".into(),
+            Some("refresh".into()),
+            Some(3600),
+            "claude",
+        );
         assert!(!fresh.needs_refresh());
 
         let soon = TokenInfo::with_expires_at(
@@ -411,13 +442,19 @@ mod tests {
         );
         assert!(!later.needs_refresh());
 
-        let expired = TokenInfo::with_expires_at("access".into(), Some("refresh".into()), Some(0), "claude");
+        let expired =
+            TokenInfo::with_expires_at("access".into(), Some("refresh".into()), Some(0), "claude");
         assert!(expired.needs_refresh());
     }
 
     #[test]
     fn test_serialization() {
-        let token = TokenInfo::new("access".into(), Some("refresh".into()), Some(3600), "claude");
+        let token = TokenInfo::new(
+            "access".into(),
+            Some("refresh".into()),
+            Some(3600),
+            "claude",
+        );
         let json = serde_json::to_string_pretty(&token).unwrap();
         assert!(json.contains("\"access_token\""));
         assert!(json.contains("\"refresh_token\""));

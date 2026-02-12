@@ -78,8 +78,8 @@ impl CostCalculator {
 
         let input_cost = if let Some(cached) = cached_tokens {
             let regular_tokens = usage.prompt_tokens.saturating_sub(cached);
-            let regular_cost = (regular_tokens as f64 / 1_000_000.0)
-                * pricing.input_cost_per_million;
+            let regular_cost =
+                (regular_tokens as f64 / 1_000_000.0) * pricing.input_cost_per_million;
 
             let cached_cost = if let Some(cached_price) = pricing.cached_input_cost_per_million {
                 (cached as f64 / 1_000_000.0) * cached_price
@@ -249,9 +249,9 @@ mod property_tests {
     /// Generate arbitrary Usage instances for property testing.
     fn usage_strategy() -> impl Strategy<Value = Usage> {
         (
-            0u32..1_000_000,  // prompt_tokens (0 to 1M)
-            0u32..1_000_000,  // completion_tokens (0 to 1M)
-            prop::option::of(0u32..1_000_000),  // cached_tokens (optional)
+            0u32..1_000_000,                   // prompt_tokens (0 to 1M)
+            0u32..1_000_000,                   // completion_tokens (0 to 1M)
+            prop::option::of(0u32..1_000_000), // cached_tokens (optional)
         )
             .prop_map(|(prompt_tokens, completion_tokens, cached_tokens)| {
                 let total_tokens = prompt_tokens + completion_tokens;

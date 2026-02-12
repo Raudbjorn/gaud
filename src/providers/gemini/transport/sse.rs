@@ -28,22 +28,21 @@ use std::collections::VecDeque;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-
 use bytes::Bytes;
 use futures::stream::Stream;
-use futures::StreamExt;
+
 use pin_project_lite::pin_project;
 use serde::Deserialize;
 use tracing::{debug, warn};
 
-use crate::gemini::constants::{get_model_family, ModelFamily, MIN_SIGNATURE_LENGTH};
-use crate::gemini::convert::GLOBAL_SIGNATURE_CACHE;
-use crate::gemini::error::{Error, Result};
-use crate::gemini::models::content::ContentBlock;
-use crate::gemini::models::response::{StopReason, Usage};
-use crate::gemini::models::stream::{ContentDelta, MessageDelta, PartialMessage, StreamError, StreamEvent};
-
-
+use crate::providers::gemini::constants::{MIN_SIGNATURE_LENGTH, ModelFamily, get_model_family};
+use crate::providers::gemini::error::{Error, Result};
+use crate::providers::gemini::models::content::ContentBlock;
+use crate::providers::gemini::models::response::{StopReason, Usage};
+use crate::providers::gemini::models::stream::{
+    ContentDelta, MessageDelta, PartialMessage, StreamError, StreamEvent,
+};
+use crate::providers::gemini::thinking::GLOBAL_SIGNATURE_CACHE;
 
 pin_project! {
     /// SSE stream parser that converts Cloud Code responses to Anthropic events.
@@ -118,7 +117,7 @@ where
                     // Process remaining buffer
                     if !this.buffer.is_empty() {
                         let line = std::mem::take(this.buffer);
-                         match process_sse_line(&line, this.state) {
+                        match process_sse_line(&line, this.state) {
                             Ok(events) => this.pending_events.extend(events),
                             Err(e) => return Poll::Ready(Some(Err(e))),
                         }

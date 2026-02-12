@@ -10,31 +10,31 @@
 pub struct FakeAlloc;
 
 impl Default for FakeAlloc {
-	fn default() -> Self {
-		Self::new()
-	}
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl FakeAlloc {
-	#[inline]
-	pub const fn new() -> Self {
-		Self {}
-	}
+    #[inline]
+    pub const fn new() -> Self {
+        Self {}
+    }
 }
 
 impl FakeAlloc {
-	/// Returns the current total allocated bytes.
-	pub fn memory_allocated(&self) -> usize {
-		0
-	}
+    /// Returns the current total allocated bytes.
+    pub fn memory_allocated(&self) -> usize {
+        0
+    }
 
-	/// Ensures that local allocations are flushed to the global tracking counter.
-	pub fn flush_local_allocations(&self) {
-		// Does nothing
-	}
+    /// Ensures that local allocations are flushed to the global tracking counter.
+    pub fn flush_local_allocations(&self) {
+        // Does nothing
+    }
 
-	/// Checks whether the allocator is above the memory limit threshold
-	pub fn is_beyond_threshold(&self) -> bool {
-		false
-	}
+    /// Checks whether the allocator is above the memory limit threshold
+    pub fn is_beyond_threshold(&self) -> bool {
+        false
+    }
 }

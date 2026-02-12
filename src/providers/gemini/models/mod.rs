@@ -43,7 +43,7 @@
 //! # Example
 //!
 //! ```rust
-//! use gaud::gemini::models::{
+//! use gaud::providers::gemini::models::{
 //!     MessagesRequest, Message, Role, ContentBlock, Tool, ToolChoice,
 //! };
 //! use serde_json::json;

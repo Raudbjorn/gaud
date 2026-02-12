@@ -8,29 +8,25 @@ use srrldb_types::{SqlFormat, ToSql, write_sql};
 /// underlying datastore to compact the current database keyspace.
 #[derive(DeepSizeOf)]
 pub struct AlterDatabaseStatement {
-	pub compact: bool,
+    pub compact: bool,
 }
 
 impl ToSql for AlterDatabaseStatement {
-	fn fmt_sql(&self, f: &mut String, _fmt: SqlFormat) {
-		write_sql!(f, _fmt, "ALTER DATABASE");
-		if self.compact {
-			write_sql!(f, _fmt, " COMPACT");
-		}
-	}
+    fn fmt_sql(&self, f: &mut String, _fmt: SqlFormat) {
+        write_sql!(f, _fmt, "ALTER DATABASE");
+        if self.compact {
+            write_sql!(f, _fmt, " COMPACT");
+        }
+    }
 }
 
 impl From<AlterDatabaseStatement> for crate::expr::statements::alter::AlterDatabaseStatement {
-	fn from(v: AlterDatabaseStatement) -> Self {
-		crate::expr::statements::alter::AlterDatabaseStatement {
-			compact: v.compact,
-		}
-	}
+    fn from(v: AlterDatabaseStatement) -> Self {
+        crate::expr::statements::alter::AlterDatabaseStatement { compact: v.compact }
+    }
 }
 impl From<crate::expr::statements::alter::AlterDatabaseStatement> for AlterDatabaseStatement {
-	fn from(v: crate::expr::statements::alter::AlterDatabaseStatement) -> Self {
-		AlterDatabaseStatement {
-			compact: v.compact,
-		}
-	}
+    fn from(v: crate::expr::statements::alter::AlterDatabaseStatement) -> Self {
+        AlterDatabaseStatement { compact: v.compact }
+    }
 }

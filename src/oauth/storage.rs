@@ -188,9 +188,8 @@ impl TokenStorage for FileTokenStorage {
         self.ensure_dir()?;
 
         let path = self.provider_path(provider);
-        let content = serde_json::to_string_pretty(token).map_err(|e| {
-            OAuthError::Storage(format!("Failed to serialize token: {}", e))
-        })?;
+        let content = serde_json::to_string_pretty(token)
+            .map_err(|e| OAuthError::Storage(format!("Failed to serialize token: {}", e)))?;
 
         // Write to temp file first, then rename for atomicity.
         // On Unix, set 0600 permissions at creation time to avoid a window
@@ -487,7 +486,12 @@ mod tests {
 
     #[test]
     fn test_memory_with_token() {
-        let token = TokenInfo::new("access".into(), Some("refresh".into()), Some(3600), "claude");
+        let token = TokenInfo::new(
+            "access".into(),
+            Some("refresh".into()),
+            Some(3600),
+            "claude",
+        );
         let storage = MemoryTokenStorage::with_token("claude", token);
         let loaded = storage.load("claude").unwrap().unwrap();
         assert_eq!(loaded.access_token, "access");
@@ -498,7 +502,12 @@ mod tests {
     #[test]
     fn test_memory_save_and_load() {
         let storage = MemoryTokenStorage::new();
-        let token = TokenInfo::new("access".into(), Some("refresh".into()), Some(3600), "claude");
+        let token = TokenInfo::new(
+            "access".into(),
+            Some("refresh".into()),
+            Some(3600),
+            "claude",
+        );
         storage.save("claude", &token).unwrap();
         let loaded = storage.load("claude").unwrap().unwrap();
         assert_eq!(loaded.access_token, "access");
@@ -507,7 +516,12 @@ mod tests {
 
     #[test]
     fn test_memory_remove() {
-        let token = TokenInfo::new("access".into(), Some("refresh".into()), Some(3600), "claude");
+        let token = TokenInfo::new(
+            "access".into(),
+            Some("refresh".into()),
+            Some(3600),
+            "claude",
+        );
         let storage = MemoryTokenStorage::with_token("claude", token);
         assert!(storage.exists("claude").unwrap());
         storage.remove("claude").unwrap();
@@ -523,9 +537,19 @@ mod tests {
     #[test]
     fn test_memory_overwrite() {
         let storage = MemoryTokenStorage::new();
-        let token1 = TokenInfo::new("access1".into(), Some("refresh1".into()), Some(3600), "claude");
+        let token1 = TokenInfo::new(
+            "access1".into(),
+            Some("refresh1".into()),
+            Some(3600),
+            "claude",
+        );
         storage.save("claude", &token1).unwrap();
-        let token2 = TokenInfo::new("access2".into(), Some("refresh2".into()), Some(7200), "claude");
+        let token2 = TokenInfo::new(
+            "access2".into(),
+            Some("refresh2".into()),
+            Some(7200),
+            "claude",
+        );
         storage.save("claude", &token2).unwrap();
         let loaded = storage.load("claude").unwrap().unwrap();
         assert_eq!(loaded.access_token, "access2");
@@ -534,19 +558,40 @@ mod tests {
     #[test]
     fn test_memory_multiple_providers() {
         let storage = MemoryTokenStorage::new();
-        let t1 = TokenInfo::new("claude_access".into(), Some("r1".into()), Some(3600), "claude");
-        let t2 = TokenInfo::new("gemini_access".into(), Some("r2".into()), Some(3600), "gemini");
+        let t1 = TokenInfo::new(
+            "claude_access".into(),
+            Some("r1".into()),
+            Some(3600),
+            "claude",
+        );
+        let t2 = TokenInfo::new(
+            "gemini_access".into(),
+            Some("r2".into()),
+            Some(3600),
+            "gemini",
+        );
         storage.save("claude", &t1).unwrap();
         storage.save("gemini", &t2).unwrap();
         assert_eq!(storage.len(), 2);
-        assert_eq!(storage.load("claude").unwrap().unwrap().access_token, "claude_access");
-        assert_eq!(storage.load("gemini").unwrap().unwrap().access_token, "gemini_access");
+        assert_eq!(
+            storage.load("claude").unwrap().unwrap().access_token,
+            "claude_access"
+        );
+        assert_eq!(
+            storage.load("gemini").unwrap().unwrap().access_token,
+            "gemini_access"
+        );
     }
 
     #[test]
     fn test_memory_clear() {
         let storage = MemoryTokenStorage::new();
-        let token = TokenInfo::new("access".into(), Some("refresh".into()), Some(3600), "claude");
+        let token = TokenInfo::new(
+            "access".into(),
+            Some("refresh".into()),
+            Some(3600),
+            "claude",
+        );
         storage.save("claude", &token).unwrap();
         storage.save("gemini", &token).unwrap();
         assert_eq!(storage.len(), 2);
@@ -558,7 +603,12 @@ mod tests {
     fn test_memory_clone_shares_state() {
         let storage1 = MemoryTokenStorage::new();
         let storage2 = storage1.clone();
-        let token = TokenInfo::new("access".into(), Some("refresh".into()), Some(3600), "claude");
+        let token = TokenInfo::new(
+            "access".into(),
+            Some("refresh".into()),
+            Some(3600),
+            "claude",
+        );
         storage1.save("claude", &token).unwrap();
         let loaded = storage2.load("claude").unwrap().unwrap();
         assert_eq!(loaded.access_token, "access");
@@ -577,7 +627,12 @@ mod tests {
     #[test]
     fn test_arc_storage() {
         let storage = Arc::new(MemoryTokenStorage::new());
-        let token = TokenInfo::new("access".into(), Some("refresh".into()), Some(3600), "claude");
+        let token = TokenInfo::new(
+            "access".into(),
+            Some("refresh".into()),
+            Some(3600),
+            "claude",
+        );
         storage.save("claude", &token).unwrap();
         let loaded = storage.load("claude").unwrap().unwrap();
         assert_eq!(loaded.access_token, "access");
@@ -587,7 +642,12 @@ mod tests {
     #[test]
     fn test_box_dyn_storage() {
         let storage: Box<dyn TokenStorage> = Box::new(MemoryTokenStorage::new());
-        let token = TokenInfo::new("access".into(), Some("refresh".into()), Some(3600), "claude");
+        let token = TokenInfo::new(
+            "access".into(),
+            Some("refresh".into()),
+            Some(3600),
+            "claude",
+        );
         storage.save("claude", &token).unwrap();
         let loaded = storage.load("claude").unwrap().unwrap();
         assert_eq!(loaded.access_token, "access");
@@ -605,7 +665,12 @@ mod tests {
         assert!(storage.load("claude").unwrap().is_none());
         assert!(!storage.exists("claude").unwrap());
 
-        let token = TokenInfo::new("access".into(), Some("refresh".into()), Some(3600), "claude");
+        let token = TokenInfo::new(
+            "access".into(),
+            Some("refresh".into()),
+            Some(3600),
+            "claude",
+        );
         storage.save("claude", &token).unwrap();
 
         let loaded = storage.load("claude").unwrap().unwrap();
@@ -618,14 +683,30 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let storage = FileTokenStorage::new(dir.path());
 
-        let t1 = TokenInfo::new("claude_access".into(), Some("r1".into()), Some(3600), "claude");
-        let t2 = TokenInfo::new("gemini_access".into(), Some("r2".into()), Some(3600), "gemini");
+        let t1 = TokenInfo::new(
+            "claude_access".into(),
+            Some("r1".into()),
+            Some(3600),
+            "claude",
+        );
+        let t2 = TokenInfo::new(
+            "gemini_access".into(),
+            Some("r2".into()),
+            Some(3600),
+            "gemini",
+        );
 
         storage.save("claude", &t1).unwrap();
         storage.save("gemini", &t2).unwrap();
 
-        assert_eq!(storage.load("claude").unwrap().unwrap().access_token, "claude_access");
-        assert_eq!(storage.load("gemini").unwrap().unwrap().access_token, "gemini_access");
+        assert_eq!(
+            storage.load("claude").unwrap().unwrap().access_token,
+            "claude_access"
+        );
+        assert_eq!(
+            storage.load("gemini").unwrap().unwrap().access_token,
+            "gemini_access"
+        );
     }
 
     #[test]
@@ -633,7 +714,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let storage = FileTokenStorage::new(dir.path());
 
-        let token = TokenInfo::new("access".into(), Some("refresh".into()), Some(3600), "claude");
+        let token = TokenInfo::new(
+            "access".into(),
+            Some("refresh".into()),
+            Some(3600),
+            "claude",
+        );
         storage.save("claude", &token).unwrap();
         assert!(storage.exists("claude").unwrap());
 
@@ -653,10 +739,20 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let storage = FileTokenStorage::new(dir.path());
 
-        let t1 = TokenInfo::new("access1".into(), Some("refresh1".into()), Some(3600), "claude");
+        let t1 = TokenInfo::new(
+            "access1".into(),
+            Some("refresh1".into()),
+            Some(3600),
+            "claude",
+        );
         storage.save("claude", &t1).unwrap();
 
-        let t2 = TokenInfo::new("access2".into(), Some("refresh2".into()), Some(7200), "claude");
+        let t2 = TokenInfo::new(
+            "access2".into(),
+            Some("refresh2".into()),
+            Some(7200),
+            "claude",
+        );
         storage.save("claude", &t2).unwrap();
 
         let loaded = storage.load("claude").unwrap().unwrap();
@@ -669,7 +765,12 @@ mod tests {
         let nested = dir.path().join("nested").join("dir");
         let storage = FileTokenStorage::new(&nested);
 
-        let token = TokenInfo::new("access".into(), Some("refresh".into()), Some(3600), "claude");
+        let token = TokenInfo::new(
+            "access".into(),
+            Some("refresh".into()),
+            Some(3600),
+            "claude",
+        );
         storage.save("claude", &token).unwrap();
 
         assert!(nested.join("claude.json").exists());
@@ -683,7 +784,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let storage = FileTokenStorage::new(dir.path());
 
-        let token = TokenInfo::new("access".into(), Some("refresh".into()), Some(3600), "claude");
+        let token = TokenInfo::new(
+            "access".into(),
+            Some("refresh".into()),
+            Some(3600),
+            "claude",
+        );
         storage.save("claude", &token).unwrap();
 
         let path = dir.path().join("claude.json");

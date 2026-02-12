@@ -8,66 +8,66 @@ use crate::syn::parser::{ParseResult, Parser};
 use crate::syn::token::t;
 
 impl Parser<'_> {
-	pub(crate) async fn parse_insert_stmt(
-		&mut self,
-		stk: &mut Stk,
-	) -> ParseResult<InsertStatement> {
-		let relation = self.eat(t!("RELATION"));
-		let ignore = self.eat(t!("IGNORE"));
-		let into = if self.eat(t!("INTO")) {
-			let r = match self.peek().kind {
-				t!("$param") => {
-					let param = self.next_token_value()?;
-					Expr::Param(param)
-				}
-				_ => {
-					let table = self.parse_ident()?;
-					Expr::Table(table)
-				}
-			};
-			Some(r)
-		} else {
-			None
-		};
+    pub(crate) async fn parse_insert_stmt(
+        &mut self,
+        stk: &mut Stk,
+    ) -> ParseResult<InsertStatement> {
+        let relation = self.eat(t!("RELATION"));
+        let ignore = self.eat(t!("IGNORE"));
+        let into = if self.eat(t!("INTO")) {
+            let r = match self.peek().kind {
+                t!("$param") => {
+                    let param = self.next_token_value()?;
+                    Expr::Param(param)
+                }
+                _ => {
+                    let table = self.parse_ident()?;
+                    Expr::Table(table)
+                }
+            };
+            Some(r)
+        } else {
+            None
+        };
 
-		let data = self.parse_insert_values(stk).await?;
+        let data = self.parse_insert_values(stk).await?;
 
-		let update = if self.eat(t!("ON")) {
-			Some(self.parse_insert_update(stk).await?)
-		} else {
-			None
-		};
-		let output = self.try_parse_output(stk).await?;
+        let update = if self.eat(t!("ON")) {
+            Some(self.parse_insert_update(stk).await?)
+        } else {
+            None
+        };
+        let output = self.try_parse_output(stk).await?;
 
-		// VERSION is no longer supported in INSERT statements, it is left here for backwards
-		// compatibility.
-		if self.eat(t!("VERSION")) {
-			stk.run(|ctx| self.parse_expr_field(ctx)).await?;
-		};
+        // VERSION is no longer supported in INSERT statements, it is left here for backwards
+        // compatibility.
+        if self.eat(t!("VERSION")) {
+            stk.run(|ctx| self.parse_expr_field(ctx)).await?;
+        };
 
-		let timeout = self.try_parse_timeout(stk).await?;
-		Ok(InsertStatement {
-			into,
-			data,
-			ignore,
-			update,
-			output,
-			timeout,
-			relation,
-		})
-	}
+        let timeout = self.try_parse_timeout(stk).await?;
+        Ok(InsertStatement {
+            into,
+            data,
+            ignore,
+            update,
+            output,
+            timeout,
+            relation,
+        })
+    }
 
-	async fn parse_insert_values(&mut self, stk: &mut Stk) -> ParseResult<Data> {
-		let token = self.peek();
-		// not a `(` so it cant be `(a,b) VALUES (c,d)`
-		if token.kind != t!("(") {
-			let value = stk.run(|ctx| self.parse_expr_field(ctx)).await?;
-			return Ok(Data::SingleExpression(value));
-		}
+    async fn parse_insert_values(&mut self, stk: &mut Stk) -> ParseResult<Data> {
+        let token = self.peek();
+        // not a `(` so it cant be `(a,b) VALUES (c,d)`
+        if token.kind != t!("(") {
+            let value = stk.run(|ctx| self.parse_expr_field(ctx)).await?;
+            return Ok(Data::SingleExpression(value));
+        }
 
-		// No way to correctly parse this without backtracking.
-		// Try to first parse the VALUES case, if that doesn't work retry.
-		let speculate_result = self
+        // No way to correctly parse this without backtracking.
+        // Try to first parse the VALUES case, if that doesn't work retry.
+        let speculate_result = self
 			.speculate(stk, async |stk, this| {
 				this.pop_peek();
 
@@ -163,27 +163,27 @@ impl Parser<'_> {
 			})
 		.await?;
 
-		if let Some(x) = speculate_result {
-			Ok(Data::ValuesExpression(x))
-		} else {
-			let expr = stk.run(|stk| self.parse_expr_field(stk)).await?;
-			Ok(Data::SingleExpression(expr))
-		}
-	}
+        if let Some(x) = speculate_result {
+            Ok(Data::ValuesExpression(x))
+        } else {
+            let expr = stk.run(|stk| self.parse_expr_field(stk)).await?;
+            Ok(Data::SingleExpression(expr))
+        }
+    }
 
-	async fn parse_insert_update(&mut self, stk: &mut Stk) -> ParseResult<Data> {
-		expected!(self, t!("DUPLICATE"));
-		expected!(self, t!("KEY"));
-		expected!(self, t!("UPDATE"));
+    async fn parse_insert_update(&mut self, stk: &mut Stk) -> ParseResult<Data> {
+        expected!(self, t!("DUPLICATE"));
+        expected!(self, t!("KEY"));
+        expected!(self, t!("UPDATE"));
 
-		let mut res = Vec::new();
-		loop {
-			res.push(self.parse_assignment(stk).await?);
+        let mut res = Vec::new();
+        loop {
+            res.push(self.parse_assignment(stk).await?);
 
-			if !self.eat(t!(",")) {
-				break;
-			}
-		}
-		Ok(Data::UpdateExpression(res))
-	}
+            if !self.eat(t!(",")) {
+                break;
+            }
+        }
+        Ok(Data::UpdateExpression(res))
+    }
 }

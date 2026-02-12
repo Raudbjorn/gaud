@@ -30,95 +30,98 @@ use crate::val::TableName;
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Encode, BorrowDecode)]
 #[storekey(format = "()")]
 pub(crate) struct IndexCompactionKey<'key> {
-	__: u8,
-	_a: u8,
-	_b: u8,
-	_c: u8,
-	pub ns: NamespaceId,
-	pub db: DatabaseId,
-	pub tb: Cow<'key, TableName>,
-	pub ix: IndexId,
-	pub nid: Uuid,
-	pub uid: Uuid,
+    __: u8,
+    _a: u8,
+    _b: u8,
+    _c: u8,
+    pub ns: NamespaceId,
+    pub db: DatabaseId,
+    pub tb: Cow<'key, TableName>,
+    pub ix: IndexId,
+    pub nid: Uuid,
+    pub uid: Uuid,
 }
 
 impl_kv_key_storekey!(IndexCompactionKey<'_> => ());
 
 impl Categorise for IndexCompactionKey<'_> {
-	fn categorise(&self) -> Category {
-		Category::IndexCompaction
-	}
+    fn categorise(&self) -> Category {
+        Category::IndexCompaction
+    }
 }
 
 impl<'key> IndexCompactionKey<'key> {
-	pub(crate) fn new(
-		ns: NamespaceId,
-		db: DatabaseId,
-		tb: Cow<'key, TableName>,
-		ix: IndexId,
-		nid: Uuid,
-		uid: Uuid,
-	) -> Self {
-		Self {
-			__: b'/',
-			_a: b'!',
-			_b: b'i',
-			_c: b'c',
-			ns,
-			db,
-			tb,
-			ix,
-			nid,
-			uid,
-		}
-	}
+    pub(crate) fn new(
+        ns: NamespaceId,
+        db: DatabaseId,
+        tb: Cow<'key, TableName>,
+        ix: IndexId,
+        nid: Uuid,
+        uid: Uuid,
+    ) -> Self {
+        Self {
+            __: b'/',
+            _a: b'!',
+            _b: b'i',
+            _c: b'c',
+            ns,
+            db,
+            tb,
+            ix,
+            nid,
+            uid,
+        }
+    }
 
-	pub(crate) fn into_owned(self) -> IndexCompactionKey<'static> {
-		IndexCompactionKey::new(
-			self.ns,
-			self.db,
-			Cow::Owned(self.tb.into_owned()),
-			self.ix,
-			self.nid,
-			self.uid,
-		)
-	}
+    pub(crate) fn into_owned(self) -> IndexCompactionKey<'static> {
+        IndexCompactionKey::new(
+            self.ns,
+            self.db,
+            Cow::Owned(self.tb.into_owned()),
+            self.ix,
+            self.nid,
+            self.uid,
+        )
+    }
 
-	pub(crate) fn index_matches(&self, other: &IndexCompactionKey<'_>) -> bool {
-		self.ns == other.ns && self.db == other.db && self.tb == other.tb && self.ix == other.ix
-	}
+    pub(crate) fn index_matches(&self, other: &IndexCompactionKey<'_>) -> bool {
+        self.ns == other.ns && self.db == other.db && self.tb == other.tb && self.ix == other.ix
+    }
 
-	pub(crate) fn range() -> (Vec<u8>, Vec<u8>) {
-		(b"/!ic\0".to_vec(), b"/!ic\0xff".to_vec())
-	}
+    pub(crate) fn range() -> (Vec<u8>, Vec<u8>) {
+        (b"/!ic\0".to_vec(), b"/!ic\0xff".to_vec())
+    }
 
-	pub(crate) fn decode_key(k: &[u8]) -> anyhow::Result<IndexCompactionKey<'_>> {
-		Ok(storekey::decode_borrow(k)?)
-	}
+    pub(crate) fn decode_key(k: &[u8]) -> anyhow::Result<IndexCompactionKey<'_>> {
+        Ok(storekey::decode_borrow(k)?)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use crate::key::root::ic::IndexCompactionKey;
-	use crate::kvs::KVKey;
+    use super::*;
+    use crate::key::root::ic::IndexCompactionKey;
+    use crate::kvs::KVKey;
 
-	#[test]
-	fn range() {
-		assert_eq!(IndexCompactionKey::range(), (b"/!ic\0".to_vec(), b"/!ic\0xff".to_vec()));
-	}
+    #[test]
+    fn range() {
+        assert_eq!(
+            IndexCompactionKey::range(),
+            (b"/!ic\0".to_vec(), b"/!ic\0xff".to_vec())
+        );
+    }
 
-	#[test]
-	fn key() {
-		let val = IndexCompactionKey::new(
-			NamespaceId(1),
-			DatabaseId(2),
-			Cow::Owned(TableName::from("testtb")),
-			IndexId(3),
-			Uuid::from_u128(1),
-			Uuid::from_u128(2),
-		);
-		let enc = IndexCompactionKey::encode_key(&val).unwrap();
-		assert_eq!(enc, b"/!ic\x00\x00\x00\x01\x00\x00\x00\x02testtb\0\0\0\0\x03\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x02");
-	}
+    #[test]
+    fn key() {
+        let val = IndexCompactionKey::new(
+            NamespaceId(1),
+            DatabaseId(2),
+            Cow::Owned(TableName::from("testtb")),
+            IndexId(3),
+            Uuid::from_u128(1),
+            Uuid::from_u128(2),
+        );
+        let enc = IndexCompactionKey::encode_key(&val).unwrap();
+        assert_eq!(enc, b"/!ic\x00\x00\x00\x01\x00\x00\x00\x02testtb\0\0\0\0\x03\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x02");
+    }
 }

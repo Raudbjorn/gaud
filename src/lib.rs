@@ -14,7 +14,7 @@ pub mod db;
 pub mod error;
 pub mod oauth;
 pub mod providers;
-pub mod gemini;
+
 pub mod web;
 
 use crate::budget::BudgetTracker;

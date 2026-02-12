@@ -29,7 +29,7 @@
 //!
 //! ```rust
 //! use serde_json::json;
-//! use gaud::gemini::convert::sanitize_schema;
+//! use gaud::providers::gemini::convert::sanitize_schema;
 //!
 //! let schema = json!({
 //!     "type": "object",
