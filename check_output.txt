@@ -1,0 +1,240 @@
+    Checking srrldb-types v0.1.0 (/home/svnbjrn/projects/gaud/src/srrldb/types)
+    Checking srrldb-core v0.1.0 (/home/svnbjrn/projects/gaud/src/srrldb/core)
+    Checking srrldb v0.1.0 (/home/svnbjrn/projects/gaud/src/srrldb)
+    Checking gaud v0.1.0 (/home/svnbjrn/projects/gaud)
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `gemini`
+   --> src/providers/gemini.rs:292:13
+    |
+292 |             gemini::models::response::StopReason::EndTurn => "stop".to_string(),
+    |             ^^^^^^ use of unresolved module or unlinked crate `gemini`
+    |
+help: to make use of source file src/providers/gemini.rs, use `mod gemini` in this file to declare the module
+   --> src/lib.rs:2:1
+    |
+  2 + mod gemini;
+    |
+help: consider importing this enum through its public re-export
+    |
+  6 + use crate::gemini::StopReason;
+    |
+help: if you import `StopReason`, refer to it directly
+    |
+292 -             gemini::models::response::StopReason::EndTurn => "stop".to_string(),
+292 +             StopReason::EndTurn => "stop".to_string(),
+    |
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `gemini`
+   --> src/providers/gemini.rs:293:13
+    |
+293 |             gemini::models::response::StopReason::MaxTokens => "length".to_string(),
+    |             ^^^^^^ use of unresolved module or unlinked crate `gemini`
+    |
+help: to make use of source file src/providers/gemini.rs, use `mod gemini` in this file to declare the module
+   --> src/lib.rs:2:1
+    |
+  2 + mod gemini;
+    |
+help: consider importing this enum through its public re-export
+    |
+  6 + use crate::gemini::StopReason;
+    |
+help: if you import `StopReason`, refer to it directly
+    |
+293 -             gemini::models::response::StopReason::MaxTokens => "length".to_string(),
+293 +             StopReason::MaxTokens => "length".to_string(),
+    |
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `gemini`
+   --> src/providers/gemini.rs:294:13
+    |
+294 |             gemini::models::response::StopReason::StopSequence => "stop".to_string(),
+    |             ^^^^^^ use of unresolved module or unlinked crate `gemini`
+    |
+help: to make use of source file src/providers/gemini.rs, use `mod gemini` in this file to declare the module
+   --> src/lib.rs:2:1
+    |
+  2 + mod gemini;
+    |
+help: consider importing this enum through its public re-export
+    |
+  6 + use crate::gemini::StopReason;
+    |
+help: if you import `StopReason`, refer to it directly
+    |
+294 -             gemini::models::response::StopReason::StopSequence => "stop".to_string(),
+294 +             StopReason::StopSequence => "stop".to_string(),
+    |
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `gemini`
+   --> src/providers/gemini.rs:295:13
+    |
+295 |             gemini::models::response::StopReason::ToolUse => "tool_calls".to_string(),
+    |             ^^^^^^ use of unresolved module or unlinked crate `gemini`
+    |
+help: to make use of source file src/providers/gemini.rs, use `mod gemini` in this file to declare the module
+   --> src/lib.rs:2:1
+    |
+  2 + mod gemini;
+    |
+help: consider importing this enum through its public re-export
+    |
+  6 + use crate::gemini::StopReason;
+    |
+help: if you import `StopReason`, refer to it directly
+    |
+295 -             gemini::models::response::StopReason::ToolUse => "tool_calls".to_string(),
+295 +             StopReason::ToolUse => "tool_calls".to_string(),
+    |
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `gemini`
+   --> src/providers/gemini.rs:408:30
+    |
+408 | ...                   gemini::models::StreamEvent::ContentBlockDelta { delta, .. } => {
+    |                       ^^^^^^ use of unresolved module or unlinked crate `gemini`
+    |
+help: to make use of source file src/providers/gemini.rs, use `mod gemini` in this file to declare the module
+   --> src/lib.rs:2:1
+    |
+  2 + mod gemini;
+    |
+help: consider importing this enum through its public re-export
+    |
+  6 + use crate::gemini::StreamEvent;
+    |
+help: if you import `StreamEvent`, refer to it directly
+    |
+408 -                              gemini::models::StreamEvent::ContentBlockDelta { delta, .. } => {
+408 +                              StreamEvent::ContentBlockDelta { delta, .. } => {
+    |
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `gemini`
+   --> src/providers/gemini.rs:410:38
+    |
+410 | ...                   gemini::models::ContentDelta::TextDelta { text } => {
+    |                       ^^^^^^ use of unresolved module or unlinked crate `gemini`
+    |
+help: to make use of source file src/providers/gemini.rs, use `mod gemini` in this file to declare the module
+   --> src/lib.rs:2:1
+    |
+  2 + mod gemini;
+    |
+help: consider importing this enum through its public re-export
+    |
+  6 + use crate::gemini::ContentDelta;
+    |
+help: if you import `ContentDelta`, refer to it directly
+    |
+410 -                                      gemini::models::ContentDelta::TextDelta { text } => {
+410 +                                      ContentDelta::TextDelta { text } => {
+    |
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `gemini`
+   --> src/providers/gemini.rs:416:30
+    |
+416 | ...                   gemini::models::StreamEvent::MessageDelta { delta, .. } => {
+    |                       ^^^^^^ use of unresolved module or unlinked crate `gemini`
+    |
+help: to make use of source file src/providers/gemini.rs, use `mod gemini` in this file to declare the module
+   --> src/lib.rs:2:1
+    |
+  2 + mod gemini;
+    |
+help: consider importing this enum through its public re-export
+    |
+  6 + use crate::gemini::StreamEvent;
+    |
+help: if you import `StreamEvent`, refer to it directly
+    |
+416 -                              gemini::models::StreamEvent::MessageDelta { delta, .. } => {
+416 +                              StreamEvent::MessageDelta { delta, .. } => {
+    |
+
+error[E0412]: cannot find type `VecDeque` in this scope
+  --> src/gemini/transport/sse.rs:54:25
+   |
+54 |         pending_events: VecDeque<StreamEvent>,
+   |                         ^^^^^^^^ not found in this scope
+   |
+help: consider importing this struct
+   |
+27 + use std::collections::VecDeque;
+   |
+
+error[E0433]: failed to resolve: use of undeclared type `VecDeque`
+  --> src/gemini/transport/sse.rs:68:29
+   |
+68 |             pending_events: VecDeque::new(),
+   |                             ^^^^^^^^ use of undeclared type `VecDeque`
+   |
+help: consider importing this struct
+   |
+27 + use std::collections::VecDeque;
+   |
+
+warning: unexpected `cfg` condition value: `keyring`
+  --> src/gemini/mod.rs:97:7
+   |
+97 | #[cfg(feature = "keyring")]
+   |       ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: expected values for `feature` are: `cache-ephemeral`, `cache-persistent`, `default`, and `system-keyring`
+   = help: consider adding `keyring` as a feature in `Cargo.toml`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: `#[warn(unexpected_cfgs)]` on by default
+
+warning: unexpected `cfg` condition value: `keyring`
+  --> src/gemini/storage/mod.rs:38:7
+   |
+38 | #[cfg(feature = "keyring")]
+   |       ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: expected values for `feature` are: `cache-ephemeral`, `cache-persistent`, `default`, and `system-keyring`
+   = help: consider adding `keyring` as a feature in `Cargo.toml`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `keyring`
+  --> src/gemini/storage/mod.rs:47:7
+   |
+47 | #[cfg(feature = "keyring")]
+   |       ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: expected values for `feature` are: `cache-ephemeral`, `cache-persistent`, `default`, and `system-keyring`
+   = help: consider adding `keyring` as a feature in `Cargo.toml`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `keyring`
+   --> src/gemini/error.rs:114:7
+    |
+114 | #[cfg(feature = "keyring")]
+    |       ^^^^^^^^^^^^^^^^^^^
+    |
+    = note: expected values for `feature` are: `cache-ephemeral`, `cache-persistent`, `default`, and `system-keyring`
+    = help: consider adding `keyring` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: use of deprecated function `rand::thread_rng`: Renamed to `rng`
+   --> src/gemini/auth/oauth.rs:107:11
+    |
+107 |     rand::thread_rng().fill(&mut bytes);
+    |           ^^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated function `rand::thread_rng`: Renamed to `rng`
+   --> src/gemini/auth/oauth.rs:143:11
+    |
+143 |     rand::thread_rng().fill(&mut bytes);
+    |           ^^^^^^^^^^
+
+warning: unused import: `futures::StreamExt`
+  --> src/gemini/transport/sse.rs:33:5
+   |
+33 | use futures::StreamExt;
+   |     ^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+Some errors have detailed explanations: E0412, E0433.
+For more information about an error, try `rustc --explain E0412`.
+warning: `gaud` (lib) generated 7 warnings
+error: could not compile `gaud` (lib) due to 9 previous errors; 7 warnings emitted

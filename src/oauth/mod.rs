@@ -126,13 +126,13 @@ pub struct OAuthStatus {
 pub struct OAuthManager {
     config: Arc<Config>,
     db: Database,
-    storage: Box<dyn TokenStorage>,
+    storage: Arc<dyn TokenStorage>,
     http_client: reqwest::Client,
 }
 
 impl OAuthManager {
     /// Create a new OAuthManager.
-    pub fn new(config: Arc<Config>, db: Database, storage: Box<dyn TokenStorage>) -> Self {
+    pub fn new(config: Arc<Config>, db: Database, storage: Arc<dyn TokenStorage>) -> Self {
         let http_client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
@@ -148,18 +148,18 @@ impl OAuthManager {
 
     /// Create an OAuthManager using the storage backend from config.
     pub fn from_config(config: Arc<Config>, db: Database) -> Self {
-        let storage: Box<dyn TokenStorage> = match config.providers.storage_backend {
+        let storage: Arc<dyn TokenStorage> = match config.providers.storage_backend {
             StorageBackend::File => {
-                Box::new(FileTokenStorage::new(&config.providers.token_storage_dir))
+                Arc::new(FileTokenStorage::new(&config.providers.token_storage_dir))
             }
             #[cfg(feature = "system-keyring")]
-            StorageBackend::Keyring => Box::new(KeyringTokenStorage::new()),
+            StorageBackend::Keyring => Arc::new(KeyringTokenStorage::new()),
             #[cfg(not(feature = "system-keyring"))]
             StorageBackend::Keyring => {
                 tracing::warn!("Keyring storage requested but system-keyring feature not enabled, falling back to file storage");
-                Box::new(FileTokenStorage::new(&config.providers.token_storage_dir))
+                Arc::new(FileTokenStorage::new(&config.providers.token_storage_dir))
             }
-            StorageBackend::Memory => Box::new(MemoryTokenStorage::new()),
+            StorageBackend::Memory => Arc::new(MemoryTokenStorage::new()),
         };
 
         Self::new(config, db, storage)
@@ -171,8 +171,8 @@ impl OAuthManager {
     }
 
     /// Get a reference to the token storage.
-    pub fn storage(&self) -> &dyn TokenStorage {
-        self.storage.as_ref()
+    pub fn storage(&self) -> Arc<dyn TokenStorage> {
+        self.storage.clone()
     }
 
     // =========================================================================
@@ -534,7 +534,7 @@ mod tests {
     fn test_oauth_manager_creation() {
         let config = Arc::new(test_config());
         let db = test_db();
-        let storage = Box::new(MemoryTokenStorage::new());
+        let storage = Arc::new(MemoryTokenStorage::new());
         let manager = OAuthManager::new(config, db, storage);
         assert_eq!(manager.storage().name(), "memory");
     }
@@ -552,7 +552,7 @@ mod tests {
     fn test_get_status_unauthenticated() {
         let config = Arc::new(test_config());
         let db = test_db();
-        let storage = Box::new(MemoryTokenStorage::new());
+        let storage = Arc::new(MemoryTokenStorage::new());
         let manager = OAuthManager::new(config, db, storage);
 
         let status = manager.get_status("claude").unwrap();
@@ -577,7 +577,7 @@ mod tests {
         );
         storage.save("claude", &token).unwrap();
 
-        let manager = OAuthManager::new(config, db, storage);
+        let manager = OAuthManager::new(config, db, Arc::new(storage));
         let status = manager.get_status("claude").unwrap();
         assert!(status.authenticated);
         assert!(!status.expired);
@@ -599,7 +599,7 @@ mod tests {
         );
         storage.save("claude", &token).unwrap();
 
-        let manager = OAuthManager::new(config, db, storage);
+        let manager = OAuthManager::new(config, db, Arc::new(storage));
         let loaded = manager.get_token("claude").unwrap();
         assert!(loaded.is_some());
         assert_eq!(loaded.unwrap().access_token, "access_token");
@@ -609,7 +609,7 @@ mod tests {
     fn test_get_token_missing() {
         let config = Arc::new(test_config());
         let db = test_db();
-        let storage = Box::new(MemoryTokenStorage::new());
+        let storage = Arc::new(MemoryTokenStorage::new());
         let manager = OAuthManager::new(config, db, storage);
 
         let loaded = manager.get_token("claude").unwrap();
@@ -630,7 +630,7 @@ mod tests {
         );
         storage.save("claude", &token).unwrap();
 
-        let manager = OAuthManager::new(config, db, storage);
+        let manager = OAuthManager::new(config, db, Arc::new(storage));
         manager.remove_token("claude").unwrap();
         assert!(manager.get_token("claude").unwrap().is_none());
     }
@@ -639,7 +639,7 @@ mod tests {
     fn test_start_flow_unknown_provider() {
         let config = Arc::new(test_config());
         let db = test_db();
-        let storage = Box::new(MemoryTokenStorage::new());
+        let storage = Arc::new(MemoryTokenStorage::new());
         let manager = OAuthManager::new(config, db, storage);
 
         let result = manager.start_flow("unknown");
@@ -650,7 +650,7 @@ mod tests {
     fn test_start_flow_unconfigured_claude() {
         let config = Arc::new(test_config()); // No Claude config
         let db = test_db();
-        let storage = Box::new(MemoryTokenStorage::new());
+        let storage = Arc::new(MemoryTokenStorage::new());
         let manager = OAuthManager::new(config, db, storage);
 
         let result = manager.start_flow("claude");
@@ -661,7 +661,7 @@ mod tests {
     fn test_start_flow_copilot_returns_github_url() {
         let config = Arc::new(test_config());
         let db = test_db();
-        let storage = Box::new(MemoryTokenStorage::new());
+        let storage = Arc::new(MemoryTokenStorage::new());
         let manager = OAuthManager::new(config, db, storage);
 
         let url = manager.start_flow("copilot").unwrap();

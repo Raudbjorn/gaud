@@ -68,6 +68,7 @@ tikv = { version = "0.3.0-surreal.4", default-features = false, package = "surre
 addr = { version = "0.15.6", default-features = false, features = ["std"] }
 ahash = "0.8.12"
 ammonia = "4.1.2"
+
 anyhow = "1.0.100"
 arbitrary = "1.4.2"
 arc-swap = "1.8.0"
@@ -243,6 +244,8 @@ hmac = "0.12"
 # HTTP Client
 reqwest = { version = "0.12", features = ["json", "stream"] }
 
+async-trait = { workspace = true }
+
 
 # Embedded SurrealDB for semantic cache (HNSW vector index)
 srrldb = { workspace = true, features = ["allocator"] }
@@ -268,7 +271,12 @@ urlencoding = "2"
 minijinja = { version = "2", features = ["builtins"] }
 hostname = "0.4.2"
 whoami = "2.1.1"
+dirs = "6"
+async-stream = "0.3"
+lru = "0.12"
 shellexpand = "3.1.1"
+bytes.workspace = true
+pin-project-lite.workspace = true
 
 [dev-dependencies]
 tempfile = "3"
