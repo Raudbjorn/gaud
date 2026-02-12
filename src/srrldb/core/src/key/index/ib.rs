@@ -44,81 +44,81 @@ use crate::val::TableName;
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Encode, BorrowDecode)]
 #[storekey(format = "()")]
 pub(crate) struct Ib<'a> {
-	__: u8,
-	_a: u8,
-	pub ns: NamespaceId,
-	_b: u8,
-	pub db: DatabaseId,
-	_c: u8,
-	pub tb: Cow<'a, TableName>,
-	_d: u8,
-	pub ix: IndexId,
-	_e: u8,
-	_f: u8,
-	_g: u8,
-	pub start: i64,
+    __: u8,
+    _a: u8,
+    pub ns: NamespaceId,
+    _b: u8,
+    pub db: DatabaseId,
+    _c: u8,
+    pub tb: Cow<'a, TableName>,
+    _d: u8,
+    pub ix: IndexId,
+    _e: u8,
+    _f: u8,
+    _g: u8,
+    pub start: i64,
 }
 
 impl_kv_key_storekey!(Ib<'_> => BatchValue);
 
 impl Categorise for Ib<'_> {
-	fn categorise(&self) -> Category {
-		Category::SequenceBatch
-	}
+    fn categorise(&self) -> Category {
+        Category::SequenceBatch
+    }
 }
 
 impl<'a> Ib<'a> {
-	pub(crate) fn new(
-		ns: NamespaceId,
-		db: DatabaseId,
-		tb: &'a TableName,
-		ix: IndexId,
-		start: i64,
-	) -> Self {
-		Self {
-			__: b'/',
-			_a: b'*',
-			ns,
-			_b: b'*',
-			db,
-			_c: b'*',
-			tb: Cow::Borrowed(tb),
-			_d: b'+',
-			ix,
-			_e: b'!',
-			_f: b'i',
-			_g: b'b',
-			start,
-		}
-	}
+    pub(crate) fn new(
+        ns: NamespaceId,
+        db: DatabaseId,
+        tb: &'a TableName,
+        ix: IndexId,
+        start: i64,
+    ) -> Self {
+        Self {
+            __: b'/',
+            _a: b'*',
+            ns,
+            _b: b'*',
+            db,
+            _c: b'*',
+            tb: Cow::Borrowed(tb),
+            _d: b'+',
+            ix,
+            _e: b'!',
+            _f: b'i',
+            _g: b'b',
+            start,
+        }
+    }
 
-	pub(crate) fn new_range(
-		ns: NamespaceId,
-		db: DatabaseId,
-		tb: &'a TableName,
-		ix: IndexId,
-	) -> anyhow::Result<Range<Vec<u8>>> {
-		let beg = Self::new(ns, db, tb, ix, i64::MIN).encode_key()?;
-		let end = Self::new(ns, db, tb, ix, i64::MAX).encode_key()?;
-		Ok(beg..end)
-	}
+    pub(crate) fn new_range(
+        ns: NamespaceId,
+        db: DatabaseId,
+        tb: &'a TableName,
+        ix: IndexId,
+    ) -> anyhow::Result<Range<Vec<u8>>> {
+        let beg = Self::new(ns, db, tb, ix, i64::MIN).encode_key()?;
+        let end = Self::new(ns, db, tb, ix, i64::MAX).encode_key()?;
+        Ok(beg..end)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+    use super::*;
 
-	#[test]
-	fn ib_range() {
-		let tb = TableName::from("testtb");
-		let ib_range = Ib::new_range(NamespaceId(1), DatabaseId(2), &tb, IndexId(3)).unwrap();
-		assert_eq!(
-			ib_range.start,
-			b"/*\x00\x00\x00\x01*\x00\x00\x00\x02*testtb\0+\0\0\0\x03!ib\0\0\0\0\0\0\0\0"
-		);
-		assert_eq!(
+    #[test]
+    fn ib_range() {
+        let tb = TableName::from("testtb");
+        let ib_range = Ib::new_range(NamespaceId(1), DatabaseId(2), &tb, IndexId(3)).unwrap();
+        assert_eq!(
+            ib_range.start,
+            b"/*\x00\x00\x00\x01*\x00\x00\x00\x02*testtb\0+\0\0\0\x03!ib\0\0\0\0\0\0\0\0"
+        );
+        assert_eq!(
 			ib_range.end,
 			b"/*\x00\x00\x00\x01*\x00\x00\x00\x02*testtb\0+\0\0\0\x03!ib\xff\xff\xff\xff\xff\xff\xff\xff"
 		);
-	}
+    }
 }

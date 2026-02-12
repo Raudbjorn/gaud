@@ -9,8 +9,8 @@ use super::Expr;
 pub(crate) struct Cond(pub(crate) Expr);
 
 impl ToSql for Cond {
-	fn fmt_sql(&self, f: &mut String, fmt: SqlFormat) {
-		let stmt: crate::sql::cond::Cond = self.clone().into();
-		stmt.fmt_sql(f, fmt);
-	}
+    fn fmt_sql(&self, f: &mut String, fmt: SqlFormat) {
+        let stmt: crate::sql::cond::Cond = self.clone().into();
+        stmt.fmt_sql(f, fmt);
+    }
 }

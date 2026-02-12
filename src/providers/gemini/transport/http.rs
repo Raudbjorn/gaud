@@ -12,12 +12,12 @@ use reqwest::{Client, Response, StatusCode};
 use serde::Serialize;
 use tracing::{debug, instrument, warn};
 
-use crate::gemini::constants::{
-    get_model_family, is_thinking_model, ModelFamily, CLIENT_METADATA,
-    CLOUDCODE_ENDPOINT_FALLBACKS, CONNECT_TIMEOUT, GOOG_API_CLIENT, REQUEST_TIMEOUT, USER_AGENT,
+use crate::providers::gemini::constants::{
+    CLIENT_METADATA, CLOUDCODE_ENDPOINT_FALLBACKS, CONNECT_TIMEOUT, GOOG_API_CLIENT, ModelFamily,
+    REQUEST_TIMEOUT, USER_AGENT, get_model_family, is_thinking_model,
 };
-use crate::gemini::error::{Error, Result};
-use crate::gemini::models::google::CloudCodeWrapper;
+use crate::providers::gemini::error::{Error, Result};
+use crate::providers::gemini::models::google::CloudCodeWrapper;
 
 /// HTTP client wrapper for Cloud Code API requests.
 ///
@@ -26,7 +26,7 @@ use crate::gemini::models::google::CloudCodeWrapper;
 /// # Example
 ///
 /// ```rust,ignore
-/// use gaud::gemini::transport::HttpClient;
+/// use gaud::providers::gemini::transport::HttpClient;
 ///
 /// let client = HttpClient::new();
 /// let response = client.post(&url, "token", &body).await?;
@@ -246,7 +246,7 @@ fn is_retryable_error(error: &Error) -> bool {
 /// # Example
 ///
 /// ```rust
-/// use gaud::gemini::transport::HttpClientBuilder;
+/// use gaud::providers::gemini::transport::HttpClientBuilder;
 /// use std::time::Duration;
 ///
 /// let client = HttpClientBuilder::default()
@@ -328,7 +328,7 @@ impl Default for HttpClientBuilder {
 pub(crate) fn wrap_request(
     project_id: &str,
     model: &str,
-    request: crate::gemini::models::google::GoogleRequest,
+    request: crate::providers::gemini::models::google::GoogleRequest,
 ) -> CloudCodeWrapper {
     CloudCodeWrapper::new(project_id, model, request).with_request_id(generate_request_id())
 }
@@ -347,7 +347,7 @@ pub fn generate_request_id() -> String {
 /// # Example
 ///
 /// ```
-/// use gaud::gemini::transport::http::mask_token;
+/// use gaud::providers::gemini::transport::http::mask_token;
 ///
 /// let masked = mask_token("ya29.very_long_access_token_here");
 /// assert!(masked.starts_with("ya29"));
@@ -372,9 +372,9 @@ pub fn mask_token(token: &str) -> String {
 /// The API path string.
 pub fn build_api_path(streaming: bool) -> &'static str {
     if streaming {
-        crate::gemini::constants::API_PATH_STREAM_GENERATE_CONTENT
+        crate::providers::gemini::constants::API_PATH_STREAM_GENERATE_CONTENT
     } else {
-        crate::gemini::constants::API_PATH_GENERATE_CONTENT
+        crate::providers::gemini::constants::API_PATH_GENERATE_CONTENT
     }
 }
 
@@ -456,7 +456,10 @@ mod tests {
     #[test]
     fn test_build_api_path() {
         assert_eq!(build_api_path(false), "/v1internal:generateContent");
-        assert_eq!(build_api_path(true), "/v1internal:streamGenerateContent?alt=sse");
+        assert_eq!(
+            build_api_path(true),
+            "/v1internal:streamGenerateContent?alt=sse"
+        );
     }
 
     #[test]
@@ -481,7 +484,7 @@ mod tests {
 
     #[test]
     fn test_wrap_request() {
-        use crate::gemini::models::google::{Content, GoogleRequest, Part};
+        use crate::providers::gemini::models::google::{Content, GoogleRequest, Part};
 
         let request = GoogleRequest::with_contents(vec![Content::user(vec![Part::text("Hello")])]);
 

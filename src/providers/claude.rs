@@ -6,15 +6,15 @@
 use std::collections::VecDeque;
 use std::pin::Pin;
 
-use futures::stream::{self, StreamExt};
 use futures::Stream;
+use futures::stream::{self, StreamExt};
 use reqwest::Client;
 
-use crate::providers::transform::{ClaudeTransformer, SseEvent, SseParser};
+use crate::providers::pricing::ModelPricing;
 use crate::providers::transform::util::{detect_context_window_error, parse_rate_limit_headers};
+use crate::providers::transform::{ClaudeTransformer, SseEvent, SseParser};
 use crate::providers::transformer::{ProviderResponseMeta, ProviderTransformer};
 use crate::providers::types::*;
-use crate::providers::pricing::ModelPricing;
 use crate::providers::{LlmProvider, ProviderError, TokenStorage};
 
 const API_BASE: &str = "https://api.anthropic.com/v1";
@@ -71,7 +71,8 @@ impl<T: TokenStorage + 'static> LlmProvider for ClaudeProvider<T> {
     fn chat(
         &self,
         request: &ChatRequest,
-    ) -> Pin<Box<dyn std::future::Future<Output = Result<ChatResponse, ProviderError>> + Send + '_>> {
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<ChatResponse, ProviderError>> + Send + '_>>
+    {
         let request = request.clone();
         Box::pin(async move {
             let token = self.get_token().await?;
@@ -107,9 +108,7 @@ impl<T: TokenStorage + 'static> LlmProvider for ClaudeProvider<T> {
                 if code == 429 {
                     let (retry_after, _) = parse_rate_limit_headers(&resp_headers, "claude");
                     return Err(ProviderError::RateLimited {
-                        retry_after_secs: retry_after
-                            .map(|d| d.as_secs())
-                            .unwrap_or(60),
+                        retry_after_secs: retry_after.map(|d| d.as_secs()).unwrap_or(60),
                         retry_after,
                     });
                 }
@@ -135,7 +134,17 @@ impl<T: TokenStorage + 'static> LlmProvider for ClaudeProvider<T> {
     fn stream_chat(
         &self,
         request: &ChatRequest,
-    ) -> Pin<Box<dyn std::future::Future<Output = Result<Pin<Box<dyn Stream<Item = Result<ChatChunk, ProviderError>> + Send>>, ProviderError>> + Send + '_>> {
+    ) -> Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        Pin<Box<dyn Stream<Item = Result<ChatChunk, ProviderError>> + Send>>,
+                        ProviderError,
+                    >,
+                > + Send
+                + '_,
+        >,
+    > {
         let request = request.clone();
         Box::pin(async move {
             let token = self.get_token().await?;
@@ -171,9 +180,7 @@ impl<T: TokenStorage + 'static> LlmProvider for ClaudeProvider<T> {
                 if code == 429 {
                     let (retry_after, _) = parse_rate_limit_headers(&resp_headers, "claude");
                     return Err(ProviderError::RateLimited {
-                        retry_after_secs: retry_after
-                            .map(|d| d.as_secs())
-                            .unwrap_or(60),
+                        retry_after_secs: retry_after.map(|d| d.as_secs()).unwrap_or(60),
                         retry_after,
                     });
                 }
@@ -188,8 +195,14 @@ impl<T: TokenStorage + 'static> LlmProvider for ClaudeProvider<T> {
             let sse_parser = SseParser::new();
 
             let event_stream = stream::unfold(
-                (Box::pin(byte_stream.map(|r| r.map_err(|e| ProviderError::Stream(e.to_string())))),
-                 sse_parser, stream_state, VecDeque::<Result<ChatChunk, ProviderError>>::new()),
+                (
+                    Box::pin(
+                        byte_stream.map(|r| r.map_err(|e| ProviderError::Stream(e.to_string()))),
+                    ),
+                    sse_parser,
+                    stream_state,
+                    VecDeque::<Result<ChatChunk, ProviderError>>::new(),
+                ),
                 |(mut inner, mut parser, mut state, mut pending)| async move {
                     loop {
                         if let Some(item) = pending.pop_front() {
@@ -201,18 +214,18 @@ impl<T: TokenStorage + 'static> LlmProvider for ClaudeProvider<T> {
                                 let text = String::from_utf8_lossy(&bytes);
                                 let events = match parser.feed(&text) {
                                     Ok(e) => e,
-                                    Err(e) => return Some((Err(e), (inner, parser, state, pending))),
+                                    Err(e) => {
+                                        return Some((Err(e), (inner, parser, state, pending)));
+                                    }
                                 };
 
                                 for event in events {
                                     match event {
-                                        SseEvent::Data(data) => {
-                                            match state.process_event(&data) {
-                                                Ok(Some(chunk)) => pending.push_back(Ok(chunk)),
-                                                Ok(None) => {}
-                                                Err(e) => pending.push_back(Err(e)),
-                                            }
-                                        }
+                                        SseEvent::Data(data) => match state.process_event(&data) {
+                                            Ok(Some(chunk)) => pending.push_back(Ok(chunk)),
+                                            Ok(None) => {}
+                                            Err(e) => pending.push_back(Err(e)),
+                                        },
                                         SseEvent::Done => return None,
                                         SseEvent::Skip => {}
                                     }
@@ -225,7 +238,10 @@ impl<T: TokenStorage + 'static> LlmProvider for ClaudeProvider<T> {
                                 if let Ok(Some(event)) = parser.flush() {
                                     if let SseEvent::Data(data) = event {
                                         if let Ok(Some(chunk)) = state.process_event(&data) {
-                                            return Some((Ok(chunk), (inner, parser, state, pending)));
+                                            return Some((
+                                                Ok(chunk),
+                                                (inner, parser, state, pending),
+                                            ));
                                         }
                                     }
                                 }
@@ -236,7 +252,10 @@ impl<T: TokenStorage + 'static> LlmProvider for ClaudeProvider<T> {
                 },
             );
 
-            Ok(Box::pin(event_stream) as Pin<Box<dyn Stream<Item = Result<ChatChunk, ProviderError>> + Send>>)
+            Ok(Box::pin(event_stream)
+                as Pin<
+                    Box<dyn Stream<Item = Result<ChatChunk, ProviderError>> + Send>,
+                >)
         })
     }
 
@@ -274,10 +293,7 @@ mod tests {
     }
 
     impl TokenStorage for MockTokenStorage {
-        async fn get_access_token(
-            &self,
-            _provider: &str,
-        ) -> Result<Option<String>, ProviderError> {
+        async fn get_access_token(&self, _provider: &str) -> Result<Option<String>, ProviderError> {
             Ok(self.token.clone())
         }
     }

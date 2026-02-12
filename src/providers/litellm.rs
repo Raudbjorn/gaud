@@ -8,17 +8,16 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures::stream::StreamExt;
 use futures::Stream;
+use futures::stream::StreamExt;
 use reqwest::Client;
 use tokio::sync::RwLock;
 use tracing::{debug, warn};
 
-use crate::providers::types::{
-    ChatChunk, ChatRequest, ChatResponse, Choice, ChunkChoice, Delta,
-    ResponseMessage, Usage,
-};
 use crate::providers::pricing::ModelPricing;
+use crate::providers::types::{
+    ChatChunk, ChatRequest, ChatResponse, Choice, ChunkChoice, Delta, ResponseMessage, Usage,
+};
 use crate::providers::{LlmProvider, ProviderError};
 
 // ---------------------------------------------------------------------------
@@ -156,6 +155,7 @@ impl LitellmProvider {
     /// Create a new LiteLLM provider and optionally discover available models.
     pub async fn new(config: LitellmConfig) -> Result<Self, ProviderError> {
         let client = Client::builder()
+            .user_agent(crate::config::GAUD_USER_AGENT)
             .timeout(Duration::from_secs(config.timeout_secs))
             .build()
             .map_err(|e| ProviderError::Other(format!("Failed to create HTTP client: {e}")))?;
@@ -199,9 +199,10 @@ impl LitellmProvider {
             });
         }
 
-        let body: ModelsListResponse = resp.json().await.map_err(|e| {
-            ProviderError::Other(format!("Failed to parse model list: {e}"))
-        })?;
+        let body: ModelsListResponse = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::Other(format!("Failed to parse model list: {e}")))?;
 
         let mut models = self.discovered_models.write().await;
 
@@ -355,9 +356,10 @@ impl LlmProvider for LitellmProvider {
                 req = req.bearer_auth(key);
             }
 
-            let resp = req.send().await.map_err(|e| {
-                ProviderError::Other(format!("LiteLLM request failed: {e}"))
-            })?;
+            let resp = req
+                .send()
+                .await
+                .map_err(|e| ProviderError::Other(format!("LiteLLM request failed: {e}")))?;
 
             let status = resp.status();
             if !status.is_success() {
@@ -405,9 +407,10 @@ impl LlmProvider for LitellmProvider {
                 req = req.bearer_auth(key);
             }
 
-            let resp = req.send().await.map_err(|e| {
-                ProviderError::Other(format!("LiteLLM stream request failed: {e}"))
-            })?;
+            let resp = req
+                .send()
+                .await
+                .map_err(|e| ProviderError::Other(format!("LiteLLM stream request failed: {e}")))?;
 
             let status = resp.status();
             if !status.is_success() {
@@ -495,10 +498,10 @@ impl LlmProvider for LitellmProvider {
                 })
                 .flatten();
 
-            Ok(
-                Box::pin(stream)
-                    as Pin<Box<dyn Stream<Item = Result<ChatChunk, ProviderError>> + Send>>,
-            )
+            Ok(Box::pin(stream)
+                as Pin<
+                    Box<dyn Stream<Item = Result<ChatChunk, ProviderError>> + Send>,
+                >)
         })
     }
 
@@ -604,10 +607,7 @@ mod tests {
         let resp = LitellmProvider::convert_response(oai);
         assert_eq!(resp.id, "chatcmpl-123");
         assert_eq!(resp.choices.len(), 1);
-        assert_eq!(
-            resp.choices[0].message.content.as_deref(),
-            Some("Hello!")
-        );
+        assert_eq!(resp.choices[0].message.content.as_deref(), Some("Hello!"));
         assert_eq!(resp.usage.total_tokens, 15);
     }
 

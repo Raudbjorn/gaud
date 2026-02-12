@@ -3,21 +3,21 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Instant;
 
+use axum::Extension;
+use axum::Json;
 use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
-use axum::Extension;
-use axum::Json;
 use tokio_stream::Stream;
 use uuid::Uuid;
 
+use crate::AppState;
 use crate::auth::AuthUser;
 use crate::budget::AuditEntry;
 use crate::cache::StreamCacheOps;
 use crate::error::AppError;
 use crate::providers::cost::CostCalculator;
 use crate::providers::types::{ChatChunk, ChatRequest, Usage, UsageTokenDetails};
-use crate::AppState;
 
 /// POST /v1/chat/completions
 ///
@@ -107,7 +107,9 @@ async fn handle_non_streaming(
     match result {
         Ok(response) => {
             let latency_ms = start.elapsed().as_millis() as u64;
-            let cost = state.cost_calculator.calculate_cost(&model, &response.usage);
+            let cost = state
+                .cost_calculator
+                .calculate_cost(&model, &response.usage);
 
             let _ = state.audit_tx.send(AuditEntry {
                 user_id: user.user_id.clone(),
@@ -360,7 +362,9 @@ impl Stream for ReplayStream {
 /// write-behind via the [`StreamCacheOps`] trait.
 struct AuditingStream {
     /// The underlying provider chunk stream.
-    inner: Pin<Box<dyn futures::Stream<Item = Result<ChatChunk, crate::providers::ProviderError>> + Send>>,
+    inner: Pin<
+        Box<dyn futures::Stream<Item = Result<ChatChunk, crate::providers::ProviderError>> + Send>,
+    >,
     /// Whether the inner stream has finished (we still need to emit Done).
     inner_done: bool,
     /// Whether the Done sentinel has been sent.
@@ -392,7 +396,12 @@ struct AuditingStream {
 
 impl AuditingStream {
     fn new(
-        chunk_stream: Pin<Box<dyn futures::Stream<Item = Result<ChatChunk, crate::providers::ProviderError>> + Send>>,
+        chunk_stream: Pin<
+            Box<
+                dyn futures::Stream<Item = Result<ChatChunk, crate::providers::ProviderError>>
+                    + Send,
+            >,
+        >,
         user_id: String,
         model: String,
         request_id: String,
@@ -631,7 +640,10 @@ mod tests {
     /// Build an `AuditingStream` without cache (for unit tests of non-cache behaviour).
     fn auditing_no_cache(
         chunks: Vec<Result<ChatChunk, crate::providers::ProviderError>>,
-    ) -> (AuditingStream, tokio::sync::mpsc::UnboundedReceiver<AuditEntry>) {
+    ) -> (
+        AuditingStream,
+        tokio::sync::mpsc::UnboundedReceiver<AuditEntry>,
+    ) {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let stream = futures::stream::iter(chunks);
         let s = AuditingStream::new(
@@ -714,18 +726,24 @@ mod tests {
         fn get_cached_events<'a>(
             &'a self,
             _request: &'a ChatRequest,
-        ) -> Pin<Box<dyn std::future::Future<Output = Result<Option<(Vec<String>, &'static str)>, CacheError>> + Send + 'a>> {
+        ) -> Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = Result<Option<(Vec<String>, &'static str)>, CacheError>,
+                    > + Send
+                    + 'a,
+            >,
+        > {
             let result = self.lookup_result.lock().unwrap().clone();
-            Box::pin(async move {
-                Ok(result.map(|events| (events, "exact")))
-            })
+            Box::pin(async move { Ok(result.map(|events| (events, "exact"))) })
         }
 
         fn put_stream_events<'a>(
             &'a self,
             _request: &'a ChatRequest,
             events: Vec<String>,
-        ) -> Pin<Box<dyn std::future::Future<Output = Result<(), CacheError>> + Send + 'a>> {
+        ) -> Pin<Box<dyn std::future::Future<Output = Result<(), CacheError>> + Send + 'a>>
+        {
             self.store_calls.lock().unwrap().push(events);
             let notify = self.store_notify.lock().unwrap().take();
             Box::pin(async move {
@@ -843,7 +861,10 @@ mod tests {
     fn auditing_with_cache(
         chunks: Vec<Result<ChatChunk, crate::providers::ProviderError>>,
         cache: Arc<FakeCache>,
-    ) -> (AuditingStream, tokio::sync::mpsc::UnboundedReceiver<AuditEntry>) {
+    ) -> (
+        AuditingStream,
+        tokio::sync::mpsc::UnboundedReceiver<AuditEntry>,
+    ) {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let stream = futures::stream::iter(chunks);
         let max_events = cache.max_events;
@@ -894,8 +915,8 @@ mod tests {
 
         // Verify each stored payload is valid JSON containing the chunk content.
         for payload in &calls[0] {
-            let _: serde_json::Value = serde_json::from_str(payload)
-                .expect("stored event should be valid JSON");
+            let _: serde_json::Value =
+                serde_json::from_str(payload).expect("stored event should be valid JSON");
         }
     }
 
@@ -925,7 +946,10 @@ mod tests {
 
         let calls = fake.store_calls.lock().unwrap();
         let stored: Vec<&str> = calls[0].iter().map(|s| s.as_str()).collect();
-        assert_eq!(emitted, stored, "emitted payloads must match stored payloads");
+        assert_eq!(
+            emitted, stored,
+            "emitted payloads must match stored payloads"
+        );
     }
 
     #[tokio::test]
@@ -980,15 +1004,16 @@ mod tests {
         // Give spawned tasks a tick.
         tokio::task::yield_now().await;
         let calls = fake.store_calls.lock().unwrap();
-        assert!(calls.is_empty(), "store should NOT be called when buffer overflows");
+        assert!(
+            calls.is_empty(),
+            "store should NOT be called when buffer overflows"
+        );
     }
 
     #[tokio::test]
     async fn test_wrapper_disabled_no_store() {
         // No cache at all.
-        let (stream, _) = auditing_no_cache(
-            vec![Ok(chunk("a")), Ok(chunk("b"))],
-        );
+        let (stream, _) = auditing_no_cache(vec![Ok(chunk("a")), Ok(chunk("b"))]);
 
         let msgs = collect_msgs(stream).await;
         assert_eq!(msgs.len(), 3); // 2 Data + Done
@@ -1105,10 +1130,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_audit_emitted_on_success() {
-        let (stream, mut rx) = auditing_no_cache(vec![
-            Ok(chunk("hi")),
-            Ok(usage_chunk(50, 10)),
-        ]);
+        let (stream, mut rx) = auditing_no_cache(vec![Ok(chunk("hi")), Ok(usage_chunk(50, 10))]);
         let _msgs = collect_msgs(stream).await;
 
         let audit = rx.try_recv().expect("audit entry should be emitted");
@@ -1247,10 +1269,8 @@ mod tests {
     async fn test_handler_buffer_cap_streams_fully_no_store() {
         let fake = Arc::new(FakeCache::with_limits(1, 1_000_000)); // max 1 event
 
-        let (stream, _) = auditing_with_cache(
-            vec![Ok(chunk("a")), Ok(chunk("b"))],
-            Arc::clone(&fake),
-        );
+        let (stream, _) =
+            auditing_with_cache(vec![Ok(chunk("a")), Ok(chunk("b"))], Arc::clone(&fake));
 
         let msgs = collect_msgs(stream).await;
         // Both chunks + Done should arrive (streaming is not affected).
@@ -1258,7 +1278,10 @@ mod tests {
 
         tokio::task::yield_now().await;
         let calls = fake.store_calls.lock().unwrap();
-        assert!(calls.is_empty(), "should NOT store when buffer cap exceeded");
+        assert!(
+            calls.is_empty(),
+            "should NOT store when buffer cap exceeded"
+        );
     }
 
     #[tokio::test]
@@ -1311,7 +1334,10 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
         let calls = fake.store_calls.lock().unwrap();
-        assert!(calls.is_empty(), "Dropped stream should NOT trigger storage");
+        assert!(
+            calls.is_empty(),
+            "Dropped stream should NOT trigger storage"
+        );
     }
 
     #[tokio::test]
@@ -1319,16 +1345,17 @@ mod tests {
         let fake = Arc::new(FakeCache::new());
         let store_rx = fake.on_store();
 
-        let (stream, _audit_rx) = auditing_with_cache(
-            vec![Ok(chunk("foo")), Ok(chunk("bar"))],
-            Arc::clone(&fake),
-        );
+        let (stream, _audit_rx) =
+            auditing_with_cache(vec![Ok(chunk("foo")), Ok(chunk("bar"))], Arc::clone(&fake));
 
         let msgs = collect_msgs(stream).await;
-        let emitted: Vec<String> = msgs.into_iter().filter_map(|m| match m {
-            SseMsg::Data(s) => Some(s),
-            _ => None,
-        }).collect();
+        let emitted: Vec<String> = msgs
+            .into_iter()
+            .filter_map(|m| match m {
+                SseMsg::Data(s) => Some(s),
+                _ => None,
+            })
+            .collect();
 
         // Wait for store
         tokio::time::timeout(std::time::Duration::from_secs(1), store_rx)
@@ -1343,7 +1370,9 @@ mod tests {
         // Depending on implementation, [DONE] might be included or not.
         // Our ReplayStream expects Data payloads. The AuditingStream buffers Data payloads.
         // So they should match exactly.
-        assert_eq!(stored, &emitted, "Stored events must exactly match emitted data payloads");
+        assert_eq!(
+            stored, &emitted,
+            "Stored events must exactly match emitted data payloads"
+        );
     }
 }
-

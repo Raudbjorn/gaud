@@ -11,8 +11,8 @@ use crate::catalog::record::{Data, Record};
 use crate::catalog::schema::base::Base;
 use crate::expr::field::Selector;
 use crate::expr::{
-	Block, ChangeFeed, Expr, Fetch, Fetchs, Field, Fields, Filter, Groups, Idiom, Kind, Literal,
-	Tokenizer,
+    Block, ChangeFeed, Expr, Fetch, Fetchs, Field, Fields, Filter, Groups, Idiom, Kind, Literal,
+    Tokenizer,
 };
 use crate::iam::Auth;
 use crate::kvs::KVValue;
@@ -237,11 +237,11 @@ use crate::val::{Datetime, TableName, Value};
 #[case::record(Record::new(Data::from(Value::Bool(true))), 5)]
 fn test_serialize_deserialize<T>(#[case] original: T, #[case] expected_encoded_size: usize)
 where
-	T: KVValue + std::fmt::Debug + PartialEq,
+    T: KVValue + std::fmt::Debug + PartialEq,
 {
-	let encoded = original.kv_encode_value().unwrap();
-	assert_eq!(encoded.len(), expected_encoded_size);
+    let encoded = original.kv_encode_value().unwrap();
+    assert_eq!(encoded.len(), expected_encoded_size);
 
-	let decoded = T::kv_decode_value(encoded).unwrap();
-	assert_eq!(decoded, original);
+    let decoded = T::kv_decode_value(encoded).unwrap();
+    assert_eq!(decoded, original);
 }

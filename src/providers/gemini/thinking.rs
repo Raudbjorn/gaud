@@ -17,7 +17,7 @@
 //! ## Usage
 //!
 //! ```rust,ignore
-//! use gaud::gemini::convert::GLOBAL_SIGNATURE_CACHE;
+//! use gaud::providers::gemini::convert::GLOBAL_SIGNATURE_CACHE;
 //!
 //! // Store a signature from a response
 //! GLOBAL_SIGNATURE_CACHE.store_tool_signature("toolu_abc123", "sig...", "gemini");
@@ -32,8 +32,8 @@ use std::collections::HashMap;
 use std::sync::RwLock;
 use std::time::{Duration, Instant};
 
-use crate::gemini::constants::{
-    ModelFamily, GEMINI_SKIP_SIGNATURE, MIN_SIGNATURE_LENGTH, SIGNATURE_CACHE_TTL,
+use crate::providers::gemini::constants::{
+    GEMINI_SKIP_SIGNATURE, MIN_SIGNATURE_LENGTH, ModelFamily, SIGNATURE_CACHE_TTL,
 };
 
 /// Sentinel value used when signature cannot be recovered.
@@ -550,9 +550,11 @@ mod tests {
             "global_sig",
             ModelFamily::Gemini,
         );
-        assert!(GLOBAL_SIGNATURE_CACHE
-            .get_tool_signature("global_test")
-            .is_some());
+        assert!(
+            GLOBAL_SIGNATURE_CACHE
+                .get_tool_signature("global_test")
+                .is_some()
+        );
 
         // Clean up
         GLOBAL_SIGNATURE_CACHE.clear_all();

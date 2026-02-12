@@ -24,8 +24,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use futures::stream::StreamExt;
 use futures::Stream;
+use futures::stream::StreamExt;
 use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::RwLock;
@@ -43,8 +43,7 @@ use crate::providers::{LlmProvider, ProviderError};
 // ---------------------------------------------------------------------------
 
 /// URL template for Kiro Desktop Auth token refresh.
-const KIRO_REFRESH_URL_TEMPLATE: &str =
-    "https://prod.{region}.auth.desktop.kiro.dev/refreshToken";
+const KIRO_REFRESH_URL_TEMPLATE: &str = "https://prod.{region}.auth.desktop.kiro.dev/refreshToken";
 
 /// URL template for the Kiro API host.
 /// Fixed in kiro-gateway issue #58 – `q.{region}` works for all regions.
@@ -121,19 +120,13 @@ fn kiro_headers(token: &str, fingerprint: &str) -> reqwest::header::HeaderMap {
     headers.insert("user-agent", HeaderValue::from_str(&ua).unwrap());
     headers.insert(
         "x-amz-user-agent",
-        HeaderValue::from_str(&format!(
-            "aws-sdk-js/1.0.27 KiroIDE-0.7.45-{fingerprint}"
-        ))
-        .unwrap(),
+        HeaderValue::from_str(&format!("aws-sdk-js/1.0.27 KiroIDE-0.7.45-{fingerprint}")).unwrap(),
     );
     headers.insert(
         "x-amzn-codewhisperer-optout",
         HeaderValue::from_static("true"),
     );
-    headers.insert(
-        "x-amzn-kiro-agent-mode",
-        HeaderValue::from_static("vibe"),
-    );
+    headers.insert("x-amzn-kiro-agent-mode", HeaderValue::from_static("vibe"));
     headers.insert(
         HeaderName::from_static("amz-sdk-invocation-id"),
         HeaderValue::from_str(&Uuid::new_v4().to_string()).unwrap(),
@@ -224,17 +217,13 @@ impl KiroAuthManager {
             .json(&payload)
             .send()
             .await
-            .map_err(|e| {
-                ProviderError::Other(format!("Kiro token refresh HTTP error: {e}"))
-            })?;
+            .map_err(|e| ProviderError::Other(format!("Kiro token refresh HTTP error: {e}")))?;
 
         if !resp.status().is_success() {
             let status = resp.status().as_u16();
             let body = resp.text().await.unwrap_or_default();
             return Err(ProviderError::NoToken {
-                provider: format!(
-                    "kiro: token refresh failed (HTTP {status}): {body}"
-                ),
+                provider: format!("kiro: token refresh failed (HTTP {status}): {body}"),
             });
         }
 
@@ -249,12 +238,12 @@ impl KiroAuthManager {
             3600
         }
 
-        let data: RefreshResponse = resp.json().await.map_err(|e| {
-            ProviderError::Other(format!("Kiro token refresh parse error: {e}"))
-        })?;
+        let data: RefreshResponse = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::Other(format!("Kiro token refresh parse error: {e}")))?;
 
-        let expires_at = Utc::now()
-            + chrono::Duration::seconds(data.expires_in)
+        let expires_at = Utc::now() + chrono::Duration::seconds(data.expires_in)
             - chrono::Duration::from_std(EXPIRY_SAFETY_MARGIN).unwrap();
 
         let token = data.access_token.clone();
@@ -349,9 +338,7 @@ impl KiroClient {
             });
         }
 
-        if status == reqwest::StatusCode::UNAUTHORIZED
-            || status == reqwest::StatusCode::FORBIDDEN
-        {
+        if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
             return Err(ProviderError::NoToken {
                 provider: "kiro".to_string(),
             });
@@ -365,9 +352,9 @@ impl KiroClient {
             });
         }
 
-        resp.text()
-            .await
-            .map_err(|e| ProviderError::ResponseParsing(format!("Failed to read Kiro response body: {e}")))
+        resp.text().await.map_err(|e| {
+            ProviderError::ResponseParsing(format!("Failed to read Kiro response body: {e}"))
+        })
     }
 
     /// Send to `generateAssistantResponse` (streaming) and return a stream
@@ -657,7 +644,9 @@ impl LlmProvider for KiroProvider {
             });
 
             Ok(Box::pin(event_stream)
-                as Pin<Box<dyn Stream<Item = Result<ChatChunk, ProviderError>> + Send>>)
+                as Pin<
+                    Box<dyn Stream<Item = Result<ChatChunk, ProviderError>> + Send>,
+                >)
         })
     }
 
@@ -725,7 +714,11 @@ mod tests {
         assert_eq!(body["model"], "claude-sonnet-4");
         assert_eq!(body["max_tokens"], 4096);
         let temp = body["temperature"].as_f64().unwrap();
-        assert!((temp - 0.7).abs() < 1e-5, "Temperature mismatch: {} != 0.7", temp);
+        assert!(
+            (temp - 0.7).abs() < 1e-5,
+            "Temperature mismatch: {} != 0.7",
+            temp
+        );
         assert_eq!(body["messages"].as_array().unwrap().len(), 1);
         assert!(body["system"].is_string() || body["system"].is_array());
     }
@@ -888,10 +881,8 @@ mod tests {
 
     #[test]
     fn test_generate_assistant_response_url_with_arn() {
-        let url = generate_assistant_response_url(
-            "us-east-1",
-            Some("arn:aws:q:us-east-1:123:profile/x"),
-        );
+        let url =
+            generate_assistant_response_url("us-east-1", Some("arn:aws:q:us-east-1:123:profile/x"));
         assert!(url.starts_with("https://q.us-east-1.amazonaws.com/"));
         assert!(url.contains("origin=AI_EDITOR"));
         assert!(url.contains("profileArn=arn%3Aaws"));

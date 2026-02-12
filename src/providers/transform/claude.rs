@@ -1,8 +1,8 @@
+use crate::providers::ProviderError;
 use crate::providers::transform::util;
 use crate::providers::transformer::{ProviderResponseMeta, ProviderTransformer, StreamState};
 use crate::providers::types::*;
-use crate::providers::ProviderError;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 const SUPPORTED_MODELS: &[&str] = &[
     "claude-sonnet-4-20250514",
@@ -48,8 +48,7 @@ impl ClaudeTransformer {
                 }
             }
             ContentPart::ImageUrl { image_url } => {
-                let (source_type, media_type, data) =
-                    util::parse_image_url(&image_url.url);
+                let (source_type, media_type, data) = util::parse_image_url(&image_url.url);
                 if source_type == "url" {
                     Some(json!({
                         "type": "image",
@@ -81,10 +80,7 @@ impl ClaudeTransformer {
         for msg in &alternated {
             match msg.role {
                 MessageRole::Tool => {
-                    let tool_call_id = msg
-                        .tool_call_id
-                        .as_deref()
-                        .unwrap_or("");
+                    let tool_call_id = msg.tool_call_id.as_deref().unwrap_or("");
                     let sanitized_id = util::sanitize_tool_call_id(tool_call_id);
                     let content_text = msg
                         .content
@@ -235,19 +231,14 @@ impl ProviderTransformer for ClaudeTransformer {
         response: Value,
         meta: &ProviderResponseMeta,
     ) -> Result<ChatResponse, ProviderError> {
-        let id = response["id"]
-            .as_str()
-            .unwrap_or("msg_unknown")
-            .to_string();
+        let id = response["id"].as_str().unwrap_or("msg_unknown").to_string();
 
         let model = response["model"]
             .as_str()
             .unwrap_or(&meta.model)
             .to_string();
 
-        let stop_reason = response["stop_reason"]
-            .as_str()
-            .unwrap_or("end_turn");
+        let stop_reason = response["stop_reason"].as_str().unwrap_or("end_turn");
         let finish_reason = self.map_finish_reason(stop_reason).to_string();
 
         let mut content: Option<String> = None;
@@ -265,14 +256,8 @@ impl ProviderTransformer for ClaudeTransformer {
                         }
                     }
                     Some("tool_use") => {
-                        let tc_id = block["id"]
-                            .as_str()
-                            .unwrap_or("")
-                            .to_string();
-                        let name = block["name"]
-                            .as_str()
-                            .unwrap_or("")
-                            .to_string();
+                        let tc_id = block["id"].as_str().unwrap_or("").to_string();
+                        let name = block["name"].as_str().unwrap_or("").to_string();
                         let input = &block["input"];
 
                         tool_calls.push(util::convert_anthropic_tool_use_to_openai(
@@ -298,9 +283,7 @@ impl ProviderTransformer for ClaudeTransformer {
         let cache_creation = usage_obj["cache_creation_input_tokens"]
             .as_u64()
             .unwrap_or(0) as u32;
-        let cache_read = usage_obj["cache_read_input_tokens"]
-            .as_u64()
-            .unwrap_or(0) as u32;
+        let cache_read = usage_obj["cache_read_input_tokens"].as_u64().unwrap_or(0) as u32;
 
         let prompt_tokens_details = if cache_read > 0 || cache_creation > 0 {
             Some(UsageTokenDetails {
@@ -428,18 +411,14 @@ impl StreamState for ClaudeStreamState {
         match event_type {
             "message_start" => {
                 if let Some(message) = event.get("message") {
-                    self.response_id = message["id"]
-                        .as_str()
-                        .unwrap_or("")
-                        .to_string();
+                    self.response_id = message["id"].as_str().unwrap_or("").to_string();
 
                     if let Some(model) = message["model"].as_str() {
                         self.model = model.to_string();
                     }
 
                     if let Some(usage) = message.get("usage") {
-                        self.input_tokens =
-                            usage["input_tokens"].as_u64().unwrap_or(0) as u32;
+                        self.input_tokens = usage["input_tokens"].as_u64().unwrap_or(0) as u32;
                     }
                 }
 
@@ -461,14 +440,8 @@ impl StreamState for ClaudeStreamState {
                         "tool_use" => {
                             self.tool_index += 1;
 
-                            let id = content_block["id"]
-                                .as_str()
-                                .unwrap_or("")
-                                .to_string();
-                            let name = content_block["name"]
-                                .as_str()
-                                .unwrap_or("")
-                                .to_string();
+                            let id = content_block["id"].as_str().unwrap_or("").to_string();
+                            let name = content_block["name"].as_str().unwrap_or("").to_string();
 
                             let tool_call = ToolCall {
                                 index: Some(self.tool_index as u32),
@@ -506,10 +479,7 @@ impl StreamState for ClaudeStreamState {
 
                     match delta_type {
                         "text_delta" => {
-                            let text = delta_obj["text"]
-                                .as_str()
-                                .unwrap_or("")
-                                .to_string();
+                            let text = delta_obj["text"].as_str().unwrap_or("").to_string();
 
                             let delta = Delta {
                                 role: None,
@@ -521,10 +491,8 @@ impl StreamState for ClaudeStreamState {
                             Ok(Some(self.make_chunk(delta, None, None)))
                         }
                         "input_json_delta" => {
-                            let partial_json = delta_obj["partial_json"]
-                                .as_str()
-                                .unwrap_or("")
-                                .to_string();
+                            let partial_json =
+                                delta_obj["partial_json"].as_str().unwrap_or("").to_string();
 
                             let tool_call = ToolCall {
                                 index: Some(self.tool_index as u32),
@@ -563,8 +531,7 @@ impl StreamState for ClaudeStreamState {
                 }
 
                 if let Some(usage) = event.get("usage") {
-                    self.output_tokens =
-                        usage["output_tokens"].as_u64().unwrap_or(0) as u32;
+                    self.output_tokens = usage["output_tokens"].as_u64().unwrap_or(0) as u32;
                 }
 
                 let finish_reason = self.finish_reason.clone();
@@ -882,7 +849,10 @@ mod tests {
             result.choices[0].message.content.as_deref(),
             Some("Let me check the weather.")
         );
-        assert_eq!(result.choices[0].finish_reason.as_deref(), Some("tool_calls"));
+        assert_eq!(
+            result.choices[0].finish_reason.as_deref(),
+            Some("tool_calls")
+        );
 
         let tool_calls = result.choices[0].message.tool_calls.as_ref().unwrap();
         assert_eq!(tool_calls.len(), 1);
@@ -943,10 +913,7 @@ mod tests {
         let tool_calls = chunk.choices[0].delta.tool_calls.as_ref().unwrap();
         assert_eq!(tool_calls.len(), 1);
         assert_eq!(tool_calls[0].index, Some(0));
-        assert_eq!(
-            tool_calls[0].function.arguments,
-            r#"{"location": "SF"}"#
-        );
+        assert_eq!(tool_calls[0].function.arguments, r#"{"location": "SF"}"#);
         // Content must NOT be set for tool call deltas
         assert!(chunk.choices[0].delta.content.is_none());
     }
@@ -969,10 +936,7 @@ mod tests {
 
         assert!(result.is_some());
         let chunk = result.unwrap();
-        assert_eq!(
-            chunk.choices[0].finish_reason.as_deref(),
-            Some("stop")
-        );
+        assert_eq!(chunk.choices[0].finish_reason.as_deref(), Some("stop"));
 
         let usage = chunk.usage.as_ref().unwrap();
         assert_eq!(usage.prompt_tokens, 42);

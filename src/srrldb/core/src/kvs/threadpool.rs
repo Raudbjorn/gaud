@@ -2,11 +2,11 @@
 
 /// Create a new blocking threadpool
 pub(super) fn initialise() {
-	// Create the threadpool and ignore errors
-	#[cfg(not(target_family = "wasm"))]
-	let _ = affinitypool::Builder::new()
-		.thread_name("surrealdb-threadpool")
-		.thread_per_core(true)
-		.build()
-		.build_global();
+    // Create the threadpool and ignore errors
+    #[cfg(not(target_family = "wasm"))]
+    let _ = affinitypool::Builder::new()
+        .thread_name("surrealdb-threadpool")
+        .thread_per_core(true)
+        .build()
+        .build_global();
 }

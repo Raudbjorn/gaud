@@ -12,30 +12,34 @@ type Distinct = Trie<Key, bool>;
 
 #[derive(Default)]
 pub(crate) struct SyncDistinct {
-	processed: Distinct,
+    processed: Distinct,
 }
 
 impl SyncDistinct {
-	pub(super) fn new(ctx: &FrozenContext) -> Option<Self> {
-		if let Some(pla) = ctx.get_query_planner()
-			&& pla.requires_distinct()
-		{
-			return Some(Self::default());
-		}
-		None
-	}
+    pub(super) fn new(ctx: &FrozenContext) -> Option<Self> {
+        if let Some(pla) = ctx.get_query_planner()
+            && pla.requires_distinct()
+        {
+            return Some(Self::default());
+        }
+        None
+    }
 
-	pub(super) fn check_already_processed(&mut self, pro: &Processable) -> bool {
-		// If the serialization failed we couldn't have processed it.
-		if let Some(key) = pro.rid.as_ref().and_then(|r| storekey::encode_vec(&**r).ok()) {
-			if self.processed.get(&key).is_some() {
-				true
-			} else {
-				self.processed.insert(key, true);
-				false
-			}
-		} else {
-			false
-		}
-	}
+    pub(super) fn check_already_processed(&mut self, pro: &Processable) -> bool {
+        // If the serialization failed we couldn't have processed it.
+        if let Some(key) = pro
+            .rid
+            .as_ref()
+            .and_then(|r| storekey::encode_vec(&**r).ok())
+        {
+            if self.processed.get(&key).is_some() {
+                true
+            } else {
+                self.processed.insert(key, true);
+                false
+            }
+        } else {
+            false
+        }
+    }
 }

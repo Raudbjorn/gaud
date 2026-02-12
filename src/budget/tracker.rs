@@ -40,7 +40,11 @@ impl BudgetTracker {
 
     /// Check whether a user is within their budget, resetting period counters
     /// if the current period has elapsed.
-    pub fn check_budget(&self, user_id: &str, warning_threshold_percent: u8) -> Result<BudgetStatus, AppError> {
+    pub fn check_budget(
+        &self,
+        user_id: &str,
+        warning_threshold_percent: u8,
+    ) -> Result<BudgetStatus, AppError> {
         // Reset stale periods first.
         self.maybe_reset_periods(user_id)?;
 
@@ -176,7 +180,9 @@ impl BudgetTracker {
         let mut needs_daily_reset = false;
 
         // Check monthly period.
-        if let Ok(period_start) = NaiveDateTime::parse_from_str(&budget.period_start, "%Y-%m-%d %H:%M:%S") {
+        if let Ok(period_start) =
+            NaiveDateTime::parse_from_str(&budget.period_start, "%Y-%m-%d %H:%M:%S")
+        {
             // Reset if we're in a new month relative to period_start.
             let next_month = add_one_month(period_start);
             if now >= next_month {
@@ -283,7 +289,9 @@ mod tests {
         let db = test_db();
         let tracker = BudgetTracker::new(db);
 
-        tracker.set_budget("user1", Some(100.0), Some(10.0)).unwrap();
+        tracker
+            .set_budget("user1", Some(100.0), Some(10.0))
+            .unwrap();
         let budget = tracker.get_budget("user1").unwrap().unwrap();
         assert_eq!(budget.monthly_limit, Some(100.0));
         assert_eq!(budget.daily_limit, Some(10.0));
@@ -305,7 +313,9 @@ mod tests {
         let db = test_db();
         let tracker = BudgetTracker::new(db);
 
-        tracker.set_budget("user1", Some(100.0), Some(10.0)).unwrap();
+        tracker
+            .set_budget("user1", Some(100.0), Some(10.0))
+            .unwrap();
         tracker.record_usage("user1", 5.0).unwrap();
 
         let budget = tracker.get_budget("user1").unwrap().unwrap();
@@ -318,7 +328,9 @@ mod tests {
         let db = test_db();
         let tracker = BudgetTracker::new(db);
 
-        tracker.set_budget("user1", Some(100.0), Some(10.0)).unwrap();
+        tracker
+            .set_budget("user1", Some(100.0), Some(10.0))
+            .unwrap();
         let status = tracker.check_budget("user1", 80).unwrap();
         assert_eq!(status, BudgetStatus::Ok);
     }
@@ -339,7 +351,9 @@ mod tests {
 
         // Use a daily limit higher than the usage so the daily check does not
         // return Exceeded before the monthly warning threshold is evaluated.
-        tracker.set_budget("user1", Some(100.0), Some(200.0)).unwrap();
+        tracker
+            .set_budget("user1", Some(100.0), Some(200.0))
+            .unwrap();
         tracker.record_usage("user1", 85.0).unwrap();
 
         let status = tracker.check_budget("user1", 80).unwrap();
@@ -351,7 +365,9 @@ mod tests {
         let db = test_db();
         let tracker = BudgetTracker::new(db);
 
-        tracker.set_budget("user1", Some(100.0), Some(200.0)).unwrap();
+        tracker
+            .set_budget("user1", Some(100.0), Some(200.0))
+            .unwrap();
         tracker.record_usage("user1", 100.0).unwrap();
 
         let status = tracker.check_budget("user1", 80).unwrap();
@@ -363,7 +379,9 @@ mod tests {
         let db = test_db();
         let tracker = BudgetTracker::new(db);
 
-        tracker.set_budget("user1", Some(1000.0), Some(10.0)).unwrap();
+        tracker
+            .set_budget("user1", Some(1000.0), Some(10.0))
+            .unwrap();
         tracker.record_usage("user1", 10.0).unwrap();
 
         let status = tracker.check_budget("user1", 80).unwrap();
@@ -375,8 +393,12 @@ mod tests {
         let db = test_db();
         let tracker = BudgetTracker::new(db);
 
-        tracker.set_budget("user1", Some(100.0), Some(10.0)).unwrap();
-        tracker.set_budget("user1", Some(200.0), Some(20.0)).unwrap();
+        tracker
+            .set_budget("user1", Some(100.0), Some(10.0))
+            .unwrap();
+        tracker
+            .set_budget("user1", Some(200.0), Some(20.0))
+            .unwrap();
 
         let budget = tracker.get_budget("user1").unwrap().unwrap();
         assert_eq!(budget.monthly_limit, Some(200.0));
@@ -397,7 +419,10 @@ mod tests {
 
     #[test]
     fn test_add_one_month_normal() {
-        let dt = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap().and_hms_opt(12, 0, 0).unwrap();
+        let dt = NaiveDate::from_ymd_opt(2025, 1, 15)
+            .unwrap()
+            .and_hms_opt(12, 0, 0)
+            .unwrap();
         let result = add_one_month(dt);
         assert_eq!(result.month(), 2);
         assert_eq!(result.day(), 15);
@@ -405,7 +430,10 @@ mod tests {
 
     #[test]
     fn test_add_one_month_december() {
-        let dt = NaiveDate::from_ymd_opt(2025, 12, 15).unwrap().and_hms_opt(12, 0, 0).unwrap();
+        let dt = NaiveDate::from_ymd_opt(2025, 12, 15)
+            .unwrap()
+            .and_hms_opt(12, 0, 0)
+            .unwrap();
         let result = add_one_month(dt);
         assert_eq!(result.year(), 2026);
         assert_eq!(result.month(), 1);
@@ -414,7 +442,10 @@ mod tests {
     #[test]
     fn test_add_one_month_day_clamping() {
         // January 31 -> February 28 (non-leap year)
-        let dt = NaiveDate::from_ymd_opt(2025, 1, 31).unwrap().and_hms_opt(12, 0, 0).unwrap();
+        let dt = NaiveDate::from_ymd_opt(2025, 1, 31)
+            .unwrap()
+            .and_hms_opt(12, 0, 0)
+            .unwrap();
         let result = add_one_month(dt);
         assert_eq!(result.month(), 2);
         assert_eq!(result.day(), 28);
@@ -433,7 +464,9 @@ mod tests {
         let db = test_db();
         let tracker = BudgetTracker::new(db);
 
-        tracker.set_budget("user1", Some(100.0), Some(50.0)).unwrap();
+        tracker
+            .set_budget("user1", Some(100.0), Some(50.0))
+            .unwrap();
         tracker.record_usage("user1", 5.0).unwrap();
         tracker.record_usage("user1", 3.0).unwrap();
         tracker.record_usage("user1", 2.0).unwrap();

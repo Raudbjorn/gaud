@@ -11,13 +11,13 @@ use http::HeaderName;
 pub const X_SURREAL_REQUEST_ID: HeaderName = HeaderName::from_static("x-surreal-request-id");
 
 pub mod format {
-	//! MIME type string constants for use in HTTP headers
+    //! MIME type string constants for use in HTTP headers
 
-	pub const JSON: &str = "application/json";
-	pub const CBOR: &str = "application/cbor";
-	pub const FLATBUFFERS: &str = "application/vnd.surrealdb.flatbuffers";
-	pub const NATIVE: &str = "application/vnd.surrealdb.native";
+    pub const JSON: &str = "application/json";
+    pub const CBOR: &str = "application/cbor";
+    pub const FLATBUFFERS: &str = "application/vnd.surrealdb.flatbuffers";
+    pub const NATIVE: &str = "application/vnd.surrealdb.native";
 
-	pub const PLAIN: &str = "text/plain";
-	pub const OCTET_STREAM: &str = "application/octet-stream";
+    pub const PLAIN: &str = "text/plain";
+    pub const OCTET_STREAM: &str = "application/octet-stream";
 }

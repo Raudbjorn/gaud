@@ -10,52 +10,51 @@ use crate::sql::Expr;
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[derive(DeepSizeOf)]
 pub(crate) struct Fetchs(
-	#[cfg_attr(feature = "arbitrary", arbitrary(with = crate::sql::arbitrary::atleast_one))]
-	pub(crate) Vec<Fetch>,
+    #[cfg_attr(feature = "arbitrary", arbitrary(with = crate::sql::arbitrary::atleast_one))]
+    pub(crate) Vec<Fetch>,
 );
 
 impl Deref for Fetchs {
-	type Target = Vec<Fetch>;
-	fn deref(&self) -> &Self::Target {
-		&self.0
-	}
+    type Target = Vec<Fetch>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 impl ToSql for Fetchs {
-	fn fmt_sql(&self, f: &mut String, fmt: SqlFormat) {
-		write_sql!(f, fmt, "FETCH {}", Fmt::comma_separated(&self.0))
-	}
+    fn fmt_sql(&self, f: &mut String, fmt: SqlFormat) {
+        write_sql!(f, fmt, "FETCH {}", Fmt::comma_separated(&self.0))
+    }
 }
 
 impl From<Fetchs> for crate::expr::Fetchs {
-	fn from(v: Fetchs) -> Self {
-		Self::new(v.0.into_iter().map(Into::into).collect())
-	}
+    fn from(v: Fetchs) -> Self {
+        Self::new(v.0.into_iter().map(Into::into).collect())
+    }
 }
 impl From<crate::expr::Fetchs> for Fetchs {
-	fn from(v: crate::expr::Fetchs) -> Self {
-		Self(v.into_iter().map(Into::into).collect())
-	}
+    fn from(v: crate::expr::Fetchs) -> Self {
+        Self(v.into_iter().map(Into::into).collect())
+    }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[derive(DeepSizeOf)]
+#[derive(Clone, Debug, Eq, PartialEq, DeepSizeOf)]
 pub(crate) struct Fetch(pub(crate) Expr);
 
 impl ToSql for Fetch {
-	fn fmt_sql(&self, f: &mut String, fmt: SqlFormat) {
-		self.0.fmt_sql(f, fmt);
-	}
+    fn fmt_sql(&self, f: &mut String, fmt: SqlFormat) {
+        self.0.fmt_sql(f, fmt);
+    }
 }
 
 impl From<Fetch> for crate::expr::Fetch {
-	fn from(v: Fetch) -> Self {
-		crate::expr::Fetch(v.0.into())
-	}
+    fn from(v: Fetch) -> Self {
+        crate::expr::Fetch(v.0.into())
+    }
 }
 
 impl From<crate::expr::Fetch> for Fetch {
-	fn from(v: crate::expr::Fetch) -> Self {
-		Fetch(v.0.into())
-	}
+    fn from(v: crate::expr::Fetch) -> Self {
+        Fetch(v.0.into())
+    }
 }

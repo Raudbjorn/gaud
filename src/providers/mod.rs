@@ -46,9 +46,7 @@ pub enum ProviderError {
     Http(#[from] reqwest::Error),
 
     #[error("No token available for {provider}")]
-    NoToken {
-        provider: String,
-    },
+    NoToken { provider: String },
 
     #[error("Authentication failed for {provider}: {message}")]
     Authentication {
@@ -65,10 +63,7 @@ pub enum ProviderError {
     NoProvider(String),
 
     #[error("All providers failed for model {model}")]
-    AllFailed {
-        model: String,
-        errors: Vec<String>,
-    },
+    AllFailed { model: String, errors: Vec<String> },
 
     #[error("Stream error: {0}")]
     Stream(String),
@@ -89,15 +84,10 @@ pub enum ProviderError {
     },
 
     #[error("API error ({status}): {message}")]
-    Api {
-        status: u16,
-        message: String,
-    },
+    Api { status: u16, message: String },
 
     #[error("Timeout after {timeout_secs}s")]
-    Timeout {
-        timeout_secs: u64,
-    },
+    Timeout { timeout_secs: u64 },
 
     #[error("Invalid request: {0}")]
     InvalidRequest(String),
@@ -124,9 +114,11 @@ impl ProviderError {
     /// Get the retry-after duration if this is a rate limit error.
     pub fn retry_after_duration(&self) -> Option<Duration> {
         match self {
-            Self::RateLimited { retry_after, retry_after_secs, .. } => {
-                retry_after.or_else(|| Some(Duration::from_secs(*retry_after_secs)))
-            }
+            Self::RateLimited {
+                retry_after,
+                retry_after_secs,
+                ..
+            } => retry_after.or_else(|| Some(Duration::from_secs(*retry_after_secs))),
             _ => None,
         }
     }
@@ -258,15 +250,26 @@ mod tests {
     #[test]
     fn test_provider_error_status_codes() {
         assert_eq!(
-            ProviderError::RateLimited { retry_after_secs: 30, retry_after: None }.status_code(),
+            ProviderError::RateLimited {
+                retry_after_secs: 30,
+                retry_after: None
+            }
+            .status_code(),
             Some(429)
         );
         assert_eq!(
-            ProviderError::Api { status: 503, message: "overloaded".into() }.status_code(),
+            ProviderError::Api {
+                status: 503,
+                message: "overloaded".into()
+            }
+            .status_code(),
             Some(503)
         );
         assert_eq!(
-            ProviderError::NoToken { provider: "claude".into() }.status_code(),
+            ProviderError::NoToken {
+                provider: "claude".into()
+            }
+            .status_code(),
             Some(401)
         );
         assert_eq!(

@@ -4,8 +4,8 @@ pub mod embeddings;
 pub mod health;
 pub mod models;
 
-use axum::routing::{delete, get, post, put};
 use axum::Router;
+use axum::routing::{delete, get, post, put};
 
 use crate::AppState;
 

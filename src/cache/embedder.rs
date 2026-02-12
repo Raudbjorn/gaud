@@ -1,6 +1,6 @@
 use crate::cache::types::CacheError;
-use url::Url;
 use std::net::IpAddr;
+use url::Url;
 
 /// Call an OpenAI-compatible `/v1/embeddings` endpoint and return the vector.
 ///
@@ -68,7 +68,8 @@ async fn ensure_safe_url(url_str: &str, allow_local: bool) -> Result<(), CacheEr
     let url = Url::parse(url_str)
         .map_err(|e| CacheError::InvalidConfig(format!("Invalid embedding URL: {e}")))?;
 
-    let host_str = url.host_str()
+    let host_str = url
+        .host_str()
         .ok_or_else(|| CacheError::InvalidConfig("URL missing host".into()))?;
 
     // Resolve hostname to IPs
@@ -78,7 +79,7 @@ async fn ensure_safe_url(url_str: &str, allow_local: bool) -> Result<(), CacheEr
 
     for addr in addrs {
         if !is_public_ip(&addr.ip()) {
-             return Err(CacheError::InvalidConfig(format!(
+            return Err(CacheError::InvalidConfig(format!(
                 "SSRF Protection: URL resolves to private/local address {}",
                 addr.ip()
             )));
@@ -90,11 +91,7 @@ async fn ensure_safe_url(url_str: &str, allow_local: bool) -> Result<(), CacheEr
 
 fn is_public_ip(addr: &IpAddr) -> bool {
     match addr {
-        IpAddr::V4(ipv4) => {
-            !ipv4.is_private()
-            && !ipv4.is_loopback()
-            && !ipv4.is_link_local()
-        }
+        IpAddr::V4(ipv4) => !ipv4.is_private() && !ipv4.is_loopback() && !ipv4.is_link_local(),
         IpAddr::V6(ipv6) => {
             !ipv6.is_loopback() && !ipv6.is_unique_local() && !ipv6.is_unicast_link_local()
         }
@@ -122,22 +119,54 @@ mod tests {
     #[tokio::test]
     async fn test_ensure_safe_url_blocks_private() {
         // Safe public URLs (allow_local = false)
-        assert!(ensure_safe_url("https://api.openai.com/v1/embeddings", false).await.is_ok());
-        assert!(ensure_safe_url("https://www.google.com", false).await.is_ok());
+        assert!(
+            ensure_safe_url("https://api.openai.com/v1/embeddings", false)
+                .await
+                .is_ok()
+        );
+        assert!(
+            ensure_safe_url("https://www.google.com", false)
+                .await
+                .is_ok()
+        );
 
         // Unsafe local/private URLs (allow_local = false)
-        assert!(ensure_safe_url("http://localhost:8080", false).await.is_err());
-        assert!(ensure_safe_url("http://127.0.0.1:8080", false).await.is_err());
-        assert!(ensure_safe_url("http://10.0.0.5:8080", false).await.is_err());
-        assert!(ensure_safe_url("http://192.168.1.1:8080", false).await.is_err());
+        assert!(
+            ensure_safe_url("http://localhost:8080", false)
+                .await
+                .is_err()
+        );
+        assert!(
+            ensure_safe_url("http://127.0.0.1:8080", false)
+                .await
+                .is_err()
+        );
+        assert!(
+            ensure_safe_url("http://10.0.0.5:8080", false)
+                .await
+                .is_err()
+        );
+        assert!(
+            ensure_safe_url("http://192.168.1.1:8080", false)
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
     async fn test_ensure_safe_url_allow_local() {
         // When allow_local is true, local addresses should be accepted
-        assert!(ensure_safe_url("http://localhost:11434", true).await.is_ok());
+        assert!(
+            ensure_safe_url("http://localhost:11434", true)
+                .await
+                .is_ok()
+        );
         assert!(ensure_safe_url("http://127.0.0.1:8080", true).await.is_ok());
-        assert!(ensure_safe_url("http://192.168.1.50:8080", true).await.is_ok());
+        assert!(
+            ensure_safe_url("http://192.168.1.50:8080", true)
+                .await
+                .is_ok()
+        );
     }
 
     #[test]

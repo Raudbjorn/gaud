@@ -15,7 +15,7 @@ use serde_json::Value;
 /// This is the wrapper format required by Cloud Code.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct GoogleRequest {
+pub struct GoogleRequest {
     /// The conversation contents.
     pub contents: Vec<Content>,
 
@@ -81,7 +81,7 @@ impl Default for GoogleRequest {
 /// Response from Google Generative AI API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct GoogleResponse {
+pub struct GoogleResponse {
     /// Generated candidates.
     #[serde(default)]
     pub candidates: Vec<Candidate>,
@@ -110,7 +110,7 @@ impl GoogleResponse {
 /// A generated candidate.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct Candidate {
+pub struct Candidate {
     /// Generated content.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<Content>,
@@ -135,7 +135,7 @@ pub(crate) struct Candidate {
 /// Safety rating for content.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct SafetyRating {
+pub struct SafetyRating {
     /// Category of the rating.
     pub category: String,
 
@@ -146,7 +146,7 @@ pub(crate) struct SafetyRating {
 /// Content in a message.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct Content {
+pub struct Content {
     /// The role ("user" or "model").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
@@ -189,7 +189,7 @@ impl Content {
 /// A part of content.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct Part {
+pub struct Part {
     /// Text content.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
@@ -309,7 +309,7 @@ impl Part {
 /// A function call from the model.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct FunctionCall {
+pub struct FunctionCall {
     /// Name of the function to call.
     pub name: String,
 
@@ -344,7 +344,7 @@ impl FunctionCall {
 /// A function response to send back to the model.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct FunctionResponse {
+pub struct FunctionResponse {
     /// Name of the function that was called.
     pub name: String,
 
@@ -387,7 +387,7 @@ impl FunctionResponse {
 /// Data in a function response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct FunctionResponseData {
+pub struct FunctionResponseData {
     /// Text content of the response.
     pub content: String,
 }
@@ -395,7 +395,7 @@ pub(crate) struct FunctionResponseData {
 /// Inline data (for images, audio, etc.).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct InlineData {
+pub struct InlineData {
     /// MIME type of the data.
     pub mime_type: String,
 
@@ -416,7 +416,7 @@ impl InlineData {
 /// File data reference.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct FileData {
+pub struct FileData {
     /// MIME type of the file.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mime_type: Option<String>,
@@ -428,7 +428,7 @@ pub(crate) struct FileData {
 /// Generation configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct GenerationConfig {
+pub struct GenerationConfig {
     /// Maximum output tokens.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_output_tokens: Option<u32>,
@@ -471,7 +471,7 @@ impl GenerationConfig {
 /// Tool definition for Google API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct GoogleTool {
+pub struct GoogleTool {
     /// Function declarations.
     pub function_declarations: Vec<FunctionDeclaration>,
 }
@@ -488,7 +488,7 @@ impl GoogleTool {
 /// Function declaration for tools.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct FunctionDeclaration {
+pub struct FunctionDeclaration {
     /// Function name.
     pub name: String,
 
@@ -519,7 +519,7 @@ impl FunctionDeclaration {
 /// Tool configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ToolConfig {
+pub struct ToolConfig {
     /// Function calling config.
     pub function_calling_config: FunctionCallingConfig,
 }
@@ -569,7 +569,7 @@ impl ToolConfig {
 /// Function calling configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct FunctionCallingConfig {
+pub struct FunctionCallingConfig {
     /// Mode: AUTO, ANY, or NONE.
     pub mode: String,
 
@@ -581,7 +581,7 @@ pub(crate) struct FunctionCallingConfig {
 /// Thinking configuration for Google API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct GoogleThinkingConfig {
+pub struct GoogleThinkingConfig {
     /// Include thoughts in the response.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub include_thoughts: Option<bool>,
@@ -618,7 +618,7 @@ impl GoogleThinkingConfig {
 /// Usage metadata from Google API.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct UsageMetadata {
+pub struct UsageMetadata {
     /// Prompt token count.
     #[serde(default)]
     pub prompt_token_count: u32,
@@ -650,7 +650,7 @@ impl UsageMetadata {
 /// Wrapper for Cloud Code API requests.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct CloudCodeWrapper {
+pub struct CloudCodeWrapper {
     /// Project ID.
     pub project: String,
 
@@ -841,10 +841,12 @@ mod tests {
         let force = ToolConfig::force("specific_function");
         let json = serde_json::to_value(&force).unwrap();
         assert_eq!(json["functionCallingConfig"]["mode"], "ANY");
-        assert!(json["functionCallingConfig"]["allowedFunctionNames"]
-            .as_array()
-            .unwrap()
-            .contains(&json!("specific_function")));
+        assert!(
+            json["functionCallingConfig"]["allowedFunctionNames"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("specific_function"))
+        );
     }
 
     #[test]

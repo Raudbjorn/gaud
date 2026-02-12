@@ -47,24 +47,26 @@ use crate::val::{Closure, Value};
 ///         };
 /// ```
 pub async fn body(
-	(stk, ctx, opt, doc): (&mut Stk, &FrozenContext, &Options, Option<&CursorDoc>),
-	(FromPublic(req), next, Optional(strategy)): (
-		FromPublic<ApiRequest>,
-		Box<Closure>,
-		Optional<FromPublic<BodyStrategy>>,
-	),
+    (stk, ctx, opt, doc): (&mut Stk, &FrozenContext, &Options, Option<&CursorDoc>),
+    (FromPublic(req), next, Optional(strategy)): (
+        FromPublic<ApiRequest>,
+        Box<Closure>,
+        Optional<FromPublic<BodyStrategy>>,
+    ),
 ) -> Result<Value> {
-	let res = next.invoke(stk, ctx, opt, doc, vec![req.clone().into()]).await?;
-	let mut res: ApiResponse = res.try_into()?;
+    let res = next
+        .invoke(stk, ctx, opt, doc, vec![req.clone().into()])
+        .await?;
+    let mut res: ApiResponse = res.try_into()?;
 
-	let strategy = strategy.map(|x| x.0).unwrap_or_default();
-	let Some(strategy) = output_body_strategy(&req.headers, strategy) else {
-		return Err(ApiError::NoOutputStrategy.into());
-	};
+    let strategy = strategy.map(|x| x.0).unwrap_or_default();
+    let Some(strategy) = output_body_strategy(&req.headers, strategy) else {
+        return Err(ApiError::NoOutputStrategy.into());
+    };
 
-	convert_response_value(&mut res, strategy)?;
+    convert_response_value(&mut res, strategy)?;
 
-	Ok(res.into())
+    Ok(res.into())
 }
 
 /// Middleware function that sets the HTTP status code of the response.
@@ -89,20 +91,20 @@ pub async fn body(
 ///         };
 /// ```
 pub async fn status(
-	(stk, ctx, opt, doc): (&mut Stk, &FrozenContext, &Options, Option<&CursorDoc>),
-	(req, next, status): (Value, Box<Closure>, i64),
+    (stk, ctx, opt, doc): (&mut Stk, &FrozenContext, &Options, Option<&CursorDoc>),
+    (req, next, status): (Value, Box<Closure>, i64),
 ) -> Result<Value> {
-	let res = next.invoke(stk, ctx, opt, doc, vec![req]).await?;
-	let mut res: ApiResponse = res.try_into()?;
+    let res = next.invoke(stk, ctx, opt, doc, vec![req]).await?;
+    let mut res: ApiResponse = res.try_into()?;
 
-	// Validate status code: must be a valid u16 and a valid HTTP status code (100-599)
-	let status = u16::try_from(status)
-		.ok()
-		.and_then(|s| StatusCode::from_u16(s).ok())
-		.ok_or(ApiError::InvalidStatusCode(status))?;
+    // Validate status code: must be a valid u16 and a valid HTTP status code (100-599)
+    let status = u16::try_from(status)
+        .ok()
+        .and_then(|s| StatusCode::from_u16(s).ok())
+        .ok_or(ApiError::InvalidStatusCode(status))?;
 
-	res.status = status;
-	Ok(res.into())
+    res.status = status;
+    Ok(res.into())
 }
 
 /// Middleware function that sets or removes a single response header.
@@ -128,25 +130,26 @@ pub async fn status(
 ///         };
 /// ```
 pub async fn header(
-	(stk, ctx, opt, doc): (&mut Stk, &FrozenContext, &Options, Option<&CursorDoc>),
-	(req, next, name, Optional(value)): (Value, Box<Closure>, String, Optional<String>),
+    (stk, ctx, opt, doc): (&mut Stk, &FrozenContext, &Options, Option<&CursorDoc>),
+    (req, next, name, Optional(value)): (Value, Box<Closure>, String, Optional<String>),
 ) -> Result<Value> {
-	let res = next.invoke(stk, ctx, opt, doc, vec![req]).await?;
-	let mut res: ApiResponse = res.try_into()?;
+    let res = next.invoke(stk, ctx, opt, doc, vec![req]).await?;
+    let mut res: ApiResponse = res.try_into()?;
 
-	let name: HeaderName =
-		name.parse().map_err(|e| ApiError::InvalidHeaderName(format!("{}: {}", name, e)))?;
-	if let Some(value) = value {
-		let value: HeaderValue = value.parse().map_err(|e| ApiError::InvalidHeaderValue {
-			name: name.to_string(),
-			value: format!("{}: {}", value, e),
-		})?;
-		res.headers.insert(name, value)
-	} else {
-		res.headers.remove(name)
-	};
+    let name: HeaderName = name
+        .parse()
+        .map_err(|e| ApiError::InvalidHeaderName(format!("{}: {}", name, e)))?;
+    if let Some(value) = value {
+        let value: HeaderValue = value.parse().map_err(|e| ApiError::InvalidHeaderValue {
+            name: name.to_string(),
+            value: format!("{}: {}", value, e),
+        })?;
+        res.headers.insert(name, value)
+    } else {
+        res.headers.remove(name)
+    };
 
-	Ok(res.into())
+    Ok(res.into())
 }
 
 /// Middleware function that sets or removes multiple response headers at once.
@@ -180,27 +183,28 @@ pub async fn header(
 ///         };
 /// ```
 pub async fn headers(
-	(stk, ctx, opt, doc): (&mut Stk, &FrozenContext, &Options, Option<&CursorDoc>),
-	(req, next, headers): (Value, Box<Closure>, BTreeMap<String, Option<String>>),
+    (stk, ctx, opt, doc): (&mut Stk, &FrozenContext, &Options, Option<&CursorDoc>),
+    (req, next, headers): (Value, Box<Closure>, BTreeMap<String, Option<String>>),
 ) -> Result<Value> {
-	let res = next.invoke(stk, ctx, opt, doc, vec![req]).await?;
-	let mut res: ApiResponse = res.try_into()?;
+    let res = next.invoke(stk, ctx, opt, doc, vec![req]).await?;
+    let mut res: ApiResponse = res.try_into()?;
 
-	for (k, value) in headers {
-		let name: HeaderName =
-			k.parse().map_err(|e| ApiError::InvalidHeaderName(format!("{}: {}", k, e)))?;
+    for (k, value) in headers {
+        let name: HeaderName = k
+            .parse()
+            .map_err(|e| ApiError::InvalidHeaderName(format!("{}: {}", k, e)))?;
 
-		if let Some(value) = value {
-			let value: HeaderValue = value.parse().map_err(|e| ApiError::InvalidHeaderValue {
-				name: k.clone(),
-				value: format!("{}: {}", value, e),
-			})?;
+        if let Some(value) = value {
+            let value: HeaderValue = value.parse().map_err(|e| ApiError::InvalidHeaderValue {
+                name: k.clone(),
+                value: format!("{}: {}", value, e),
+            })?;
 
-			res.headers.insert(name, value);
-		} else {
-			res.headers.remove(name);
-		}
-	}
+            res.headers.insert(name, value);
+        } else {
+            res.headers.remove(name);
+        }
+    }
 
-	Ok(res.into())
+    Ok(res.into())
 }

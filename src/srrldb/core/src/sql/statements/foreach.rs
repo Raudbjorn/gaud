@@ -8,33 +8,40 @@ use crate::sql::{Block, Expr, Param};
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[derive(DeepSizeOf)]
 pub struct ForeachStatement {
-	pub param: Param,
-	pub range: Expr,
-	pub block: Block,
+    pub param: Param,
+    pub range: Expr,
+    pub block: Block,
 }
 
 impl ToSql for ForeachStatement {
-	fn fmt_sql(&self, f: &mut String, sql_fmt: SqlFormat) {
-		write_sql!(f, sql_fmt, "FOR {} IN {} {}", self.param, CoverStmts(&self.range), self.block)
-	}
+    fn fmt_sql(&self, f: &mut String, sql_fmt: SqlFormat) {
+        write_sql!(
+            f,
+            sql_fmt,
+            "FOR {} IN {} {}",
+            self.param,
+            CoverStmts(&self.range),
+            self.block
+        )
+    }
 }
 
 impl From<ForeachStatement> for crate::expr::statements::ForeachStatement {
-	fn from(v: ForeachStatement) -> Self {
-		Self {
-			param: v.param.into(),
-			range: v.range.into(),
-			block: v.block.into(),
-		}
-	}
+    fn from(v: ForeachStatement) -> Self {
+        Self {
+            param: v.param.into(),
+            range: v.range.into(),
+            block: v.block.into(),
+        }
+    }
 }
 
 impl From<crate::expr::statements::ForeachStatement> for ForeachStatement {
-	fn from(v: crate::expr::statements::ForeachStatement) -> Self {
-		Self {
-			param: v.param.into(),
-			range: v.range.into(),
-			block: v.block.into(),
-		}
-	}
+    fn from(v: crate::expr::statements::ForeachStatement) -> Self {
+        Self {
+            param: v.param.into(),
+            range: v.range.into(),
+            block: v.block.into(),
+        }
+    }
 }

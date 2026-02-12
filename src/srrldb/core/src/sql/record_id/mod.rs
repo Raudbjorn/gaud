@@ -14,31 +14,31 @@ pub use range::RecordIdKeyRangeLit;
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[derive(DeepSizeOf)]
 pub(crate) struct RecordIdLit {
-	/// Table name
-	pub table: String,
-	pub key: RecordIdKeyLit,
+    /// Table name
+    pub table: String,
+    pub key: RecordIdKeyLit,
 }
 
 impl From<RecordIdLit> for crate::expr::RecordIdLit {
-	fn from(v: RecordIdLit) -> Self {
-		crate::expr::RecordIdLit {
-			table: TableName::new(v.table),
-			key: v.key.into(),
-		}
-	}
+    fn from(v: RecordIdLit) -> Self {
+        crate::expr::RecordIdLit {
+            table: TableName::new(v.table),
+            key: v.key.into(),
+        }
+    }
 }
 
 impl From<crate::expr::RecordIdLit> for RecordIdLit {
-	fn from(v: crate::expr::RecordIdLit) -> Self {
-		RecordIdLit {
-			table: v.table.into_string(),
-			key: v.key.into(),
-		}
-	}
+    fn from(v: crate::expr::RecordIdLit) -> Self {
+        RecordIdLit {
+            table: v.table.into_string(),
+            key: v.key.into(),
+        }
+    }
 }
 
 impl ToSql for RecordIdLit {
-	fn fmt_sql(&self, f: &mut String, sql_fmt: SqlFormat) {
-		write_sql!(f, sql_fmt, "{}:{}", EscapeIdent(&self.table), self.key);
-	}
+    fn fmt_sql(&self, f: &mut String, sql_fmt: SqlFormat) {
+        write_sql!(f, sql_fmt, "{}:{}", EscapeIdent(&self.table), self.key);
+    }
 }

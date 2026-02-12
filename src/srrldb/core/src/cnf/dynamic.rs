@@ -17,42 +17,42 @@ pub(crate) struct DynamicConfiguration(Arc<Inner>);
 
 #[derive(Default, Debug)]
 struct Inner {
-	query_timeout: AtomicU64,
+    query_timeout: AtomicU64,
 }
 impl DynamicConfiguration {
-	/// Sets the global query timeout enforced by the Datastore.
-	///
-	/// Passing `None` disables the timeout. Any concrete `Duration` is stored
-	/// with millisecond precision; values that do not fit in `u64` are clamped
-	/// to `u64::MAX` milliseconds.
-	pub(crate) fn set_query_timeout(&self, duration: Option<Duration>) {
-		let val = match duration {
-			None => 0,
-			Some(d) => d.as_millis().to_u64().unwrap_or(u64::MAX),
-		};
-		self.0.query_timeout.store(val, Ordering::Relaxed);
-	}
+    /// Sets the global query timeout enforced by the Datastore.
+    ///
+    /// Passing `None` disables the timeout. Any concrete `Duration` is stored
+    /// with millisecond precision; values that do not fit in `u64` are clamped
+    /// to `u64::MAX` milliseconds.
+    pub(crate) fn set_query_timeout(&self, duration: Option<Duration>) {
+        let val = match duration {
+            None => 0,
+            Some(d) => d.as_millis().to_u64().unwrap_or(u64::MAX),
+        };
+        self.0.query_timeout.store(val, Ordering::Relaxed);
+    }
 
-	/// Returns the currently configured global query timeout.
-	///
-	/// A return value of `None` indicates that no timeout is enforced.
-	pub(crate) fn get_query_timeout(&self) -> Option<Duration> {
-		match self.0.query_timeout.load(Ordering::Relaxed) {
-			0 => None,
-			d => Some(Duration::from_millis(d)),
-		}
-	}
+    /// Returns the currently configured global query timeout.
+    ///
+    /// A return value of `None` indicates that no timeout is enforced.
+    pub(crate) fn get_query_timeout(&self) -> Option<Duration> {
+        match self.0.query_timeout.load(Ordering::Relaxed) {
+            0 => None,
+            d => Some(Duration::from_millis(d)),
+        }
+    }
 }
 
 impl InfoStructure for DynamicConfiguration {
-	/// Expose the dynamic configuration as a value for the `INFO` statement.
-	fn structure(self) -> Value {
-		let object = map! {
-			"QUERY_TIMEOUT".to_string() => match self.get_query_timeout() {
-				None => Value::None,
-				Some(d) => d.into(),
-			}
-		};
-		Value::Object(object.into())
-	}
+    /// Expose the dynamic configuration as a value for the `INFO` statement.
+    fn structure(self) -> Value {
+        let object = map! {
+            "QUERY_TIMEOUT".to_string() => match self.get_query_timeout() {
+                None => Value::None,
+                Some(d) => d.into(),
+            }
+        };
+        Value::Object(object.into())
+    }
 }

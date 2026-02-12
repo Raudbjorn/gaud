@@ -11,7 +11,7 @@
 //! ## Example
 //!
 //! ```rust,ignore
-//! use gaud::gemini::transport::{HttpClient, SseStream};
+//! use gaud::providers::gemini::transport::{HttpClient, SseStream};
 //!
 //! // Create HTTP client
 //! let client = HttpClient::new();

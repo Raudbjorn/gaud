@@ -60,51 +60,57 @@ pub mod res;
 /// });
 /// ```
 pub async fn invoke(
-	(stk, ctx, opt): (&mut Stk, &FrozenContext, &Options),
-	(path, Optional(req)): (String, Optional<FromPublic<ApiRequest>>),
+    (stk, ctx, opt): (&mut Stk, &FrozenContext, &Options),
+    (path, Optional(req)): (String, Optional<FromPublic<ApiRequest>>),
 ) -> Result<Value> {
-	let request_id = Uuid::new_v4().to_string();
-	let mut req = req.map(|x| x.0).unwrap_or_default();
-	req.request_id.clone_from(&request_id);
-	trace!(request_id = %request_id, path = %path, "fnc::api::invoke called");
+    let request_id = Uuid::new_v4().to_string();
+    let mut req = req.map(|x| x.0).unwrap_or_default();
+    req.request_id.clone_from(&request_id);
+    trace!(request_id = %request_id, path = %path, "fnc::api::invoke called");
 
-	let (ns, db) = ctx.expect_ns_db_ids(opt).await?;
-	let apis = ctx.tx().all_db_apis(ns, db).await?;
+    let (ns, db) = ctx.expect_ns_db_ids(opt).await?;
+    let apis = ctx.tx().all_db_apis(ns, db).await?;
 
-	if !path.starts_with('/') {
-		// align behaviour with the path provided in DEFINE API statement
-		return Err(anyhow::Error::from(Error::InvalidPath(
-			"Segment should start with /".to_string(),
-		)));
-	}
+    if !path.starts_with('/') {
+        // align behaviour with the path provided in DEFINE API statement
+        return Err(anyhow::Error::from(Error::InvalidPath(
+            "Segment should start with /".to_string(),
+        )));
+    }
 
-	let segments: Vec<&str> = path.split('/').filter(|x| !x.is_empty()).collect();
+    let segments: Vec<&str> = path.split('/').filter(|x| !x.is_empty()).collect();
 
-	if !req.headers.contains_key(CONTENT_TYPE) {
-		req.headers.insert(CONTENT_TYPE, api_format::NATIVE.try_into()?);
-	}
+    if !req.headers.contains_key(CONTENT_TYPE) {
+        req.headers
+            .insert(CONTENT_TYPE, api_format::NATIVE.try_into()?);
+    }
 
-	if !req.headers.contains_key(ACCEPT) {
-		// We'll accept anything, but we prefer native.
-		req.headers.insert(ACCEPT, "application/vnd.surrealdb.native;q=0.9, */*;q=0.8".try_into()?);
-	}
+    if !req.headers.contains_key(ACCEPT) {
+        // We'll accept anything, but we prefer native.
+        req.headers.insert(
+            ACCEPT,
+            "application/vnd.surrealdb.native;q=0.9, */*;q=0.8".try_into()?,
+        );
+    }
 
-	let mut value: Value =
-		if let Some((api, params)) = ApiDefinition::find_definition(&apis, segments, req.method) {
-			req.params = params.try_into()?;
-			process_api_request_with_stack(stk, ctx, opt, api, req).await?.into()
-		} else {
-			trace!(request_id = %request_id, path = %path, "No API definition found for path");
-			ApiResponse::from_error(ApiError::NotFound.into(), request_id).into()
-		};
+    let mut value: Value =
+        if let Some((api, params)) = ApiDefinition::find_definition(&apis, segments, req.method) {
+            req.params = params.try_into()?;
+            process_api_request_with_stack(stk, ctx, opt, api, req)
+                .await?
+                .into()
+        } else {
+            trace!(request_id = %request_id, path = %path, "No API definition found for path");
+            ApiResponse::from_error(ApiError::NotFound.into(), request_id).into()
+        };
 
-	let Value::Object(ref mut obj) = value else {
-		fail!("ApiResponse converts into an object");
-	};
+    let Value::Object(ref mut obj) = value else {
+        fail!("ApiResponse converts into an object");
+    };
 
-	// Context is internal state
-	obj.remove("context");
-	Ok(value)
+    // Context is internal state
+    obj.remove("context");
+    Ok(value)
 }
 
 /// Middleware function that sets a timeout for API request processing.
@@ -133,12 +139,12 @@ pub async fn invoke(
 ///         };
 /// ```
 pub async fn timeout(
-	(stk, ctx, opt, doc): (&mut Stk, &FrozenContext, &Options, Option<&CursorDoc>),
-	(req, next, timeout): (Value, Box<Closure>, Duration),
+    (stk, ctx, opt, doc): (&mut Stk, &FrozenContext, &Options, Option<&CursorDoc>),
+    (req, next, timeout): (Value, Box<Closure>, Duration),
 ) -> Result<Value> {
-	let mut ctx = Context::new_isolated(ctx);
-	ctx.add_timeout(*timeout)?;
-	let ctx = &ctx.freeze();
+    let mut ctx = Context::new_isolated(ctx);
+    ctx.add_timeout(*timeout)?;
+    let ctx = &ctx.freeze();
 
-	next.invoke(stk, ctx, opt, doc, vec![req]).await
+    next.invoke(stk, ctx, opt, doc, vec![req]).await
 }

@@ -166,10 +166,7 @@ where
         match operation(attempt).await {
             Ok(result) => {
                 if attempt > 0 {
-                    debug!(
-                        attempt = attempt,
-                        "Request succeeded after retry"
-                    );
+                    debug!(attempt = attempt, "Request succeeded after retry");
                 }
                 return Ok(result);
             }
@@ -290,10 +287,8 @@ mod tests {
 
     #[test]
     fn test_with_fallback_models() {
-        let policy = RetryPolicy::new().with_fallback_models(vec![
-            "model-1".to_string(),
-            "model-2".to_string(),
-        ]);
+        let policy = RetryPolicy::new()
+            .with_fallback_models(vec!["model-1".to_string(), "model-2".to_string()]);
 
         assert_eq!(policy.next_fallback_model(1), Some("model-1"));
         assert_eq!(policy.next_fallback_model(2), Some("model-2"));
@@ -390,7 +385,9 @@ mod tests {
             let a = attempts_clone.clone();
             async move {
                 a.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                Err(super::super::ProviderError::InvalidRequest("bad input".into()))
+                Err(super::super::ProviderError::InvalidRequest(
+                    "bad input".into(),
+                ))
             }
         })
         .await;

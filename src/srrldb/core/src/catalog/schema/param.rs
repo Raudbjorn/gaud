@@ -13,47 +13,50 @@ use crate::val::Value;
 #[derive(Clone, Debug, Default, Eq, PartialEq, Hash, DeepSizeOf)]
 #[non_exhaustive]
 pub struct ParamDefinition {
-	pub(crate) name: String,
-	pub(crate) value: Value,
-	pub(crate) comment: Option<String>,
-	pub(crate) permissions: Permission,
+    pub(crate) name: String,
+    pub(crate) value: Value,
+    pub(crate) comment: Option<String>,
+    pub(crate) permissions: Permission,
 }
 impl_kv_value_revisioned!(ParamDefinition);
 
 impl ParamDefinition {
-	fn to_sql_definition(&self) -> DefineParamStatement {
-		DefineParamStatement {
-			kind: DefineKind::Default,
-			name: self.name.clone(),
-			value: {
-				let public_val: crate::types::PublicValue =
-					self.value.clone().try_into().expect("value conversion should succeed");
-				sql::Expr::from_public_value(public_val)
-			},
-			comment: self
-				.comment
-				.clone()
-				.map(|x| sql::Expr::Literal(sql::Literal::String(x)))
-				.unwrap_or(sql::Expr::Literal(sql::Literal::None)),
+    fn to_sql_definition(&self) -> DefineParamStatement {
+        DefineParamStatement {
+            kind: DefineKind::Default,
+            name: self.name.clone(),
+            value: {
+                let public_val: crate::types::PublicValue = self
+                    .value
+                    .clone()
+                    .try_into()
+                    .expect("value conversion should succeed");
+                sql::Expr::from_public_value(public_val)
+            },
+            comment: self
+                .comment
+                .clone()
+                .map(|x| sql::Expr::Literal(sql::Literal::String(x)))
+                .unwrap_or(sql::Expr::Literal(sql::Literal::None)),
 
-			permissions: self.permissions.clone().into(),
-		}
-	}
+            permissions: self.permissions.clone().into(),
+        }
+    }
 }
 
 impl ToSql for &ParamDefinition {
-	fn fmt_sql(&self, f: &mut String, fmt: SqlFormat) {
-		self.to_sql_definition().fmt_sql(f, fmt)
-	}
+    fn fmt_sql(&self, f: &mut String, fmt: SqlFormat) {
+        self.to_sql_definition().fmt_sql(f, fmt)
+    }
 }
 
 impl InfoStructure for ParamDefinition {
-	fn structure(self) -> Value {
-		Value::from(map! {
-			"name".to_string() => self.name.into(),
-			"value".to_string() => self.value.structure(),
-			"permissions".to_string() => self.permissions.structure(),
-			"comment".to_string(), if let Some(v) = self.comment => v.into(),
-		})
-	}
+    fn structure(self) -> Value {
+        Value::from(map! {
+            "name".to_string() => self.name.into(),
+            "value".to_string() => self.value.structure(),
+            "permissions".to_string() => self.permissions.structure(),
+            "comment".to_string(), if let Some(v) = self.comment => v.into(),
+        })
+    }
 }

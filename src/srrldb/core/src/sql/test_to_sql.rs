@@ -9,16 +9,16 @@ use crate::sql::statements::live::LiveFields;
 use crate::sql::statements::rebuild::RebuildIndexStatement;
 use crate::sql::statements::show::ShowSince;
 use crate::sql::statements::{
-	AccessStatement, AlterStatement, AlterTableStatement, CreateStatement, DefineStatement,
-	DefineTableStatement, DeleteStatement, ForeachStatement, IfelseStatement, InfoStatement,
-	InsertStatement, OptionStatement, OutputStatement, RebuildStatement, RelateStatement,
-	RemoveStatement, RemoveTableStatement, SelectStatement, SetStatement, ShowStatement,
-	SleepStatement, UpdateStatement, UpsertStatement, UseStatement,
+    AccessStatement, AlterStatement, AlterTableStatement, CreateStatement, DefineStatement,
+    DefineTableStatement, DeleteStatement, ForeachStatement, IfelseStatement, InfoStatement,
+    InsertStatement, OptionStatement, OutputStatement, RebuildStatement, RelateStatement,
+    RemoveStatement, RemoveTableStatement, SelectStatement, SetStatement, ShowStatement,
+    SleepStatement, UpdateStatement, UpsertStatement, UseStatement,
 };
 use crate::sql::{
-	BinaryOperator, Block, Closure, Constant, Data, Expr, Fields, Function, FunctionCall, Idiom,
-	KillStatement, Literal, LiveStatement, Mock, Param, PostfixOperator, PrefixOperator,
-	RecordIdKeyLit, RecordIdLit, TopLevelExpr,
+    BinaryOperator, Block, Closure, Constant, Data, Expr, Fields, Function, FunctionCall, Idiom,
+    KillStatement, Literal, LiveStatement, Mock, Param, PostfixOperator, PrefixOperator,
+    RecordIdKeyLit, RecordIdLit, TopLevelExpr,
 };
 use crate::types::{PublicBytes, PublicDuration, PublicFile, PublicGeometry};
 use crate::val::range::TypedRange;
@@ -39,7 +39,11 @@ use crate::val::{Bytes, Duration, File, Geometry, Number, Object, RecordId, Set,
 #[case::value_set_one(Value::Set(Set::from(vec![Value::Number(Number::Int(1))])), "{1,}", "{1,}")]
 #[case::value_set_two(Value::Set(Set::from(vec![Value::Number(Number::Int(1)), Value::Number(Number::Int(2))])), "{1, 2}", "{1, 2}")]
 #[case::value_object(Value::Object(Object::from_iter(vec![(String::from("key"), Value::Number(Number::Int(1)))].into_iter())), "{ key: 1 }", "{\n\tkey: 1\n}")]
-#[case::value_geometry(Value::Geometry(Geometry::Point(Point::new(1.0, 2.0))), "(1, 2)", "(1, 2)")]
+#[case::value_geometry(
+    Value::Geometry(Geometry::Point(Point::new(1.0, 2.0))),
+    "(1, 2)",
+    "(1, 2)"
+)]
 #[case::value_bytes(Value::Bytes(Bytes::from(b"hello".to_vec())), "b\"68656C6C6F\"", "b\"68656C6C6F\"")]
 #[case::value_datetime(Value::Datetime("1970-01-01T00:00:00Z".parse().unwrap()), "d'1970-01-01T00:00:00Z'", "d'1970-01-01T00:00:00Z'")]
 #[case::value_duration(Value::Duration(Duration::from_secs(1)), "1s", "1s")]
@@ -66,16 +70,16 @@ use crate::val::{Bytes, Duration, File, Geometry, Number, Object, RecordId, Set,
     }
 ])), "{ key: 1 }", "{\n\tkey: 1\n}")]
 #[case::expr_lit_geometry(
-	Expr::Literal(Literal::Geometry(PublicGeometry::Point(Point::new(1.0, 2.0)))),
-	"(1f, 2f)",
-	"(1f, 2f)"
+    Expr::Literal(Literal::Geometry(PublicGeometry::Point(Point::new(1.0, 2.0)))),
+    "(1f, 2f)",
+    "(1f, 2f)"
 )]
 #[case::expr_lit_bytes(Expr::Literal(Literal::Bytes(PublicBytes::from(Bytes::from(b"hello".to_vec())))), "b\"68656C6C6F\"", "b\"68656C6C6F\"")]
 #[case::expr_lit_datetime(Expr::Literal(Literal::Datetime("1970-01-01T00:00:00Z".parse().unwrap())), "d'1970-01-01T00:00:00Z'", "d'1970-01-01T00:00:00Z'")]
 #[case::expr_lit_duration(
-	Expr::Literal(Literal::Duration(PublicDuration::from(Duration::from_secs(1)))),
-	"1s",
-	"1s"
+    Expr::Literal(Literal::Duration(PublicDuration::from(Duration::from_secs(1)))),
+    "1s",
+    "1s"
 )]
 #[case::expr_lit_file(Expr::Literal(Literal::File(PublicFile::from(File::new("bucket".to_string(), "path/to/file.txt".to_string())))), "f\"bucket:/path/to/file.txt\"", "f\"bucket:/path/to/file.txt\"")]
 #[case::expr_lit_record_id(Expr::Literal(Literal::RecordId(RecordIdLit {
@@ -146,15 +150,15 @@ use crate::val::{Bytes, Duration, File, Geometry, Number, Object, RecordId, Set,
 #[case::expr_insert(Expr::Insert(Box::new(InsertStatement { into: Some(Expr::Table("user".to_string())), data: Data::SingleExpression(Expr::Literal(Literal::Object(vec![ObjectEntry { key: "name".to_string(), value: Expr::Literal(Literal::String("test".to_string())) }]))), ignore: false, update: None, output: None, timeout: Expr::Literal(Literal::None), relation: false})), "INSERT INTO user { name: 'test' }", "INSERT INTO user {\n\tname: 'test'\n}")]
 // Expression: Define
 #[case::expr_define(
-	Expr::Define(Box::new(DefineStatement::Table(DefineTableStatement::default()))),
-	"DEFINE TABLE NONE TYPE ANY SCHEMALESS PERMISSIONS NONE",
-	"DEFINE TABLE NONE TYPE ANY SCHEMALESS\n\tPERMISSIONS NONE"
+    Expr::Define(Box::new(DefineStatement::Table(DefineTableStatement::default()))),
+    "DEFINE TABLE NONE TYPE ANY SCHEMALESS PERMISSIONS NONE",
+    "DEFINE TABLE NONE TYPE ANY SCHEMALESS\n\tPERMISSIONS NONE"
 )]
 // Expression: Remove
 #[case::expr_remove(
-	Expr::Remove(Box::new(RemoveStatement::Table(RemoveTableStatement::default()))),
-	"REMOVE TABLE NONE",
-	"REMOVE TABLE NONE"
+    Expr::Remove(Box::new(RemoveStatement::Table(RemoveTableStatement::default()))),
+    "REMOVE TABLE NONE",
+    "REMOVE TABLE NONE"
 )]
 // Expression: Rebuild
 #[case::expr_rebuild(Expr::Rebuild(Box::new(RebuildStatement::Index(RebuildIndexStatement { name: "idx".to_string(), what: "user".to_string(), if_exists: false, concurrently: false }))), "REBUILD INDEX idx ON user", "REBUILD INDEX idx ON user")]
@@ -164,9 +168,9 @@ use crate::val::{Bytes, Duration, File, Geometry, Number, Object, RecordId, Set,
 #[case::expr_alter(Expr::Alter(Box::new(AlterStatement::Table(AlterTableStatement { name: "user".to_string(), if_exists: false, schemafull: AlterKind::None, permissions: None, changefeed: AlterKind::None, comment: AlterKind::None, kind: None, compact: false }))), "ALTER TABLE user", "ALTER TABLE user")]
 // Expression: Info
 #[case::expr_info(
-	Expr::Info(Box::new(InfoStatement::Root(false))),
-	"INFO FOR ROOT",
-	"INFO FOR ROOT"
+    Expr::Info(Box::new(InfoStatement::Root(false))),
+    "INFO FOR ROOT",
+    "INFO FOR ROOT"
 )]
 // Expression: Foreach
 #[case::expr_foreach(Expr::Foreach(Box::new(ForeachStatement { param: Param::new("item".to_string()), range: Expr::Literal(Literal::Array(vec![Expr::Literal(Literal::Integer(1)), Expr::Literal(Literal::Integer(2))])), block: Block(vec![Expr::Literal(Literal::Integer(1))]) })), "FOR $item IN [1, 2] { 1 }", "FOR $item IN [\n\t1,\n\t2\n] {\n\n\t1\n}")]
@@ -332,6 +336,6 @@ use crate::val::{Bytes, Duration, File, Geometry, Number, Object, RecordId, Set,
 #[case::top_level_show(TopLevelExpr::Show(ShowStatement { table: Some("user".to_string()), since: ShowSince::Versionstamp(123), limit: Some(10) }), "SHOW CHANGES FOR TABLE user SINCE 123 LIMIT 10", "SHOW CHANGES FOR TABLE user SINCE 123 LIMIT 10")]
 #[case::top_level_expr(TopLevelExpr::Expr(Expr::Literal(Literal::Integer(1))), "1", "1")]
 fn test_to_sql(#[case] v: impl ToSql, #[case] expected: &str, #[case] expected_pretty: &str) {
-	assert_eq!(v.to_sql(), expected);
-	assert_eq!(v.to_sql_pretty(), expected_pretty);
+    assert_eq!(v.to_sql(), expected);
+    assert_eq!(v.to_sql_pretty(), expected_pretty);
 }

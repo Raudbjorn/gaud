@@ -11,27 +11,27 @@ use crate::val::{Value, convert_value_to_public_value};
 #[derive(Clone, Default, SurrealValue)]
 #[surreal(default)]
 pub struct ApiRequest {
-	// Request
-	pub body: PublicValue,
-	pub headers: HeaderMap,
-	pub params: PublicObject,
-	pub method: ApiMethod,
-	pub query: BTreeMap<String, String>,
-	pub context: PublicObject,
-	/// Server-generated request ID for tracing and logging
-	pub request_id: String,
+    // Request
+    pub body: PublicValue,
+    pub headers: HeaderMap,
+    pub params: PublicObject,
+    pub method: ApiMethod,
+    pub query: BTreeMap<String, String>,
+    pub context: PublicObject,
+    /// Server-generated request ID for tracing and logging
+    pub request_id: String,
 }
 
 impl TryFrom<Value> for ApiRequest {
-	type Error = anyhow::Error;
+    type Error = anyhow::Error;
 
-	fn try_from(value: Value) -> std::result::Result<Self, Self::Error> {
-		convert_value_to_public_value(value)?.into_t()
-	}
+    fn try_from(value: Value) -> std::result::Result<Self, Self::Error> {
+        convert_value_to_public_value(value)?.into_t()
+    }
 }
 
 impl From<ApiRequest> for Value {
-	fn from(value: ApiRequest) -> Self {
-		convert_public_value_to_internal(value.into_value())
-	}
+    fn from(value: ApiRequest) -> Self {
+        convert_public_value_to_internal(value.into_value())
+    }
 }

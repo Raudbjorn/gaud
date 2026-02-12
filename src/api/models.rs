@@ -1,10 +1,10 @@
-use axum::extract::State;
 use axum::Json;
+use axum::extract::State;
 use chrono::Utc;
 
+use crate::AppState;
 use crate::error::AppError;
 use crate::providers::types::{ModelInfo, ModelsResponse};
-use crate::AppState;
 
 /// GET /v1/models
 ///

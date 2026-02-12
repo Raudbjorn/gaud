@@ -3,7 +3,9 @@
 // ---------------------------------------------------------------------------
 
 #[cfg(all(feature = "cache-persistent", feature = "cache-ephemeral"))]
-compile_error!("Cannot enable both 'cache-persistent' and 'cache-ephemeral' features at the same time.");
+compile_error!(
+    "Cannot enable both 'cache-persistent' and 'cache-ephemeral' features at the same time."
+);
 
 pub mod embedder;
 
@@ -13,8 +15,7 @@ pub mod types;
 
 use crate::config::{CacheConfig, CacheMode};
 use crate::providers::types::{
-    ChatRequest, ChatResponse, ChatChunk,
-    Choice, ResponseMessage, Usage
+    ChatChunk, ChatRequest, ChatResponse, Choice, ResponseMessage, Usage,
 };
 
 use std::future::Future;
@@ -22,8 +23,8 @@ use std::pin::Pin;
 
 use self::store::CacheStore;
 use self::types::{
-    CacheEntry, CacheError, CacheHitKind, CacheLookupResult, CacheMetadata,
-    CacheStats, CacheStatsSnapshot,
+    CacheEntry, CacheError, CacheHitKind, CacheLookupResult, CacheMetadata, CacheStats,
+    CacheStatsSnapshot,
 };
 
 // ---------------------------------------------------------------------------
@@ -51,7 +52,9 @@ impl SemanticCacheService {
         let store = CacheStore::ephemeral(config.embedding_dimension).await?;
 
         #[cfg(all(not(feature = "cache-persistent"), not(feature = "cache-ephemeral")))]
-        return Err(CacheError::InitFailed("No cache storage backend enabled (persistent or ephemeral)".into()));
+        return Err(CacheError::InitFailed(
+            "No cache storage backend enabled (persistent or ephemeral)".into(),
+        ));
 
         Ok(Self {
             store,
@@ -79,7 +82,9 @@ impl SemanticCacheService {
     /// Check whether this *streaming* request should be checked against the
     /// streaming replay cache.
     pub fn should_check_stream(&self, request: &ChatRequest) -> bool {
-        self.config.enabled && self.config.stream_cache_enabled && !key::should_skip_stream(request, &self.config)
+        self.config.enabled
+            && self.config.stream_cache_enabled
+            && !key::should_skip_stream(request, &self.config)
     }
 
     /// Look up a cached response for the given request.
@@ -116,13 +121,16 @@ impl SemanticCacheService {
             None
         };
 
-        let result = self.store.lookup(
-            &exact_hash,
-            embedding.as_deref(),
-            &metadata,
-            self.config.similarity_threshold,
-            self.config.ttl_secs,
-        ).await?;
+        let result = self
+            .store
+            .lookup(
+                &exact_hash,
+                embedding.as_deref(),
+                &metadata,
+                self.config.similarity_threshold,
+                self.config.ttl_secs,
+            )
+            .await?;
 
         match &result {
             CacheLookupResult::Hit(entry, info) => {
@@ -147,11 +155,10 @@ impl SemanticCacheService {
         response: &ChatResponse,
     ) -> Result<(), CacheError> {
         // Only cache responses with finish_reason "stop"
-        let should_cache = response.choices.iter().any(|c| {
-            c.finish_reason
-                .as_deref()
-                .is_some_and(|r| r == "stop")
-        });
+        let should_cache = response
+            .choices
+            .iter()
+            .any(|c| c.finish_reason.as_deref().is_some_and(|r| r == "stop"));
         if !should_cache {
             return Ok(());
         }
@@ -251,7 +258,8 @@ impl SemanticCacheService {
             .unwrap_or("text-embedding-3-small");
         let api_key = self.config.embedding_api_key.as_deref();
 
-        let mut embedding = embedder::embed(url, model, text, api_key, self.config.embedding_allow_local).await?;
+        let mut embedding =
+            embedder::embed(url, model, text, api_key, self.config.embedding_allow_local).await?;
 
         // Ensure normalization for cosine distance
         self.normalize(&mut embedding);
@@ -312,13 +320,16 @@ impl SemanticCacheService {
         let metadata = self.build_metadata(request);
         let embedding = self.resolve_embedding(request).await;
 
-        let result = self.store.lookup(
-            &exact_hash,
-            embedding.as_deref(),
-            &metadata,
-            self.config.similarity_threshold,
-            self.config.ttl_secs,
-        ).await?;
+        let result = self
+            .store
+            .lookup(
+                &exact_hash,
+                embedding.as_deref(),
+                &metadata,
+                self.config.similarity_threshold,
+                self.config.ttl_secs,
+            )
+            .await?;
 
         match &result {
             CacheLookupResult::Hit(entry, info) if entry.stream_events.is_some() => {
@@ -378,9 +389,9 @@ impl SemanticCacheService {
         // Try to reconstruct a full response for non-stream compatibility
         let mut entry = entry;
         if let Ok(full_resp) = Self::reconstruct_response(request, events) {
-             if let Ok(json) = serde_json::to_string(&full_resp) {
-                 entry.response_json = json;
-             }
+            if let Ok(json) = serde_json::to_string(&full_resp) {
+                entry.response_json = json;
+            }
         }
 
         self.store.insert_stream(&entry, &metadata, events).await?;
@@ -437,7 +448,9 @@ impl SemanticCacheService {
         }
 
         if id.is_empty() {
-             return Err(CacheError::Serialization("Empty stream or invalid chunks".into()));
+            return Err(CacheError::Serialization(
+                "Empty stream or invalid chunks".into(),
+            ));
         }
 
         Ok(ChatResponse {
@@ -477,7 +490,13 @@ pub trait StreamCacheOps: Send + Sync {
     fn get_cached_events<'a>(
         &'a self,
         request: &'a ChatRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<Option<(Vec<String>, &'static str)>, CacheError>> + Send + 'a>>;
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<Option<(Vec<String>, &'static str)>, CacheError>>
+                + Send
+                + 'a,
+        >,
+    >;
 
     /// Store stream events for a completed streaming response.
     fn put_stream_events<'a>(
@@ -501,7 +520,13 @@ impl StreamCacheOps for SemanticCacheService {
     fn get_cached_events<'a>(
         &'a self,
         request: &'a ChatRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<Option<(Vec<String>, &'static str)>, CacheError>> + Send + 'a>> {
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<Option<(Vec<String>, &'static str)>, CacheError>>
+                + Send
+                + 'a,
+        >,
+    > {
         Box::pin(async move {
             match self.lookup_stream(request).await? {
                 CacheLookupResult::Hit(entry, info) => {
@@ -521,9 +546,7 @@ impl StreamCacheOps for SemanticCacheService {
         request: &'a ChatRequest,
         events: Vec<String>,
     ) -> Pin<Box<dyn Future<Output = Result<(), CacheError>> + Send + 'a>> {
-        Box::pin(async move {
-            self.store_stream(request, &events).await
-        })
+        Box::pin(async move { self.store_stream(request, &events).await })
     }
 
     fn max_stream_events(&self) -> usize {
@@ -538,11 +561,11 @@ impl StreamCacheOps for SemanticCacheService {
 #[cfg(test)]
 #[cfg(feature = "cache-ephemeral")]
 mod tests {
-    use crate::cache::store::CacheStore;
-    use std::sync::Arc;
     use crate::SemanticCacheService;
     use crate::cache::StreamCacheOps;
-    use crate::providers::types::{ChatRequest, ChatMessage, MessageRole, MessageContent};
+    use crate::cache::store::CacheStore;
+    use crate::providers::types::{ChatMessage, ChatRequest, MessageContent, MessageRole};
+    use std::sync::Arc;
 
     #[allow(dead_code)]
     fn test_request() -> ChatRequest {
@@ -600,9 +623,15 @@ mod tests {
             stream_events: None, // KEY: This is what triggers the miss behavior
             stream_format: None,
         };
-        store.insert(&entry, &metadata).await.expect("insert failed");
+        store
+            .insert(&entry, &metadata)
+            .await
+            .expect("insert failed");
 
-        let service = SemanticCacheService::new_with_store(store.as_ref().clone(), crate::config::CacheConfig::default());
+        let service = SemanticCacheService::new_with_store(
+            store.as_ref().clone(),
+            crate::config::CacheConfig::default(),
+        );
         let ops: &dyn StreamCacheOps = &service;
 
         // Verify check_stream passes (assuming config defaults allow it)
@@ -611,29 +640,50 @@ mod tests {
         // But assuming check_stream=true:
 
         // Act: Lookup
-        let result = ops.get_cached_events(&request).await.expect("lookup failed");
+        let result = ops
+            .get_cached_events(&request)
+            .await
+            .expect("lookup failed");
 
         // Assert: Should be None even though we found an exact match, because stream_events is None
-        assert!(result.is_none(), "Entry without stream_events must act as a cache miss");
+        assert!(
+            result.is_none(),
+            "Entry without stream_events must act as a cache miss"
+        );
     }
     #[tokio::test]
     async fn test_stream_stats_separation() {
         let store = Arc::new(CacheStore::ephemeral(4).await.expect("ephemeral init"));
-        let service = SemanticCacheService::new_with_store(store.as_ref().clone(), crate::config::CacheConfig::default());
+        let service = SemanticCacheService::new_with_store(
+            store.as_ref().clone(),
+            crate::config::CacheConfig::default(),
+        );
         let request = test_request();
 
         // 1. Stream lookup miss
-        let _ = service.lookup_stream(&request).await.expect("lookup failed");
+        let _ = service
+            .lookup_stream(&request)
+            .await
+            .expect("lookup failed");
         let stats = service.stats();
         assert_eq!(stats.misses_stream, 1, "Should increment stream misses");
         assert_eq!(stats.misses, 0, "Should NOT increment global misses");
 
         // 2. Store stream events
-        let events = vec!["data: event1\n\n".to_string(), "data: [DONE]\n\n".to_string()];
-        service.store_stream(&request, &events).await.expect("store failed");
+        let events = vec![
+            "data: event1\n\n".to_string(),
+            "data: [DONE]\n\n".to_string(),
+        ];
+        service
+            .store_stream(&request, &events)
+            .await
+            .expect("store failed");
 
         // 3. Stream lookup hit
-        let _ = service.lookup_stream(&request).await.expect("lookup failed");
+        let _ = service
+            .lookup_stream(&request)
+            .await
+            .expect("lookup failed");
         let stats = service.stats();
         assert_eq!(stats.hits_stream_exact, 1, "Should increment stream hits");
         assert_eq!(stats.hits_exact, 0, "Should NOT increment global hits");

@@ -111,14 +111,11 @@ pub async fn request_device_code(
 ) -> Result<DeviceCodeResponse, OAuthError> {
     info!("Requesting GitHub device code for Copilot");
 
-        let scope = "read:user".to_string();
-        let response = http_client
+    let scope = "read:user".to_string();
+    let response = http_client
         .post(&config.device_code_url)
         .header("Accept", "application/json")
-        .form(&[
-            ("client_id", &config.client_id),
-            ("scope", &scope),
-        ])
+        .form(&[("client_id", &config.client_id), ("scope", &scope)])
         .send()
         .await?;
 
@@ -172,9 +169,8 @@ pub async fn poll_for_token(
     let status = response.status();
     let body = response.text().await?;
 
-    let poll_response: TokenPollResponse = serde_json::from_str(&body).map_err(|e| {
-        OAuthError::ExchangeFailed(format!("Failed to parse poll response: {}", e))
-    })?;
+    let poll_response: TokenPollResponse = serde_json::from_str(&body)
+        .map_err(|e| OAuthError::ExchangeFailed(format!("Failed to parse poll response: {}", e)))?;
 
     // Check for access token first (success)
     if let Some(token) = poll_response.access_token {
@@ -215,8 +211,8 @@ pub async fn poll_until_complete(
     mut on_pending: Option<&mut dyn FnMut(u32)>,
 ) -> Result<String, OAuthError> {
     let mut interval = std::time::Duration::from_secs(device_response.interval.max(5));
-    let deadline = tokio::time::Instant::now()
-        + std::time::Duration::from_secs(device_response.expires_in);
+    let deadline =
+        tokio::time::Instant::now() + std::time::Duration::from_secs(device_response.expires_in);
     let mut attempt: u32 = 0;
 
     loop {

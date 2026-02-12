@@ -17,7 +17,7 @@ use super::tools::{Tool, ToolChoice};
 /// # Example
 ///
 /// ```rust
-/// use gaud::gemini::models::{MessagesRequest, Message, Role};
+/// use gaud::providers::gemini::models::{MessagesRequest, Message, Role};
 ///
 /// let request = MessagesRequest::builder()
 ///     .model("claude-sonnet-4-5-thinking")

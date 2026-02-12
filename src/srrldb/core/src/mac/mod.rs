@@ -14,76 +14,85 @@
 /// value from the environment variable or the default value.
 #[macro_export]
 macro_rules! lazy_env_parse {
-	// With no default specified
-	($key:expr_2021, Option<String>) => {
-		std::sync::LazyLock::new(|| std::env::var($key).ok())
-	};
-	// With no default specified
-	($key:expr_2021, $t:ty) => {
-		std::sync::LazyLock::new(|| {
-			std::env::var($key).ok().and_then(|s| s.parse::<$t>().ok()).unwrap_or_default()
-		})
-	};
-	// With a closure for the default value
-	($key:expr_2021, $t:ty, || $default:expr_2021) => {
-		std::sync::LazyLock::new(|| {
-			std::env::var($key).ok().and_then(|s| s.parse::<$t>().ok()).unwrap_or_else(|| $default)
-		})
-	};
-	// With a static expression for the default value
-	($key:expr_2021, $t:ty, $default:expr_2021) => {
-		std::sync::LazyLock::new(|| {
-			std::env::var($key).ok().and_then(|s| s.parse::<$t>().ok()).unwrap_or($default)
-		})
-	};
-	// With a closure for the default value, allowing for byte suffixes
-	(bytes, $key:expr_2021, $t:ty, || $default:expr_2021) => {
-		std::sync::LazyLock::new(|| {
-			std::env::var($key)
-				.ok()
-				.and_then(|s| {
-					use $crate::str::ParseBytes;
-					s.parse_bytes::<$t>().ok()
-				})
-				.unwrap_or_else(|| $default)
-		})
-	};
-	// With a static expression for the default value, allowing for byte suffixes
-	(bytes, $key:expr_2021, $t:ty, $default:expr_2021) => {
-		std::sync::LazyLock::new(|| {
-			std::env::var($key)
-				.ok()
-				.and_then(|s| {
-					use $crate::str::ParseBytes;
-					s.parse_bytes::<$t>().ok()
-				})
-				.unwrap_or($default)
-		})
-	};
-	// With a closure for the default value, allowing for byte suffixes
-	(duration, $key:expr_2021, $t:ty, || $default:expr_2021) => {
-		std::sync::LazyLock::new(|| {
-			std::env::var($key)
-				.ok()
-				.and_then(|s| {
-					use $crate::str::ParseDuration;
-					s.parse_duration::<$t>().ok()
-				})
-				.unwrap_or_else(|| $default)
-		})
-	};
-	// With a static expression for the default value, allowing for byte suffixes
-	(duration, $key:expr_2021, $t:ty, $default:expr_2021) => {
-		std::sync::LazyLock::new(|| {
-			std::env::var($key)
-				.ok()
-				.and_then(|s| {
-					use $crate::str::ParseDuration;
-					s.parse_duration::<$t>().ok()
-				})
-				.unwrap_or($default)
-		})
-	};
+    // With no default specified
+    ($key:expr_2021, Option<String>) => {
+        std::sync::LazyLock::new(|| std::env::var($key).ok())
+    };
+    // With no default specified
+    ($key:expr_2021, $t:ty) => {
+        std::sync::LazyLock::new(|| {
+            std::env::var($key)
+                .ok()
+                .and_then(|s| s.parse::<$t>().ok())
+                .unwrap_or_default()
+        })
+    };
+    // With a closure for the default value
+    ($key:expr_2021, $t:ty, || $default:expr_2021) => {
+        std::sync::LazyLock::new(|| {
+            std::env::var($key)
+                .ok()
+                .and_then(|s| s.parse::<$t>().ok())
+                .unwrap_or_else(|| $default)
+        })
+    };
+    // With a static expression for the default value
+    ($key:expr_2021, $t:ty, $default:expr_2021) => {
+        std::sync::LazyLock::new(|| {
+            std::env::var($key)
+                .ok()
+                .and_then(|s| s.parse::<$t>().ok())
+                .unwrap_or($default)
+        })
+    };
+    // With a closure for the default value, allowing for byte suffixes
+    (bytes, $key:expr_2021, $t:ty, || $default:expr_2021) => {
+        std::sync::LazyLock::new(|| {
+            std::env::var($key)
+                .ok()
+                .and_then(|s| {
+                    use $crate::str::ParseBytes;
+                    s.parse_bytes::<$t>().ok()
+                })
+                .unwrap_or_else(|| $default)
+        })
+    };
+    // With a static expression for the default value, allowing for byte suffixes
+    (bytes, $key:expr_2021, $t:ty, $default:expr_2021) => {
+        std::sync::LazyLock::new(|| {
+            std::env::var($key)
+                .ok()
+                .and_then(|s| {
+                    use $crate::str::ParseBytes;
+                    s.parse_bytes::<$t>().ok()
+                })
+                .unwrap_or($default)
+        })
+    };
+    // With a closure for the default value, allowing for byte suffixes
+    (duration, $key:expr_2021, $t:ty, || $default:expr_2021) => {
+        std::sync::LazyLock::new(|| {
+            std::env::var($key)
+                .ok()
+                .and_then(|s| {
+                    use $crate::str::ParseDuration;
+                    s.parse_duration::<$t>().ok()
+                })
+                .unwrap_or_else(|| $default)
+        })
+    };
+    // With a static expression for the default value, allowing for byte suffixes
+    (duration, $key:expr_2021, $t:ty, $default:expr_2021) => {
+        std::sync::LazyLock::new(|| {
+            std::env::var($key)
+                .ok()
+                .and_then(|s| {
+                    use $crate::str::ParseDuration;
+                    s.parse_duration::<$t>().ok()
+                })
+                .unwrap_or($default)
+        })
+    };
 }
 
 /// Creates a new b-tree map of key-value pairs.
@@ -104,12 +113,12 @@ macro_rules! map {
 /// Maps an optional value to a new value if the optional value is some, otherwise returns none.
 /// Useful when the computation is async
 macro_rules! map_opt {
-	($x:ident as $opt:expr => $exp:expr) => {
-		match $opt {
-			Some($x) => Some($exp),
-			None => None,
-		}
-	};
+    ($x:ident as $opt:expr => $exp:expr) => {
+        match $opt {
+            Some($x) => Some($exp),
+            None => None,
+        }
+    };
 }
 
 /// Extends a b-tree map of key-value pairs.
@@ -133,18 +142,18 @@ macro_rules! fail {
 
 /// Converts some text into a new line byte string
 macro_rules! bytes {
-	($expression:expr_2021) => {
-		format!("{}\n", $expression).into_bytes()
-	};
+    ($expression:expr_2021) => {
+        format!("{}\n", $expression).into_bytes()
+    };
 }
 
 /// Pauses and yields execution to the tokio runtime
 macro_rules! yield_now {
-	() => {
-		if tokio::runtime::Handle::try_current().is_ok() {
-			tokio::task::consume_budget().await;
-		}
-	};
+    () => {
+        if tokio::runtime::Handle::try_current().is_ok() {
+            tokio::task::consume_budget().await;
+        }
+    };
 }
 
 /// Matches on a specific config environment
@@ -160,27 +169,27 @@ macro_rules! get_cfg {
 /// fail fast and return an error from a function does not leave
 /// a transaction in an uncommitted state without rolling back.
 macro_rules! catch {
-	($txn:ident, $default:expr_2021) => {
-		match $default {
-			Err(e) => {
-				let _ = $txn.cancel().await;
-				return Err(e);
-			}
-			Ok(v) => v,
-		}
-	};
+    ($txn:ident, $default:expr_2021) => {
+        match $default {
+            Err(e) => {
+                let _ = $txn.cancel().await;
+                return Err(e);
+            }
+            Ok(v) => v,
+        }
+    };
 }
 
 macro_rules! catch_into {
-	($txn:ident, $default:expr_2021) => {
-		match $default {
-			Err(e) => {
-				let _ = $txn.cancel().await;
-				return Err(e.into());
-			}
-			Ok(v) => v,
-		}
-	};
+    ($txn:ident, $default:expr_2021) => {
+        match $default {
+            Err(e) => {
+                let _ = $txn.cancel().await;
+                return Err(e.into());
+            }
+            Ok(v) => v,
+        }
+    };
 }
 
 /// Runs a method on a transaction, ensuring that the transaction
@@ -190,71 +199,80 @@ macro_rules! catch_into {
 /// fast and return an error from a function does not leave a
 /// transaction in an uncommitted state without rolling back.
 macro_rules! run {
-	($txn:ident, $default:expr_2021) => {
-		match $default {
-			Err(e) => {
-				let _ = $txn.cancel().await;
-				Err(e)
-			}
-			Ok(v) => match $txn.commit().await {
-				Err(e) => {
-					let _ = $txn.cancel().await;
-					Err(e)
-				}
-				Ok(_) => Ok(v),
-			},
-		}
-	};
+    ($txn:ident, $default:expr_2021) => {
+        match $default {
+            Err(e) => {
+                let _ = $txn.cancel().await;
+                Err(e)
+            }
+            Ok(v) => match $txn.commit().await {
+                Err(e) => {
+                    let _ = $txn.cancel().await;
+                    Err(e)
+                }
+                Ok(_) => Ok(v),
+            },
+        }
+    };
 }
 
 #[cfg(test)]
 mod test {
 
-	use crate::err::Error;
+    use crate::err::Error;
 
-	#[track_caller]
-	fn fail_func() -> Result<(), anyhow::Error> {
-		fail!("Reached unreachable code");
-	}
+    #[track_caller]
+    fn fail_func() -> Result<(), anyhow::Error> {
+        fail!("Reached unreachable code");
+    }
 
-	#[track_caller]
-	fn fail_func_args() -> Result<(), anyhow::Error> {
-		fail!("Found {} but expected {}", "test", "other");
-	}
+    #[track_caller]
+    fn fail_func_args() -> Result<(), anyhow::Error> {
+        fail!("Found {} but expected {}", "test", "other");
+    }
 
-	#[test]
-	fn fail_literal() {
-		let line = line!();
-		let Ok(Error::Unreachable(msg)) = fail_func().unwrap_err().downcast() else {
-			panic!()
-		};
-		assert_eq!(
-			format!("surrealdb/core/src/mac/mod.rs:{}: Reached unreachable code", line + 1),
-			msg
-		);
-	}
+    #[test]
+    fn fail_literal() {
+        let line = line!();
+        let Ok(Error::Unreachable(msg)) = fail_func().unwrap_err().downcast() else {
+            panic!()
+        };
+        assert_eq!(
+            format!(
+                "surrealdb/core/src/mac/mod.rs:{}: Reached unreachable code",
+                line + 1
+            ),
+            msg
+        );
+    }
 
-	#[test]
-	fn fail_call() {
-		let line = line!();
-		let Error::Unreachable(msg) = Error::unreachable("Reached unreachable code") else {
-			panic!()
-		};
-		assert_eq!(
-			format!("surrealdb/core/src/mac/mod.rs:{}: Reached unreachable code", line + 1),
-			msg
-		);
-	}
+    #[test]
+    fn fail_call() {
+        let line = line!();
+        let Error::Unreachable(msg) = Error::unreachable("Reached unreachable code") else {
+            panic!()
+        };
+        assert_eq!(
+            format!(
+                "surrealdb/core/src/mac/mod.rs:{}: Reached unreachable code",
+                line + 1
+            ),
+            msg
+        );
+    }
 
-	#[test]
-	fn fail_arguments() {
-		let line = line!();
-		let Ok(Error::Unreachable(msg)) = fail_func_args().unwrap_err().downcast() else {
-			panic!()
-		};
-		assert_eq!(
-			format!("surrealdb/core/src/mac/mod.rs:{}: Found test but expected other", line + 1),
-			msg
-		);
-	}
+    #[test]
+    fn fail_arguments() {
+        let line = line!();
+        let Ok(Error::Unreachable(msg)) = fail_func_args().unwrap_err().downcast() else {
+            panic!()
+        };
+        assert_eq!(
+            format!(
+                "surrealdb/core/src/mac/mod.rs:{}: Found test but expected other",
+                line + 1
+            ),
+            msg
+        );
+    }
 }

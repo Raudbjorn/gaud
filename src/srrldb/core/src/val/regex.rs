@@ -10,8 +10,8 @@ use regex::RegexBuilder;
 use revision::revisioned;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use storekey::{BorrowDecode, Encode};
 use srrldb_types::{SqlFormat, ToSql, write_sql};
+use storekey::{BorrowDecode, Encode};
 
 use crate::cnf::{REGEX_CACHE_SIZE, REGEX_SIZE_LIMIT};
 
@@ -26,178 +26,180 @@ pub(crate) const REGEX_TOKEN: &str = "$surrealdb::private::Regex";
 pub struct Regex(pub regex::Regex);
 
 impl Regex {
-	// Deref would expose `regex::Regex::as_str` which wouldn't have the '/'
-	// delimiters.
-	pub fn inner(&self) -> &regex::Regex {
-		&self.0
-	}
+    // Deref would expose `regex::Regex::as_str` which wouldn't have the '/'
+    // delimiters.
+    pub fn inner(&self) -> &regex::Regex {
+        &self.0
+    }
 }
 
 // Implement CacheKey for the newtype wrapper
 impl CacheKey for RegexCacheKey {
-	type Value = Regex;
+    type Value = Regex;
 }
 
 pub(crate) fn regex_new(str: &str) -> Result<regex::Regex, regex::Error> {
-	static REGEX_CACHE: LazyLock<Cache> = LazyLock::new(|| Cache::new(*REGEX_CACHE_SIZE));
+    static REGEX_CACHE: LazyLock<Cache> = LazyLock::new(|| Cache::new(*REGEX_CACHE_SIZE));
 
-	let key = RegexCacheKey(str.to_string());
+    let key = RegexCacheKey(str.to_string());
 
-	// Try to get from cache first
-	if let Some(cached) = REGEX_CACHE.get_clone(&key) {
-		return Ok(cached.0);
-	}
+    // Try to get from cache first
+    if let Some(cached) = REGEX_CACHE.get_clone(&key) {
+        return Ok(cached.0);
+    }
 
-	// Not in cache, compile and insert
-	let re = RegexBuilder::new(str).size_limit(*REGEX_SIZE_LIMIT).build()?;
-	REGEX_CACHE.insert(key, Regex(re.clone()));
-	Ok(re)
+    // Not in cache, compile and insert
+    let re = RegexBuilder::new(str)
+        .size_limit(*REGEX_SIZE_LIMIT)
+        .build()?;
+    REGEX_CACHE.insert(key, Regex(re.clone()));
+    Ok(re)
 }
 
 impl FromStr for Regex {
-	type Err = <regex::Regex as FromStr>::Err;
+    type Err = <regex::Regex as FromStr>::Err;
 
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		regex_new(&s.replace("\\/", "/")).map(Self)
-	}
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        regex_new(&s.replace("\\/", "/")).map(Self)
+    }
 }
 
 impl PartialEq for Regex {
-	fn eq(&self, other: &Self) -> bool {
-		let str_left = self.0.as_str();
-		let str_right = other.0.as_str();
-		str_left == str_right
-	}
+    fn eq(&self, other: &Self) -> bool {
+        let str_left = self.0.as_str();
+        let str_right = other.0.as_str();
+        str_left == str_right
+    }
 }
 
 impl Eq for Regex {}
 
 impl Ord for Regex {
-	fn cmp(&self, other: &Self) -> Ordering {
-		self.0.as_str().cmp(other.0.as_str())
-	}
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0.as_str().cmp(other.0.as_str())
+    }
 }
 
 impl PartialOrd for Regex {
-	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-		Some(self.cmp(other))
-	}
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl Hash for Regex {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.0.as_str().hash(state);
-	}
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.as_str().hash(state);
+    }
 }
 
 impl Debug for Regex {
-	fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-		Display::fmt(self, f)
-	}
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        Display::fmt(self, f)
+    }
 }
 
 impl Display for Regex {
-	fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-		std::fmt::Display::fmt(&self.0, f)
-	}
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        std::fmt::Display::fmt(&self.0, f)
+    }
 }
 
 impl ToSql for Regex {
-	fn fmt_sql(&self, f: &mut String, sql_fmt: SqlFormat) {
-		let t = self.0.to_string().replace('/', "\\/");
-		write_sql!(f, sql_fmt, "/{}/", &t)
-	}
+    fn fmt_sql(&self, f: &mut String, sql_fmt: SqlFormat) {
+        let t = self.0.to_string().replace('/', "\\/");
+        write_sql!(f, sql_fmt, "/{}/", &t)
+    }
 }
 
 impl From<srrldb_types::Regex> for Regex {
-	fn from(v: srrldb_types::Regex) -> Self {
-		Self(v.into_inner())
-	}
+    fn from(v: srrldb_types::Regex) -> Self {
+        Self(v.into_inner())
+    }
 }
 
 impl From<Regex> for srrldb_types::Regex {
-	fn from(x: Regex) -> Self {
-		srrldb_types::Regex::from(x.0)
-	}
+    fn from(x: Regex) -> Self {
+        srrldb_types::Regex::from(x.0)
+    }
 }
 
 impl Serialize for Regex {
-	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-	where
-		S: Serializer,
-	{
-		serializer.serialize_newtype_struct(REGEX_TOKEN, self.0.as_str())
-	}
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_newtype_struct(REGEX_TOKEN, self.0.as_str())
+    }
 }
 
 impl<'de> Deserialize<'de> for Regex {
-	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-	where
-		D: Deserializer<'de>,
-	{
-		struct RegexNewtypeVisitor;
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct RegexNewtypeVisitor;
 
-		impl<'de> Visitor<'de> for RegexNewtypeVisitor {
-			type Value = Regex;
+        impl<'de> Visitor<'de> for RegexNewtypeVisitor {
+            type Value = Regex;
 
-			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-				formatter.write_str("a regex newtype")
-			}
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a regex newtype")
+            }
 
-			fn visit_newtype_struct<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
-			where
-				D: Deserializer<'de>,
-			{
-				struct RegexVisitor;
+            fn visit_newtype_struct<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                struct RegexVisitor;
 
-				impl Visitor<'_> for RegexVisitor {
-					type Value = Regex;
+                impl Visitor<'_> for RegexVisitor {
+                    type Value = Regex;
 
-					fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-						formatter.write_str("a regex str")
-					}
+                    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                        formatter.write_str("a regex str")
+                    }
 
-					fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-					where
-						E: de::Error,
-					{
-						Regex::from_str(value).map_err(|_| de::Error::custom("invalid regex"))
-					}
-				}
+                    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+                    where
+                        E: de::Error,
+                    {
+                        Regex::from_str(value).map_err(|_| de::Error::custom("invalid regex"))
+                    }
+                }
 
-				deserializer.deserialize_str(RegexVisitor)
-			}
-		}
+                deserializer.deserialize_str(RegexVisitor)
+            }
+        }
 
-		deserializer.deserialize_newtype_struct(REGEX_TOKEN, RegexNewtypeVisitor)
-	}
+        deserializer.deserialize_newtype_struct(REGEX_TOKEN, RegexNewtypeVisitor)
+    }
 }
 
 impl<F> Encode<F> for Regex {
-	fn encode<W: std::io::Write>(
-		&self,
-		_: &mut storekey::Writer<W>,
-	) -> Result<(), storekey::EncodeError> {
-		Err(storekey::EncodeError::message("Regex cannot be encoded"))
-	}
+    fn encode<W: std::io::Write>(
+        &self,
+        _: &mut storekey::Writer<W>,
+    ) -> Result<(), storekey::EncodeError> {
+        Err(storekey::EncodeError::message("Regex cannot be encoded"))
+    }
 }
 
 impl<'de, F> BorrowDecode<'de, F> for Regex {
-	fn borrow_decode(_: &mut storekey::BorrowReader<'de>) -> Result<Self, storekey::DecodeError> {
-		Err(storekey::DecodeError::message("Regex cannot be decoded"))
-	}
+    fn borrow_decode(_: &mut storekey::BorrowReader<'de>) -> Result<Self, storekey::DecodeError> {
+        Err(storekey::DecodeError::message("Regex cannot be decoded"))
+    }
 }
 
 #[cfg(test)]
 mod tests {
-	use super::regex_new;
-	#[test]
-	fn regex_compile_limit() {
-		match regex_new("^(a|b|c){1000000}") {
-			Err(e) => {
-				assert!(matches!(e, regex::Error::CompiledTooBig(10_485_760)), "{e}");
-			}
-			Ok(_) => panic!("regex should have failed"),
-		}
-	}
+    use super::regex_new;
+    #[test]
+    fn regex_compile_limit() {
+        match regex_new("^(a|b|c){1000000}") {
+            Err(e) => {
+                assert!(matches!(e, regex::Error::CompiledTooBig(10_485_760)), "{e}");
+            }
+            Ok(_) => panic!("regex should have failed"),
+        }
+    }
 }

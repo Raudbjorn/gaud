@@ -266,8 +266,14 @@ pub async fn refresh_token(
     );
 
     // Preserve project IDs from composite token
-    let project_id = parts.get(1).filter(|s| !s.is_empty()).map(|s| s.to_string());
-    let managed_project_id = parts.get(2).filter(|s| !s.is_empty()).map(|s| s.to_string());
+    let project_id = parts
+        .get(1)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let managed_project_id = parts
+        .get(2)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
     if let Some(project) = project_id {
         token = token.with_project_ids(&project, managed_project_id.as_deref());
     }
@@ -333,7 +339,10 @@ mod tests {
         assert_eq!(config.client_secret, "my-secret");
         assert_eq!(config.auth_url, "https://custom.auth.url");
         assert_eq!(config.token_url, "https://custom.token.url");
-        assert_eq!(config.redirect_uri, "http://127.0.0.1:8080/oauth/callback/gemini");
+        assert_eq!(
+            config.redirect_uri,
+            "http://127.0.0.1:8080/oauth/callback/gemini"
+        );
     }
 
     #[test]

@@ -3,6 +3,9 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
+/// Global User-Agent string for the application.
+pub const GAUD_USER_AGENT: &str = concat!("gaud/", env!("CARGO_PKG_VERSION"));
+
 // ---------------------------------------------------------------------------
 // Environment override tracking
 // ---------------------------------------------------------------------------
@@ -190,9 +193,7 @@ impl Default for TlsClientCertConfig {
 impl TlsClientCertConfig {
     /// The effective header name (defaults to X-Client-Cert-CN).
     pub fn effective_header(&self) -> &str {
-        self.header_name
-            .as_deref()
-            .unwrap_or("X-Client-Cert-CN")
+        self.header_name.as_deref().unwrap_or("X-Client-Cert-CN")
     }
 }
 
@@ -332,9 +333,7 @@ impl KiroProviderConfig {
         }
         // 3. Deprecated env var (fallback for older configs)
         if let Ok(t) = std::env::var("KIRO_REFRESH_TOKEN") {
-            tracing::warn!(
-                "KIRO_REFRESH_TOKEN is deprecated, use GAUD_KIRO_REFRESH_TOKEN instead"
-            );
+            tracing::warn!("KIRO_REFRESH_TOKEN is deprecated, use GAUD_KIRO_REFRESH_TOKEN instead");
             return Some(t);
         }
         // 4. Credentials JSON file
@@ -656,7 +655,6 @@ pub struct CacheConfig {
     pub skip_models: Vec<String>,
 
     // -- Streaming cache (replay) -------------------------------------------
-
     /// Whether to cache streaming responses as replayable SSE event logs.
     #[serde(default)]
     pub stream_cache_enabled: bool,
@@ -798,7 +796,10 @@ impl Config {
             let config: Config = toml::from_str(&content)?;
             config
         } else {
-            tracing::warn!("Config file not found at {}, using defaults", path.display());
+            tracing::warn!(
+                "Config file not found at {}, using defaults",
+                path.display()
+            );
             Self::default()
         };
         config.apply_env_overrides();
@@ -997,11 +998,7 @@ impl Config {
             "GAUD_CACHE_MAX_ENTRIES",
             self.cache.max_entries
         );
-        env_path!(
-            "cache.path",
-            "GAUD_CACHE_PATH",
-            self.cache.path
-        );
+        env_path!("cache.path", "GAUD_CACHE_PATH", self.cache.path);
         env_bool!(
             "cache.skip_tool_requests",
             "GAUD_CACHE_SKIP_TOOLS",
@@ -1012,8 +1009,6 @@ impl Config {
             "GAUD_CACHE_EMBEDDING_ALLOW_LOCAL",
             self.cache.embedding_allow_local
         );
-
-
 
         // -- LiteLLM Provider (auto-create from env if URL is set) --
         if let Ok(url) = std::env::var("GAUD_LITELLM_URL") {
@@ -1082,21 +1077,104 @@ impl Config {
 
         let mut entries = vec![
             // -- Server --
-            se("server.host", "Server", "Bind Address", serde_json::json!(self.server.host), "GAUD_SERVER_HOST", "text"),
-            se("server.port", "Server", "Port", serde_json::json!(self.server.port), "GAUD_SERVER_PORT", "number"),
-            se("server.cors_origins", "Server", "CORS Origins", serde_json::json!(self.server.cors_origins.join(", ")), "GAUD_SERVER_CORS_ORIGINS", "text"),
+            se(
+                "server.host",
+                "Server",
+                "Bind Address",
+                serde_json::json!(self.server.host),
+                "GAUD_SERVER_HOST",
+                "text",
+            ),
+            se(
+                "server.port",
+                "Server",
+                "Port",
+                serde_json::json!(self.server.port),
+                "GAUD_SERVER_PORT",
+                "number",
+            ),
+            se(
+                "server.cors_origins",
+                "Server",
+                "CORS Origins",
+                serde_json::json!(self.server.cors_origins.join(", ")),
+                "GAUD_SERVER_CORS_ORIGINS",
+                "text",
+            ),
             // -- Database --
-            se("database.path", "Database", "Database Path", serde_json::json!(self.database.path.display().to_string()), "GAUD_DATABASE_PATH", "text"),
+            se(
+                "database.path",
+                "Database",
+                "Database Path",
+                serde_json::json!(self.database.path.display().to_string()),
+                "GAUD_DATABASE_PATH",
+                "text",
+            ),
             // -- Auth --
-            se("auth.enabled", "Authentication", "Auth Enabled", serde_json::json!(self.auth.enabled), "GAUD_AUTH_ENABLED", "bool"),
-            se("auth.default_admin_name", "Authentication", "Default Admin Name", serde_json::json!(self.auth.default_admin_name), "GAUD_AUTH_ADMIN_NAME", "text"),
-            se("auth.tls_client_cert.enabled", "Authentication", "TLS Client Cert Auth", serde_json::json!(self.auth.tls_client_cert.enabled), "GAUD_AUTH_TLS_ENABLED", "bool"),
-            se("auth.tls_client_cert.require_cert", "Authentication", "Require Client Cert", serde_json::json!(self.auth.tls_client_cert.require_cert), "GAUD_AUTH_TLS_REQUIRE", "bool"),
-            se("auth.tls_client_cert.ca_cert_path", "Authentication", "CA Cert Path", serde_json::json!(self.auth.tls_client_cert.ca_cert_path.as_deref().unwrap_or("")), "GAUD_AUTH_TLS_CA_CERT", "text"),
-            se("auth.tls_client_cert.header_name", "Authentication", "Client Cert Header", serde_json::json!(self.auth.tls_client_cert.effective_header()), "GAUD_AUTH_TLS_HEADER", "text"),
+            se(
+                "auth.enabled",
+                "Authentication",
+                "Auth Enabled",
+                serde_json::json!(self.auth.enabled),
+                "GAUD_AUTH_ENABLED",
+                "bool",
+            ),
+            se(
+                "auth.default_admin_name",
+                "Authentication",
+                "Default Admin Name",
+                serde_json::json!(self.auth.default_admin_name),
+                "GAUD_AUTH_ADMIN_NAME",
+                "text",
+            ),
+            se(
+                "auth.tls_client_cert.enabled",
+                "Authentication",
+                "TLS Client Cert Auth",
+                serde_json::json!(self.auth.tls_client_cert.enabled),
+                "GAUD_AUTH_TLS_ENABLED",
+                "bool",
+            ),
+            se(
+                "auth.tls_client_cert.require_cert",
+                "Authentication",
+                "Require Client Cert",
+                serde_json::json!(self.auth.tls_client_cert.require_cert),
+                "GAUD_AUTH_TLS_REQUIRE",
+                "bool",
+            ),
+            se(
+                "auth.tls_client_cert.ca_cert_path",
+                "Authentication",
+                "CA Cert Path",
+                serde_json::json!(
+                    self.auth
+                        .tls_client_cert
+                        .ca_cert_path
+                        .as_deref()
+                        .unwrap_or("")
+                ),
+                "GAUD_AUTH_TLS_CA_CERT",
+                "text",
+            ),
+            se(
+                "auth.tls_client_cert.header_name",
+                "Authentication",
+                "Client Cert Header",
+                serde_json::json!(self.auth.tls_client_cert.effective_header()),
+                "GAUD_AUTH_TLS_HEADER",
+                "text",
+            ),
             // -- Providers --
             {
-                let mut e = se("providers.routing_strategy", "Providers", "Routing Strategy", serde_json::json!(self.providers.routing_strategy.to_string()), "GAUD_PROVIDERS_ROUTING", "select");
+                let mut e = se(
+                    "providers.routing_strategy",
+                    "Providers",
+                    "Routing Strategy",
+                    serde_json::json!(self.providers.routing_strategy.to_string()),
+                    "GAUD_PROVIDERS_ROUTING",
+                    "select",
+                );
                 e.options = Some(vec![
                     "priority".to_string(),
                     "round_robin".to_string(),
@@ -1105,9 +1183,23 @@ impl Config {
                 ]);
                 e
             },
-            se("providers.token_storage_dir", "Providers", "Token Storage Directory", serde_json::json!(self.providers.token_storage_dir.display().to_string()), "GAUD_PROVIDERS_TOKEN_DIR", "text"),
+            se(
+                "providers.token_storage_dir",
+                "Providers",
+                "Token Storage Directory",
+                serde_json::json!(self.providers.token_storage_dir.display().to_string()),
+                "GAUD_PROVIDERS_TOKEN_DIR",
+                "text",
+            ),
             {
-                let mut e = se("providers.storage_backend", "Providers", "Storage Backend", serde_json::json!(self.providers.storage_backend.to_string()), "GAUD_PROVIDERS_STORAGE_BACKEND", "select");
+                let mut e = se(
+                    "providers.storage_backend",
+                    "Providers",
+                    "Storage Backend",
+                    serde_json::json!(self.providers.storage_backend.to_string()),
+                    "GAUD_PROVIDERS_STORAGE_BACKEND",
+                    "select",
+                );
                 e.options = Some(vec![
                     "file".to_string(),
                     "keyring".to_string(),
@@ -1120,7 +1212,13 @@ impl Config {
                 "providers.litellm.url",
                 "LiteLLM",
                 "LiteLLM URL",
-                serde_json::json!(self.providers.litellm.as_ref().map(|l| l.url.as_str()).unwrap_or("")),
+                serde_json::json!(
+                    self.providers
+                        .litellm
+                        .as_ref()
+                        .map(|l| l.url.as_str())
+                        .unwrap_or("")
+                ),
                 "GAUD_LITELLM_URL",
                 "text",
             ),
@@ -1128,7 +1226,13 @@ impl Config {
                 "providers.litellm.discover_models",
                 "LiteLLM",
                 "Auto-Discover Models",
-                serde_json::json!(self.providers.litellm.as_ref().map(|l| l.discover_models).unwrap_or(true)),
+                serde_json::json!(
+                    self.providers
+                        .litellm
+                        .as_ref()
+                        .map(|l| l.discover_models)
+                        .unwrap_or(true)
+                ),
                 "GAUD_LITELLM_DISCOVER",
                 "bool",
             ),
@@ -1136,16 +1240,43 @@ impl Config {
                 "providers.litellm.timeout_secs",
                 "LiteLLM",
                 "Request Timeout (seconds)",
-                serde_json::json!(self.providers.litellm.as_ref().map(|l| l.timeout_secs).unwrap_or(default_litellm_timeout())),
+                serde_json::json!(
+                    self.providers
+                        .litellm
+                        .as_ref()
+                        .map(|l| l.timeout_secs)
+                        .unwrap_or(default_litellm_timeout())
+                ),
                 "GAUD_LITELLM_TIMEOUT",
                 "number",
             ),
             // -- Budget --
-            se("budget.enabled", "Budget", "Budget Tracking Enabled", serde_json::json!(self.budget.enabled), "GAUD_BUDGET_ENABLED", "bool"),
-            se("budget.warning_threshold_percent", "Budget", "Warning Threshold (%)", serde_json::json!(self.budget.warning_threshold_percent), "GAUD_BUDGET_WARNING_THRESHOLD", "number"),
+            se(
+                "budget.enabled",
+                "Budget",
+                "Budget Tracking Enabled",
+                serde_json::json!(self.budget.enabled),
+                "GAUD_BUDGET_ENABLED",
+                "bool",
+            ),
+            se(
+                "budget.warning_threshold_percent",
+                "Budget",
+                "Warning Threshold (%)",
+                serde_json::json!(self.budget.warning_threshold_percent),
+                "GAUD_BUDGET_WARNING_THRESHOLD",
+                "number",
+            ),
             // -- Logging --
             {
-                let mut e = se("logging.level", "Logging", "Log Level", serde_json::json!(self.logging.level), "GAUD_LOG_LEVEL", "select");
+                let mut e = se(
+                    "logging.level",
+                    "Logging",
+                    "Log Level",
+                    serde_json::json!(self.logging.level),
+                    "GAUD_LOG_LEVEL",
+                    "select",
+                );
                 e.options = Some(vec![
                     "trace".to_string(),
                     "debug".to_string(),
@@ -1155,32 +1286,138 @@ impl Config {
                 ]);
                 e
             },
-            se("logging.json", "Logging", "JSON Log Format", serde_json::json!(self.logging.json), "GAUD_LOG_JSON", "bool"),
-            se("logging.log_content", "Logging", "Log Request Content", serde_json::json!(self.logging.log_content), "GAUD_LOG_CONTENT", "bool"),
+            se(
+                "logging.json",
+                "Logging",
+                "JSON Log Format",
+                serde_json::json!(self.logging.json),
+                "GAUD_LOG_JSON",
+                "bool",
+            ),
+            se(
+                "logging.log_content",
+                "Logging",
+                "Log Request Content",
+                serde_json::json!(self.logging.log_content),
+                "GAUD_LOG_CONTENT",
+                "bool",
+            ),
         ];
 
         // -- Cache --
-        entries.push(se("cache.enabled", "Cache", "Cache Enabled", serde_json::json!(self.cache.enabled), "GAUD_CACHE_ENABLED", "bool"));
+        entries.push(se(
+            "cache.enabled",
+            "Cache",
+            "Cache Enabled",
+            serde_json::json!(self.cache.enabled),
+            "GAUD_CACHE_ENABLED",
+            "bool",
+        ));
         entries.push({
-            let mut e = se("cache.mode", "Cache", "Cache Mode", serde_json::json!(self.cache.mode.to_string()), "GAUD_CACHE_MODE", "select");
-            e.options = Some(vec!["exact".to_string(), "semantic".to_string(), "both".to_string()]);
+            let mut e = se(
+                "cache.mode",
+                "Cache",
+                "Cache Mode",
+                serde_json::json!(self.cache.mode.to_string()),
+                "GAUD_CACHE_MODE",
+                "select",
+            );
+            e.options = Some(vec![
+                "exact".to_string(),
+                "semantic".to_string(),
+                "both".to_string(),
+            ]);
             e
         });
-        entries.push(se("cache.path", "Cache", "Cache Database Path", serde_json::json!(self.cache.path.display().to_string()), "GAUD_CACHE_PATH", "text"));
-        entries.push(se("cache.similarity_threshold", "Cache", "Similarity Threshold", serde_json::json!(self.cache.similarity_threshold), "GAUD_CACHE_SIMILARITY_THRESHOLD", "number"));
-        entries.push(se("cache.embedding_url", "Cache", "Embedding URL", serde_json::json!(self.cache.embedding_url.as_deref().unwrap_or("")), "GAUD_CACHE_EMBEDDING_URL", "text"));
-        entries.push(se("cache.embedding_model", "Cache", "Embedding Model", serde_json::json!(self.cache.embedding_model.as_deref().unwrap_or("")), "GAUD_CACHE_EMBEDDING_MODEL", "text"));
-        entries.push(se("cache.embedding_dimension", "Cache", "Embedding Dimension", serde_json::json!(self.cache.embedding_dimension), "GAUD_CACHE_EMBEDDING_DIM", "number"));
-        entries.push(se("cache.ttl_secs", "Cache", "TTL (seconds)", serde_json::json!(self.cache.ttl_secs), "GAUD_CACHE_TTL", "number"));
-        entries.push(se("cache.max_entries", "Cache", "Max Entries", serde_json::json!(self.cache.max_entries), "GAUD_CACHE_MAX_ENTRIES", "number"));
-        entries.push(se("cache.skip_tool_requests", "Cache", "Skip Tool Requests", serde_json::json!(self.cache.skip_tool_requests), "GAUD_CACHE_SKIP_TOOLS", "bool"));
-        entries.push(se("cache.embedding_allow_local", "Cache", "Allow Local Embedding Server", serde_json::json!(self.cache.embedding_allow_local), "GAUD_CACHE_EMBEDDING_ALLOW_LOCAL", "bool"));
+        entries.push(se(
+            "cache.path",
+            "Cache",
+            "Cache Database Path",
+            serde_json::json!(self.cache.path.display().to_string()),
+            "GAUD_CACHE_PATH",
+            "text",
+        ));
+        entries.push(se(
+            "cache.similarity_threshold",
+            "Cache",
+            "Similarity Threshold",
+            serde_json::json!(self.cache.similarity_threshold),
+            "GAUD_CACHE_SIMILARITY_THRESHOLD",
+            "number",
+        ));
+        entries.push(se(
+            "cache.embedding_url",
+            "Cache",
+            "Embedding URL",
+            serde_json::json!(self.cache.embedding_url.as_deref().unwrap_or("")),
+            "GAUD_CACHE_EMBEDDING_URL",
+            "text",
+        ));
+        entries.push(se(
+            "cache.embedding_model",
+            "Cache",
+            "Embedding Model",
+            serde_json::json!(self.cache.embedding_model.as_deref().unwrap_or("")),
+            "GAUD_CACHE_EMBEDDING_MODEL",
+            "text",
+        ));
+        entries.push(se(
+            "cache.embedding_dimension",
+            "Cache",
+            "Embedding Dimension",
+            serde_json::json!(self.cache.embedding_dimension),
+            "GAUD_CACHE_EMBEDDING_DIM",
+            "number",
+        ));
+        entries.push(se(
+            "cache.ttl_secs",
+            "Cache",
+            "TTL (seconds)",
+            serde_json::json!(self.cache.ttl_secs),
+            "GAUD_CACHE_TTL",
+            "number",
+        ));
+        entries.push(se(
+            "cache.max_entries",
+            "Cache",
+            "Max Entries",
+            serde_json::json!(self.cache.max_entries),
+            "GAUD_CACHE_MAX_ENTRIES",
+            "number",
+        ));
+        entries.push(se(
+            "cache.skip_tool_requests",
+            "Cache",
+            "Skip Tool Requests",
+            serde_json::json!(self.cache.skip_tool_requests),
+            "GAUD_CACHE_SKIP_TOOLS",
+            "bool",
+        ));
+        entries.push(se(
+            "cache.embedding_allow_local",
+            "Cache",
+            "Allow Local Embedding Server",
+            serde_json::json!(self.cache.embedding_allow_local),
+            "GAUD_CACHE_EMBEDDING_ALLOW_LOCAL",
+            "bool",
+        ));
 
         // Mark cache embedding API key as sensitive.
         {
-            let mut ek = se("cache.embedding_api_key", "Cache", "Embedding API Key",
-                serde_json::json!(self.cache.embedding_api_key.as_deref().map(|_| "********").unwrap_or("")),
-                "GAUD_CACHE_EMBEDDING_API_KEY", "text");
+            let mut ek = se(
+                "cache.embedding_api_key",
+                "Cache",
+                "Embedding API Key",
+                serde_json::json!(
+                    self.cache
+                        .embedding_api_key
+                        .as_deref()
+                        .map(|_| "********")
+                        .unwrap_or("")
+                ),
+                "GAUD_CACHE_EMBEDDING_API_KEY",
+                "text",
+            );
             ek.sensitive = true;
             entries.push(ek);
         }
@@ -1190,16 +1427,23 @@ impl Config {
             "providers.litellm.api_key",
             "LiteLLM",
             "API Key",
-            serde_json::json!(self.providers.litellm.as_ref()
-                .and_then(|l| l.api_key.as_deref())
-                .map(|_| "********")
-                .unwrap_or("")),
+            serde_json::json!(
+                self.providers
+                    .litellm
+                    .as_ref()
+                    .and_then(|l| l.api_key.as_deref())
+                    .map(|_| "********")
+                    .unwrap_or("")
+            ),
             "GAUD_LITELLM_API_KEY",
             "text",
         );
         lk.sensitive = true;
         // Insert after the LiteLLM URL entry.
-        if let Some(pos) = entries.iter().position(|e| e.key == "providers.litellm.url") {
+        if let Some(pos) = entries
+            .iter()
+            .position(|e| e.key == "providers.litellm.url")
+        {
             entries.insert(pos + 1, lk);
         } else {
             entries.push(lk);
@@ -1210,7 +1454,13 @@ impl Config {
             "auth.bootstrap_key",
             "Authentication",
             "Bootstrap Key",
-            serde_json::json!(self.auth.bootstrap_key.as_deref().map(|_| "********").unwrap_or("")),
+            serde_json::json!(
+                self.auth
+                    .bootstrap_key
+                    .as_deref()
+                    .map(|_| "********")
+                    .unwrap_or("")
+            ),
             "GAUD_AUTH_BOOTSTRAP_KEY",
             "text",
         );
@@ -1244,19 +1494,16 @@ impl Config {
                     .collect();
             }
             "database.path" => {
-                self.database.path =
-                    PathBuf::from(value.as_str().ok_or("Expected string")?);
+                self.database.path = PathBuf::from(value.as_str().ok_or("Expected string")?);
             }
             "auth.enabled" => {
                 self.auth.enabled = value.as_bool().ok_or("Expected boolean")?;
             }
             "auth.default_admin_name" => {
-                self.auth.default_admin_name =
-                    value.as_str().ok_or("Expected string")?.to_string();
+                self.auth.default_admin_name = value.as_str().ok_or("Expected string")?.to_string();
             }
             "auth.tls_client_cert.enabled" => {
-                self.auth.tls_client_cert.enabled =
-                    value.as_bool().ok_or("Expected boolean")?;
+                self.auth.tls_client_cert.enabled = value.as_bool().ok_or("Expected boolean")?;
             }
             "auth.tls_client_cert.require_cert" => {
                 self.auth.tls_client_cert.require_cert =
@@ -1280,8 +1527,7 @@ impl Config {
             }
             "providers.routing_strategy" => {
                 let s = value.as_str().ok_or("Expected string")?;
-                self.providers.routing_strategy =
-                    s.parse().map_err(|e: String| e)?;
+                self.providers.routing_strategy = s.parse().map_err(|e: String| e)?;
             }
             "providers.token_storage_dir" => {
                 self.providers.token_storage_dir =
@@ -1289,8 +1535,7 @@ impl Config {
             }
             "providers.storage_backend" => {
                 let s = value.as_str().ok_or("Expected string")?;
-                self.providers.storage_backend =
-                    s.parse().map_err(|e: String| e)?;
+                self.providers.storage_backend = s.parse().map_err(|e: String| e)?;
             }
             "budget.enabled" => {
                 self.budget.enabled = value.as_bool().ok_or("Expected boolean")?;
@@ -1303,8 +1548,7 @@ impl Config {
                     .map_err(|_| "Value out of range")?;
             }
             "logging.level" => {
-                self.logging.level =
-                    value.as_str().ok_or("Expected string")?.to_string();
+                self.logging.level = value.as_str().ok_or("Expected string")?.to_string();
             }
             "logging.json" => {
                 self.logging.json = value.as_bool().ok_or("Expected boolean")?;
@@ -1345,9 +1589,7 @@ impl Config {
             }
             "providers.litellm.timeout_secs" => {
                 if let Some(ref mut litellm) = self.providers.litellm {
-                    litellm.timeout_secs = value
-                        .as_u64()
-                        .ok_or("Expected number")?;
+                    litellm.timeout_secs = value.as_u64().ok_or("Expected number")?;
                 }
             }
             "cache.enabled" => {
@@ -1361,18 +1603,23 @@ impl Config {
                 self.cache.path = PathBuf::from(value.as_str().ok_or("Expected string")?);
             }
             "cache.similarity_threshold" => {
-                self.cache.similarity_threshold = value
-                    .as_f64()
-                    .ok_or("Expected number")?
-                    as f32;
+                self.cache.similarity_threshold = value.as_f64().ok_or("Expected number")? as f32;
             }
             "cache.embedding_url" => {
                 let s = value.as_str().ok_or("Expected string")?;
-                self.cache.embedding_url = if s.is_empty() { None } else { Some(s.to_string()) };
+                self.cache.embedding_url = if s.is_empty() {
+                    None
+                } else {
+                    Some(s.to_string())
+                };
             }
             "cache.embedding_model" => {
                 let s = value.as_str().ok_or("Expected string")?;
-                self.cache.embedding_model = if s.is_empty() { None } else { Some(s.to_string()) };
+                self.cache.embedding_model = if s.is_empty() {
+                    None
+                } else {
+                    Some(s.to_string())
+                };
             }
             "cache.embedding_api_key" => {
                 let s = value.as_str().ok_or("Expected string")?;
@@ -1391,10 +1638,7 @@ impl Config {
                 self.cache.ttl_secs = value.as_u64().ok_or("Expected number")?;
             }
             "cache.max_entries" => {
-                self.cache.max_entries = value
-                    .as_u64()
-                    .ok_or("Expected number")?
-                    as usize;
+                self.cache.max_entries = value.as_u64().ok_or("Expected number")? as usize;
             }
             "cache.skip_tool_requests" => {
                 self.cache.skip_tool_requests = value.as_bool().ok_or("Expected boolean")?;
@@ -1472,11 +1716,26 @@ mod tests {
 
     #[test]
     fn test_routing_strategy_from_str() {
-        assert_eq!("priority".parse::<RoutingStrategy>().unwrap(), RoutingStrategy::Priority);
-        assert_eq!("round_robin".parse::<RoutingStrategy>().unwrap(), RoutingStrategy::RoundRobin);
-        assert_eq!("round-robin".parse::<RoutingStrategy>().unwrap(), RoutingStrategy::RoundRobin);
-        assert_eq!("least_used".parse::<RoutingStrategy>().unwrap(), RoutingStrategy::LeastUsed);
-        assert_eq!("random".parse::<RoutingStrategy>().unwrap(), RoutingStrategy::Random);
+        assert_eq!(
+            "priority".parse::<RoutingStrategy>().unwrap(),
+            RoutingStrategy::Priority
+        );
+        assert_eq!(
+            "round_robin".parse::<RoutingStrategy>().unwrap(),
+            RoutingStrategy::RoundRobin
+        );
+        assert_eq!(
+            "round-robin".parse::<RoutingStrategy>().unwrap(),
+            RoutingStrategy::RoundRobin
+        );
+        assert_eq!(
+            "least_used".parse::<RoutingStrategy>().unwrap(),
+            RoutingStrategy::LeastUsed
+        );
+        assert_eq!(
+            "random".parse::<RoutingStrategy>().unwrap(),
+            RoutingStrategy::Random
+        );
         assert!("unknown".parse::<RoutingStrategy>().is_err());
     }
 
@@ -1490,9 +1749,18 @@ mod tests {
 
     #[test]
     fn test_storage_backend_from_str() {
-        assert_eq!("file".parse::<StorageBackend>().unwrap(), StorageBackend::File);
-        assert_eq!("keyring".parse::<StorageBackend>().unwrap(), StorageBackend::Keyring);
-        assert_eq!("memory".parse::<StorageBackend>().unwrap(), StorageBackend::Memory);
+        assert_eq!(
+            "file".parse::<StorageBackend>().unwrap(),
+            StorageBackend::File
+        );
+        assert_eq!(
+            "keyring".parse::<StorageBackend>().unwrap(),
+            StorageBackend::Keyring
+        );
+        assert_eq!(
+            "memory".parse::<StorageBackend>().unwrap(),
+            StorageBackend::Memory
+        );
         assert!("unknown".parse::<StorageBackend>().is_err());
     }
 
@@ -1559,22 +1827,36 @@ mod tests {
             ("off", false),
         ] {
             // SAFETY: Tests are run sequentially for env-mutating tests.
-            unsafe { std::env::set_var("GAUD_LOG_JSON", val); }
+            unsafe {
+                std::env::set_var("GAUD_LOG_JSON", val);
+            }
             let mut config = Config::default();
             config.apply_env_overrides();
             assert_eq!(config.logging.json, expected, "GAUD_LOG_JSON={val}");
         }
-        unsafe { std::env::remove_var("GAUD_LOG_JSON"); }
+        unsafe {
+            std::env::remove_var("GAUD_LOG_JSON");
+        }
     }
 
     #[test]
     fn test_env_cors_origins_split() {
         // SAFETY: Tests are run sequentially for env-mutating tests.
-        unsafe { std::env::set_var("GAUD_SERVER_CORS_ORIGINS", "http://a.com, http://b.com, http://c.com"); }
+        unsafe {
+            std::env::set_var(
+                "GAUD_SERVER_CORS_ORIGINS",
+                "http://a.com, http://b.com, http://c.com",
+            );
+        }
         let mut config = Config::default();
         config.apply_env_overrides();
-        assert_eq!(config.server.cors_origins, vec!["http://a.com", "http://b.com", "http://c.com"]);
-        unsafe { std::env::remove_var("GAUD_SERVER_CORS_ORIGINS"); }
+        assert_eq!(
+            config.server.cors_origins,
+            vec!["http://a.com", "http://b.com", "http://c.com"]
+        );
+        unsafe {
+            std::env::remove_var("GAUD_SERVER_CORS_ORIGINS");
+        }
     }
 
     #[test]
@@ -1593,18 +1875,27 @@ mod tests {
 
         // Verify env var names are set.
         for entry in &report {
-            assert!(!entry.env_var.is_empty(), "entry {} missing env_var", entry.key);
+            assert!(
+                !entry.env_var.is_empty(),
+                "entry {} missing env_var",
+                entry.key
+            );
         }
 
         // Verify bootstrap_key is sensitive.
-        let bk = report.iter().find(|e| e.key == "auth.bootstrap_key").unwrap();
+        let bk = report
+            .iter()
+            .find(|e| e.key == "auth.bootstrap_key")
+            .unwrap();
         assert!(bk.sensitive);
     }
 
     #[test]
     fn test_settings_report_env_override_flag() {
         // SAFETY: Tests are run sequentially for env-mutating tests.
-        unsafe { std::env::set_var("GAUD_SERVER_HOST", "0.0.0.0"); }
+        unsafe {
+            std::env::set_var("GAUD_SERVER_HOST", "0.0.0.0");
+        }
         let mut config = Config::default();
         config.apply_env_overrides();
         let report = config.settings_report();
@@ -1616,28 +1907,44 @@ mod tests {
         let port = report.iter().find(|e| e.key == "server.port").unwrap();
         assert!(!port.overridden);
 
-        unsafe { std::env::remove_var("GAUD_SERVER_HOST"); }
+        unsafe {
+            std::env::remove_var("GAUD_SERVER_HOST");
+        }
     }
 
     #[test]
     fn test_update_setting_valid() {
         let mut config = Config::default();
-        config.update_setting("server.host", &serde_json::json!("0.0.0.0")).unwrap();
+        config
+            .update_setting("server.host", &serde_json::json!("0.0.0.0"))
+            .unwrap();
         assert_eq!(config.server.host, "0.0.0.0");
 
-        config.update_setting("server.port", &serde_json::json!(9090)).unwrap();
+        config
+            .update_setting("server.port", &serde_json::json!(9090))
+            .unwrap();
         assert_eq!(config.server.port, 9090);
 
-        config.update_setting("auth.enabled", &serde_json::json!(false)).unwrap();
+        config
+            .update_setting("auth.enabled", &serde_json::json!(false))
+            .unwrap();
         assert!(!config.auth.enabled);
 
-        config.update_setting("logging.level", &serde_json::json!("debug")).unwrap();
+        config
+            .update_setting("logging.level", &serde_json::json!("debug"))
+            .unwrap();
         assert_eq!(config.logging.level, "debug");
 
         config
-            .update_setting("providers.routing_strategy", &serde_json::json!("round_robin"))
+            .update_setting(
+                "providers.routing_strategy",
+                &serde_json::json!("round_robin"),
+            )
             .unwrap();
-        assert_eq!(config.providers.routing_strategy, RoutingStrategy::RoundRobin);
+        assert_eq!(
+            config.providers.routing_strategy,
+            RoutingStrategy::RoundRobin
+        );
     }
 
     #[test]

@@ -138,14 +138,11 @@ pub fn get_user(db: &Database, user_id: &str) -> Result<User, AppError> {
 
 /// Delete a user and all associated API keys (cascade).
 pub fn delete_user(db: &Database, user_id: &str) -> Result<(), AppError> {
-    let deleted = db.with_conn(|conn| {
-        conn.execute("DELETE FROM users WHERE id = ?1", params![user_id])
-    })?;
+    let deleted =
+        db.with_conn(|conn| conn.execute("DELETE FROM users WHERE id = ?1", params![user_id]))?;
 
     if deleted == 0 {
-        return Err(AppError::NotFound(format!(
-            "User '{user_id}' not found"
-        )));
+        return Err(AppError::NotFound(format!("User '{user_id}' not found")));
     }
 
     tracing::info!(user_id = %user_id, "User deleted");
@@ -165,9 +162,8 @@ pub fn create_api_key(
     // Verify the user exists first.
     get_user(db, user_id)?;
 
-    let generated = keys::generate_api_key().map_err(|e| {
-        AppError::Internal(format!("Failed to generate API key: {e}"))
-    })?;
+    let generated = keys::generate_api_key()
+        .map_err(|e| AppError::Internal(format!("Failed to generate API key: {e}")))?;
 
     let GeneratedKey {
         plaintext,
@@ -232,14 +228,11 @@ pub fn list_api_keys(db: &Database, user_id: &str) -> Result<Vec<ApiKeyInfo>, Ap
 
 /// Revoke (delete) an API key by its ID.
 pub fn revoke_api_key(db: &Database, key_id: &str) -> Result<(), AppError> {
-    let deleted = db.with_conn(|conn| {
-        conn.execute("DELETE FROM api_keys WHERE id = ?1", params![key_id])
-    })?;
+    let deleted =
+        db.with_conn(|conn| conn.execute("DELETE FROM api_keys WHERE id = ?1", params![key_id]))?;
 
     if deleted == 0 {
-        return Err(AppError::NotFound(format!(
-            "API key '{key_id}' not found"
-        )));
+        return Err(AppError::NotFound(format!("API key '{key_id}' not found")));
     }
 
     tracing::info!(key_id = %key_id, "API key revoked");
@@ -254,10 +247,7 @@ pub fn revoke_api_key(db: &Database, key_id: &str) -> Result<(), AppError> {
 ///
 /// Iterates all stored key hashes and verifies with argon2. On success,
 /// updates `last_used` and returns the associated `AuthUser`.
-pub fn validate_api_key(
-    db: &Database,
-    plaintext: &str,
-) -> Result<crate::auth::AuthUser, AppError> {
+pub fn validate_api_key(db: &Database, plaintext: &str) -> Result<crate::auth::AuthUser, AppError> {
     let rows = db.with_conn(|conn| {
         let mut stmt = conn.prepare(
             "SELECT ak.id, ak.key_hash, u.id, u.name, u.role \
@@ -277,9 +267,8 @@ pub fn validate_api_key(
     })?;
 
     for (key_id, key_hash, user_id, name, role) in &rows {
-        let ok = keys::verify_key(plaintext, key_hash).map_err(|e| {
-            AppError::Internal(format!("Key verification error: {e}"))
-        })?;
+        let ok = keys::verify_key(plaintext, key_hash)
+            .map_err(|e| AppError::Internal(format!("Key verification error: {e}")))?;
 
         if ok {
             // Update last_used timestamp asynchronously (best-effort).
@@ -309,10 +298,12 @@ pub fn validate_api_key(
 ///
 /// The plaintext key is printed to stdout so the operator can use it.
 /// Returns `None` if users already exist.
-pub fn bootstrap_admin(db: &Database, admin_name: &str) -> Result<Option<BootstrapResult>, AppError> {
-    let user_count: i64 = db.with_conn(|conn| {
-        conn.query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))
-    })?;
+pub fn bootstrap_admin(
+    db: &Database,
+    admin_name: &str,
+) -> Result<Option<BootstrapResult>, AppError> {
+    let user_count: i64 =
+        db.with_conn(|conn| conn.query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0)))?;
 
     if user_count > 0 {
         return Ok(None);

@@ -2,10 +2,10 @@ use axum::extract::{Request, State};
 use axum::middleware::Next;
 use axum::response::Response;
 
-use crate::auth::users;
-use crate::auth::AuthUser;
-use crate::error::AppError;
 use crate::AppState;
+use crate::auth::AuthUser;
+use crate::auth::users;
+use crate::error::AppError;
 
 /// Axum middleware that extracts a Bearer token from the Authorization header,
 /// validates it against the database, and injects an `AuthUser` into request
@@ -94,16 +94,12 @@ pub async fn require_auth(
 ///
 /// Must be applied _after_ `require_auth` so that `AuthUser` is present in
 /// request extensions.
-pub async fn require_admin(
-    request: Request,
-    next: Next,
-) -> Result<Response, AppError> {
-    let auth_user = request
-        .extensions()
-        .get::<AuthUser>()
-        .ok_or_else(|| {
-            AppError::Internal("AuthUser missing from extensions -- is require_auth applied?".to_string())
-        })?;
+pub async fn require_admin(request: Request, next: Next) -> Result<Response, AppError> {
+    let auth_user = request.extensions().get::<AuthUser>().ok_or_else(|| {
+        AppError::Internal(
+            "AuthUser missing from extensions -- is require_auth applied?".to_string(),
+        )
+    })?;
 
     if !auth_user.is_admin() {
         return Err(AppError::Forbidden(format!(
@@ -143,11 +139,11 @@ fn extract_bearer_token(request: &Request) -> Result<String, AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::Router;
     use axum::body::Body;
-    use axum::http::{header, Request as HttpRequest, StatusCode};
+    use axum::http::{Request as HttpRequest, StatusCode, header};
     use axum::middleware;
     use axum::routing::get;
-    use axum::Router;
     use tower::ServiceExt;
 
     use crate::auth::users::{create_api_key, create_user};
@@ -294,7 +290,10 @@ mod tests {
 
         let req = HttpRequest::builder()
             .uri("/whoami")
-            .header(header::AUTHORIZATION, "Bearer sk-prx-invalid00000000000000000000")
+            .header(
+                header::AUTHORIZATION,
+                "Bearer sk-prx-invalid00000000000000000000",
+            )
             .body(Body::empty())
             .unwrap();
 
@@ -312,10 +311,7 @@ mod tests {
 
         let req = HttpRequest::builder()
             .uri("/whoami")
-            .header(
-                header::AUTHORIZATION,
-                format!("Bearer {}", key.plaintext),
-            )
+            .header(header::AUTHORIZATION, format!("Bearer {}", key.plaintext))
             .body(Body::empty())
             .unwrap();
 
@@ -338,10 +334,7 @@ mod tests {
 
         let req = HttpRequest::builder()
             .uri("/admin")
-            .header(
-                header::AUTHORIZATION,
-                format!("Bearer {}", key.plaintext),
-            )
+            .header(header::AUTHORIZATION, format!("Bearer {}", key.plaintext))
             .body(Body::empty())
             .unwrap();
 
@@ -359,10 +352,7 @@ mod tests {
 
         let req = HttpRequest::builder()
             .uri("/admin")
-            .header(
-                header::AUTHORIZATION,
-                format!("Bearer {}", key.plaintext),
-            )
+            .header(header::AUTHORIZATION, format!("Bearer {}", key.plaintext))
             .body(Body::empty())
             .unwrap();
 
@@ -510,10 +500,7 @@ mod tests {
         let req = HttpRequest::builder()
             .uri("/whoami")
             .header("X-Client-Cert-CN", "unknown-cert-user")
-            .header(
-                header::AUTHORIZATION,
-                format!("Bearer {}", key.plaintext),
-            )
+            .header(header::AUTHORIZATION, format!("Bearer {}", key.plaintext))
             .body(Body::empty())
             .unwrap();
 
@@ -537,10 +524,7 @@ mod tests {
         let req = HttpRequest::builder()
             .uri("/whoami")
             .header("X-Client-Cert-CN", "")
-            .header(
-                header::AUTHORIZATION,
-                format!("Bearer {}", key.plaintext),
-            )
+            .header(header::AUTHORIZATION, format!("Bearer {}", key.plaintext))
             .body(Body::empty())
             .unwrap();
 

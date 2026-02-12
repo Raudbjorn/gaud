@@ -1,12 +1,12 @@
-use axum::extract::{Path, Query, State};
 use axum::Extension;
 use axum::Json;
+use axum::extract::{Path, Query, State};
 use serde::{Deserialize, Serialize};
 
-use crate::auth::users;
-use crate::auth::AuthUser;
-use crate::error::AppError;
 use crate::AppState;
+use crate::auth::AuthUser;
+use crate::auth::users;
+use crate::error::AppError;
 
 // ---------------------------------------------------------------------------
 // Request / response types
@@ -95,9 +95,7 @@ pub struct DeletedResponse {
 /// Ensure the calling user has the admin role.
 fn require_admin(user: &AuthUser) -> Result<(), AppError> {
     if !user.is_admin() {
-        return Err(AppError::Forbidden(
-            "Admin role required".to_string(),
-        ));
+        return Err(AppError::Forbidden("Admin role required".to_string()));
     }
     Ok(())
 }
@@ -281,14 +279,18 @@ pub async fn query_usage(
         // Count total matching rows.
         let total: i64 = {
             let mut stmt = conn.prepare(&count_sql)?;
-            let p: Vec<&dyn rusqlite::ToSql> =
-                bind_values.iter().map(|v| v as &dyn rusqlite::ToSql).collect();
+            let p: Vec<&dyn rusqlite::ToSql> = bind_values
+                .iter()
+                .map(|v| v as &dyn rusqlite::ToSql)
+                .collect();
             stmt.query_row(p.as_slice(), |row| row.get(0))?
         };
 
         // Fetch the page of data.
-        let mut data_params: Vec<Box<dyn rusqlite::ToSql>> =
-            bind_values.iter().map(|v| Box::new(v.clone()) as Box<dyn rusqlite::ToSql>).collect();
+        let mut data_params: Vec<Box<dyn rusqlite::ToSql>> = bind_values
+            .iter()
+            .map(|v| Box::new(v.clone()) as Box<dyn rusqlite::ToSql>)
+            .collect();
         data_params.push(Box::new(per_page as i64));
         data_params.push(Box::new(offset as i64));
 
@@ -426,7 +428,11 @@ pub async fn update_settings(
         return Err(AppError::BadRequest(format!(
             "Setting '{}' is overridden by environment variable '{}'. Unset the variable and restart to edit.",
             body.key,
-            state.config.env_overrides.env_var_for(&body.key).unwrap_or("unknown")
+            state
+                .config
+                .env_overrides
+                .env_var_for(&body.key)
+                .unwrap_or("unknown")
         )));
     }
 

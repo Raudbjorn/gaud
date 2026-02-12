@@ -29,10 +29,7 @@ pub enum AppError {
     ContextWindow(String),
 
     #[error("Provider error ({status}): {message}")]
-    ProviderWithStatus {
-        status: u16,
-        message: String,
-    },
+    ProviderWithStatus { status: u16, message: String },
 
     #[error("Provider error: {0}")]
     Provider(String),

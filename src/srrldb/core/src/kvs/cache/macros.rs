@@ -13,19 +13,19 @@
 /// impl_cache_key!(MyKey, Arc<MyValue>, Volatile);
 /// ```
 macro_rules! impl_cache_key {
-	($key:ty, $value:ty) => {
-		impl priority_lfu::CacheKey for $key {
-			type Value = $value;
-		}
-	};
-	($key:ty, $value:ty, $policy:ident) => {
-		impl priority_lfu::CacheKey for $key {
-			type Value = $value;
-			fn policy(&self) -> priority_lfu::CachePolicy {
-				priority_lfu::CachePolicy::$policy
-			}
-		}
-	};
+    ($key:ty, $value:ty) => {
+        impl priority_lfu::CacheKey for $key {
+            type Value = $value;
+        }
+    };
+    ($key:ty, $value:ty, $policy:ident) => {
+        impl priority_lfu::CacheKey for $key {
+            type Value = $value;
+            fn policy(&self) -> priority_lfu::CachePolicy {
+                priority_lfu::CachePolicy::$policy
+            }
+        }
+    };
 }
 
 /// Macro to implement the `CacheKeyLookup` trait for borrowed cache key types.

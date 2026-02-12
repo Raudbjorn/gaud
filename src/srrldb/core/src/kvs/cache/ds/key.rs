@@ -3,8 +3,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::catalog::{
-	DatabaseDefinition, DatabaseId, EventDefinition, IndexDefinition, NamespaceId,
-	SubscriptionDefinition, TableDefinition,
+    DatabaseDefinition, DatabaseId, EventDefinition, IndexDefinition, NamespaceId,
+    SubscriptionDefinition, TableDefinition,
 };
 use crate::val::TableName;
 
@@ -16,8 +16,8 @@ pub struct DbCacheKeyRef<'a>(pub &'a str, pub &'a str);
 
 impl_cache_key!(DbCacheKey, Arc<DatabaseDefinition>, Critical);
 impl_cache_key_lookup!(DbCacheKeyRef<'a> => DbCacheKey {
-	0 => to_owned,
-	1 => to_owned,
+    0 => to_owned,
+    1 => to_owned,
 });
 
 #[derive(Clone, Hash, Eq, PartialEq)]
@@ -28,9 +28,9 @@ pub struct ForiegnTablesCacheKeyRef<'a>(pub NamespaceId, pub DatabaseId, pub &'a
 
 impl_cache_key!(ForiegnTablesCacheKey, Arc<[TableDefinition]>, Critical);
 impl_cache_key_lookup!(ForiegnTablesCacheKeyRef<'a> => ForiegnTablesCacheKey {
-	0 => copy,
-	1 => copy,
-	2 => to_owned,
+    0 => copy,
+    1 => copy,
+    2 => to_owned,
 });
 
 #[derive(Clone, Hash, Eq, PartialEq)]
@@ -41,10 +41,10 @@ pub struct EventsCacheKeyRef<'a>(pub NamespaceId, pub DatabaseId, pub &'a TableN
 
 impl_cache_key!(EventsCacheKey, Arc<[EventDefinition]>, Critical);
 impl_cache_key_lookup!(EventsCacheKeyRef<'a> => EventsCacheKey {
-	0 => copy,
-	1 => copy,
-	2 => to_owned,
-	3 => copy,
+    0 => copy,
+    1 => copy,
+    2 => to_owned,
+    3 => copy,
 });
 
 #[derive(Clone, Hash, Eq, PartialEq)]
@@ -55,10 +55,10 @@ pub struct IndexesCacheKeyRef<'a>(pub NamespaceId, pub DatabaseId, pub &'a Table
 
 impl_cache_key!(IndexesCacheKey, Arc<[IndexDefinition]>, Critical);
 impl_cache_key_lookup!(IndexesCacheKeyRef<'a> => IndexesCacheKey {
-	0 => copy,
-	1 => copy,
-	2 => to_owned,
-	3 => copy,
+    0 => copy,
+    1 => copy,
+    2 => to_owned,
+    3 => copy,
 });
 
 #[derive(Clone, Hash, Eq, PartialEq)]
@@ -69,10 +69,10 @@ pub struct LiveQueriesCacheKeyRef<'a>(pub NamespaceId, pub DatabaseId, pub &'a T
 
 impl_cache_key!(LiveQueriesCacheKey, Arc<[SubscriptionDefinition]>, Critical);
 impl_cache_key_lookup!(LiveQueriesCacheKeyRef<'a> => LiveQueriesCacheKey {
-	0 => copy,
-	1 => copy,
-	2 => to_owned,
-	3 => copy,
+    0 => copy,
+    1 => copy,
+    2 => to_owned,
+    3 => copy,
 });
 
 #[derive(Clone, Hash, Eq, PartialEq)]
@@ -83,43 +83,43 @@ pub struct LiveQueriesVersionCacheKeyRef<'a>(pub NamespaceId, pub DatabaseId, pu
 
 impl_cache_key!(LiveQueriesVersionCacheKey, Uuid, Critical);
 impl_cache_key_lookup!(LiveQueriesVersionCacheKeyRef<'a> => LiveQueriesVersionCacheKey {
-	0 => copy,
-	1 => copy,
-	2 => to_owned,
+    0 => copy,
+    1 => copy,
+    2 => to_owned,
 });
 
 #[cfg(test)]
 mod tests {
-	use std::hash::{DefaultHasher, Hash, Hasher};
+    use std::hash::{DefaultHasher, Hash, Hasher};
 
-	use priority_lfu::{CacheKey, CacheKeyLookup};
-	use rstest::rstest;
+    use priority_lfu::{CacheKey, CacheKeyLookup};
+    use rstest::rstest;
 
-	use super::*;
+    use super::*;
 
-	fn hash<T: Hash>(value: &T) -> u64 {
-		let mut hasher = DefaultHasher::new();
-		value.hash(&mut hasher);
-		hasher.finish()
-	}
+    fn hash<T: Hash>(value: &T) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        value.hash(&mut hasher);
+        hasher.finish()
+    }
 
-	#[rstest]
-	#[case(DbCacheKeyRef("test-ns", "test-db"))]
-	fn test_hash_equality<L: CacheKeyLookup<K> + Clone, K: CacheKey>(#[case] lookup: L) {
-		let key = lookup.clone().to_owned_key();
-		// calculate the hash of the lookup and key
-		let lookup_hash = hash(&lookup);
-		let key_hash = hash(&key);
-		assert_eq!(lookup_hash, key_hash);
-	}
+    #[rstest]
+    #[case(DbCacheKeyRef("test-ns", "test-db"))]
+    fn test_hash_equality<L: CacheKeyLookup<K> + Clone, K: CacheKey>(#[case] lookup: L) {
+        let key = lookup.clone().to_owned_key();
+        // calculate the hash of the lookup and key
+        let lookup_hash = hash(&lookup);
+        let key_hash = hash(&key);
+        assert_eq!(lookup_hash, key_hash);
+    }
 
-	#[test]
-	fn test_foreign_tables_hash_equality() {
-		let table = TableName::from("test-table");
-		let lookup = ForiegnTablesCacheKeyRef(NamespaceId(1), DatabaseId(2), &table);
-		let key = lookup.clone().to_owned_key();
-		let lookup_hash = hash(&lookup);
-		let key_hash = hash(&key);
-		assert_eq!(lookup_hash, key_hash);
-	}
+    #[test]
+    fn test_foreign_tables_hash_equality() {
+        let table = TableName::from("test-table");
+        let lookup = ForiegnTablesCacheKeyRef(NamespaceId(1), DatabaseId(2), &table);
+        let key = lookup.clone().to_owned_key();
+        let lookup_hash = hash(&lookup);
+        let key_hash = hash(&key);
+        assert_eq!(lookup_hash, key_hash);
+    }
 }

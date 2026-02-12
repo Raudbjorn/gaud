@@ -39,20 +39,20 @@ mod table; // Processes any foreign tables relevant for this document'
 /// being ignored.
 #[derive(Debug)]
 pub enum IgnoreError {
-	Ignore,
-	Error(anyhow::Error),
+    Ignore,
+    Error(anyhow::Error),
 }
 
 impl From<anyhow::Error> for IgnoreError {
-	fn from(value: anyhow::Error) -> Self {
-		IgnoreError::Error(value)
-	}
+    fn from(value: anyhow::Error) -> Self {
+        IgnoreError::Error(value)
+    }
 }
 
 /// A type of action that triggers an even or view update
 #[derive(Clone, Debug, Eq, PartialEq, Copy)]
 pub(crate) enum Action {
-	Create,
-	Update,
-	Delete,
+    Create,
+    Update,
+    Delete,
 }

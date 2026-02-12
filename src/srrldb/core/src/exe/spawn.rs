@@ -16,14 +16,14 @@ use futures::channel::oneshot;
 /// handle other futures and I/O tasks.
 pub async fn spawn<F, R>(f: F) -> R
 where
-	F: FnOnce() -> R + Send + 'static,
-	R: Send + 'static,
+    F: FnOnce() -> R + Send + 'static,
+    R: Send + 'static,
 {
-	let (tx, rx) = oneshot::channel();
-	rayon::spawn(move || {
-		let result = f();
-		// Ignore errors in case the receiver was dropped
-		let _ = tx.send(result);
-	});
-	rx.await.expect("Receiver dropped")
+    let (tx, rx) = oneshot::channel();
+    rayon::spawn(move || {
+        let result = f();
+        // Ignore errors in case the receiver was dropped
+        let _ = tx.send(result);
+    });
+    rx.await.expect("Receiver dropped")
 }

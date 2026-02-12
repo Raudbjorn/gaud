@@ -124,5 +124,5 @@ macro_rules! enter_query_recursion {
 }
 
 pub(crate) use {
-	enter_object_recursion, enter_query_recursion, expected, expected_whitespace, unexpected,
+    enter_object_recursion, enter_query_recursion, expected, expected_whitespace, unexpected,
 };

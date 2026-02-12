@@ -57,6 +57,22 @@ use crate::config::{Config, StorageBackend};
 use crate::db::Database;
 
 // =============================================================================
+// TokenProvider Trait
+// =============================================================================
+
+/// Trait for providing access tokens.
+///
+/// This abstracts the source of tokens (e.g., OAuthManager, static token)
+/// from the consumers (e.g., API clients).
+#[async_trait::async_trait]
+pub trait TokenProvider: Send + Sync {
+    /// Get a valid access token for the specified provider.
+    ///
+    /// The implementation should handle refreshing if necessary.
+    async fn get_token(&self, provider: &str) -> Result<String, OAuthError>;
+}
+
+// =============================================================================
 // OAuthError
 // =============================================================================
 
@@ -156,7 +172,9 @@ impl OAuthManager {
             StorageBackend::Keyring => Arc::new(KeyringTokenStorage::new()),
             #[cfg(not(feature = "system-keyring"))]
             StorageBackend::Keyring => {
-                tracing::warn!("Keyring storage requested but system-keyring feature not enabled, falling back to file storage");
+                tracing::warn!(
+                    "Keyring storage requested but system-keyring feature not enabled, falling back to file storage"
+                );
                 Arc::new(FileTokenStorage::new(&config.providers.token_storage_dir))
             }
             StorageBackend::Memory => Arc::new(MemoryTokenStorage::new()),
@@ -201,9 +219,12 @@ impl OAuthManager {
     }
 
     fn start_claude_flow(&self) -> Result<String, OAuthError> {
-        let provider_config = self.config.providers.claude.as_ref().ok_or_else(|| {
-            OAuthError::Other("Claude provider not configured".to_string())
-        })?;
+        let provider_config = self
+            .config
+            .providers
+            .claude
+            .as_ref()
+            .ok_or_else(|| OAuthError::Other("Claude provider not configured".to_string()))?;
 
         let oauth_config = claude::ClaudeOAuthConfig::from_provider_config(
             &provider_config.client_id,
@@ -223,9 +244,12 @@ impl OAuthManager {
     }
 
     fn start_gemini_flow(&self) -> Result<String, OAuthError> {
-        let provider_config = self.config.providers.gemini.as_ref().ok_or_else(|| {
-            OAuthError::Other("Gemini provider not configured".to_string())
-        })?;
+        let provider_config = self
+            .config
+            .providers
+            .gemini
+            .as_ref()
+            .ok_or_else(|| OAuthError::Other("Gemini provider not configured".to_string()))?;
 
         let oauth_config = gemini::GeminiOAuthConfig::from_provider_config(
             &provider_config.client_id,
@@ -252,13 +276,15 @@ impl OAuthManager {
     pub async fn start_copilot_device_flow(
         &self,
     ) -> Result<copilot::DeviceCodeResponse, OAuthError> {
-        let provider_config = self.config.providers.copilot.as_ref().ok_or_else(|| {
-            OAuthError::Other("Copilot provider not configured".to_string())
-        })?;
+        let provider_config = self
+            .config
+            .providers
+            .copilot
+            .as_ref()
+            .ok_or_else(|| OAuthError::Other("Copilot provider not configured".to_string()))?;
 
-        let oauth_config = copilot::CopilotOAuthConfig::from_provider_config(
-            &provider_config.client_id,
-        );
+        let oauth_config =
+            copilot::CopilotOAuthConfig::from_provider_config(&provider_config.client_id);
 
         copilot::request_device_code(&self.http_client, &oauth_config).await
     }
@@ -313,9 +339,12 @@ impl OAuthManager {
         code: &str,
         verifier: &str,
     ) -> Result<TokenInfo, OAuthError> {
-        let provider_config = self.config.providers.claude.as_ref().ok_or_else(|| {
-            OAuthError::Other("Claude provider not configured".to_string())
-        })?;
+        let provider_config = self
+            .config
+            .providers
+            .claude
+            .as_ref()
+            .ok_or_else(|| OAuthError::Other("Claude provider not configured".to_string()))?;
 
         let oauth_config = claude::ClaudeOAuthConfig::from_provider_config(
             &provider_config.client_id,
@@ -331,9 +360,12 @@ impl OAuthManager {
         code: &str,
         verifier: &str,
     ) -> Result<TokenInfo, OAuthError> {
-        let provider_config = self.config.providers.gemini.as_ref().ok_or_else(|| {
-            OAuthError::Other("Gemini provider not configured".to_string())
-        })?;
+        let provider_config = self
+            .config
+            .providers
+            .gemini
+            .as_ref()
+            .ok_or_else(|| OAuthError::Other("Gemini provider not configured".to_string()))?;
 
         let oauth_config = gemini::GeminiOAuthConfig::from_provider_config(
             &provider_config.client_id,
@@ -355,13 +387,15 @@ impl OAuthManager {
         device_response: &copilot::DeviceCodeResponse,
         on_pending: Option<&mut dyn FnMut(u32)>,
     ) -> Result<TokenInfo, OAuthError> {
-        let provider_config = self.config.providers.copilot.as_ref().ok_or_else(|| {
-            OAuthError::Other("Copilot provider not configured".to_string())
-        })?;
+        let provider_config = self
+            .config
+            .providers
+            .copilot
+            .as_ref()
+            .ok_or_else(|| OAuthError::Other("Copilot provider not configured".to_string()))?;
 
-        let oauth_config = copilot::CopilotOAuthConfig::from_provider_config(
-            &provider_config.client_id,
-        );
+        let oauth_config =
+            copilot::CopilotOAuthConfig::from_provider_config(&provider_config.client_id);
 
         let access_token = copilot::poll_until_complete(
             &self.http_client,
@@ -373,7 +407,10 @@ impl OAuthManager {
 
         let token = copilot::create_token_info(&access_token);
         self.storage.save("copilot", &token)?;
-        info!(provider = "copilot", "Device code flow completed, token stored");
+        info!(
+            provider = "copilot",
+            "Device code flow completed, token stored"
+        );
 
         Ok(token)
     }
@@ -452,9 +489,7 @@ impl OAuthManager {
             let configured = kiro_config.is_some();
             // Report as authenticated only if configured and credential source
             // is specified (refresh token, credentials file, or SQLite DB).
-            let has_credentials = kiro_config
-                .map(|c| c.has_credentials())
-                .unwrap_or(false);
+            let has_credentials = kiro_config.map(|c| c.has_credentials()).unwrap_or(false);
             return Ok(OAuthStatus {
                 provider: provider.to_string(),
                 authenticated: configured && has_credentials,
@@ -515,6 +550,13 @@ impl OAuthManager {
         self.storage.remove(provider)?;
         info!(provider, "Token removed");
         Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl TokenProvider for OAuthManager {
+    async fn get_token(&self, provider: &str) -> Result<String, OAuthError> {
+        self.get_valid_token(provider).await
     }
 }
 

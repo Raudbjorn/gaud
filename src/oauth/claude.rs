@@ -29,11 +29,7 @@ const DEFAULT_AUTH_URL: &str = "https://claude.ai/oauth/authorize";
 const DEFAULT_TOKEN_URL: &str = "https://console.anthropic.com/v1/oauth/token";
 
 /// Default scopes for Claude OAuth.
-const DEFAULT_SCOPES: &[&str] = &[
-    "org:create_api_key",
-    "user:profile",
-    "user:inference",
-];
+const DEFAULT_SCOPES: &[&str] = &["org:create_api_key", "user:profile", "user:inference"];
 
 /// Configuration for the Claude OAuth flow.
 #[derive(Debug, Clone)]
@@ -47,11 +43,7 @@ pub struct ClaudeOAuthConfig {
 
 impl ClaudeOAuthConfig {
     /// Create a Claude OAuth config from the application config.
-    pub fn from_provider_config(
-        client_id: &str,
-        auth_url: &str,
-        callback_port: u16,
-    ) -> Self {
+    pub fn from_provider_config(client_id: &str, auth_url: &str, callback_port: u16) -> Self {
         Self {
             client_id: client_id.to_string(),
             auth_url: auth_url.to_string(),
@@ -152,9 +144,9 @@ pub async fn exchange_code(
         OAuthError::ExchangeFailed(format!("Failed to parse token response: {}", e))
     })?;
 
-    let refresh_token = token_response.refresh_token.ok_or_else(|| {
-        OAuthError::ExchangeFailed("No refresh token in response".to_string())
-    })?;
+    let refresh_token = token_response
+        .refresh_token
+        .ok_or_else(|| OAuthError::ExchangeFailed("No refresh token in response".to_string()))?;
 
     debug!("Claude token exchange successful");
 
@@ -236,8 +228,14 @@ pub async fn refresh_token(
     );
 
     // Preserve project IDs from composite token
-    let project_id = parts.get(1).filter(|s| !s.is_empty()).map(|s| s.to_string());
-    let managed_project_id = parts.get(2).filter(|s| !s.is_empty()).map(|s| s.to_string());
+    let project_id = parts
+        .get(1)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let managed_project_id = parts
+        .get(2)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
     if let Some(project) = project_id {
         token = token.with_project_ids(&project, managed_project_id.as_deref());
     }
@@ -283,14 +281,14 @@ mod tests {
 
     #[test]
     fn test_config_from_provider() {
-        let config = ClaudeOAuthConfig::from_provider_config(
-            "my-client",
-            "https://custom.auth.url",
-            8080,
-        );
+        let config =
+            ClaudeOAuthConfig::from_provider_config("my-client", "https://custom.auth.url", 8080);
         assert_eq!(config.client_id, "my-client");
         assert_eq!(config.auth_url, "https://custom.auth.url");
-        assert_eq!(config.redirect_uri, "http://localhost:8080/oauth/callback/claude");
+        assert_eq!(
+            config.redirect_uri,
+            "http://localhost:8080/oauth/callback/claude"
+        );
         assert!(!config.scopes.is_empty());
     }
 

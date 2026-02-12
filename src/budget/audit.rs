@@ -80,10 +80,7 @@ fn flush_batch(db: &Database, buffer: &mut Vec<AuditEntry>) {
 ///
 /// Inserts rows into `usage_log` and atomically updates the `budgets` table
 /// counters (`monthly_used`, `daily_used`) for each entry with a non-zero cost.
-fn write_entries(
-    db: &Database,
-    entries: &[AuditEntry],
-) -> Result<(), Box<dyn std::error::Error>> {
+fn write_entries(db: &Database, entries: &[AuditEntry]) -> Result<(), Box<dyn std::error::Error>> {
     db.with_conn(|conn| {
         let tx = conn.unchecked_transaction()?;
 

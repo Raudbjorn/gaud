@@ -109,6 +109,10 @@ pub enum AuthError {
     /// Project discovery failed.
     #[error("Failed to discover project: {0}")]
     ProjectDiscovery(String),
+
+    /// Other authentication errors.
+    #[error("Authentication error: {0}")]
+    Other(String),
 }
 
 #[cfg(feature = "system-keyring")]

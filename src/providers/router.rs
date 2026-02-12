@@ -16,7 +16,7 @@ use tracing::{debug, info, warn};
 
 use crate::providers::health::{CircuitBreaker, CircuitState};
 use crate::providers::pricing::ModelPricing;
-use crate::providers::retry::{execute_provider_with_retry, RetryPolicy};
+use crate::providers::retry::{RetryPolicy, execute_provider_with_retry};
 use crate::providers::types::{ChatChunk, ChatRequest, ChatResponse};
 use crate::providers::{LlmProvider, ProviderError};
 
@@ -212,10 +212,7 @@ impl ProviderRouter {
         if model.starts_with("gemini-") || model.starts_with("gemini_") {
             return Some("gemini");
         }
-        if model.starts_with("gpt-")
-            || model.starts_with("o1")
-            || model.starts_with("o3")
-        {
+        if model.starts_with("gpt-") || model.starts_with("o1") || model.starts_with("o3") {
             return Some("copilot");
         }
         None
@@ -491,7 +488,9 @@ mod tests {
         fn chat(
             &self,
             request: &ChatRequest,
-        ) -> Pin<Box<dyn std::future::Future<Output = Result<ChatResponse, ProviderError>> + Send + '_>> {
+        ) -> Pin<
+            Box<dyn std::future::Future<Output = Result<ChatResponse, ProviderError>> + Send + '_>,
+        > {
             let model = request.model.clone();
             let should_fail = self.should_fail;
             Box::pin(async move {
@@ -521,7 +520,17 @@ mod tests {
         fn stream_chat(
             &self,
             _request: &ChatRequest,
-        ) -> Pin<Box<dyn std::future::Future<Output = Result<Pin<Box<dyn Stream<Item = Result<ChatChunk, ProviderError>> + Send>>, ProviderError>> + Send + '_>> {
+        ) -> Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = Result<
+                            Pin<Box<dyn Stream<Item = Result<ChatChunk, ProviderError>> + Send>>,
+                            ProviderError,
+                        >,
+                    > + Send
+                    + '_,
+            >,
+        > {
             let should_fail = self.should_fail;
             Box::pin(async move {
                 if should_fail {
@@ -537,7 +546,10 @@ mod tests {
                         usage: None,
                     })
                 });
-                Ok(Box::pin(stream) as Pin<Box<dyn Stream<Item = Result<ChatChunk, ProviderError>> + Send>>)
+                Ok(Box::pin(stream)
+                    as Pin<
+                        Box<dyn Stream<Item = Result<ChatChunk, ProviderError>> + Send>,
+                    >)
             })
         }
 
@@ -598,10 +610,7 @@ mod tests {
 
     #[test]
     fn test_resolve_provider_copilot_o1() {
-        assert_eq!(
-            ProviderRouter::resolve_provider_id("o1"),
-            Some("copilot")
-        );
+        assert_eq!(ProviderRouter::resolve_provider_id("o1"), Some("copilot"));
     }
 
     #[test]
@@ -638,10 +647,7 @@ mod tests {
 
     #[test]
     fn test_resolve_provider_unknown() {
-        assert_eq!(
-            ProviderRouter::resolve_provider_id("llama-3.3-70b"),
-            None
-        );
+        assert_eq!(ProviderRouter::resolve_provider_id("llama-3.3-70b"), None);
     }
 
     #[tokio::test]
@@ -662,7 +668,10 @@ mod tests {
     #[tokio::test]
     async fn test_no_provider_returns_error() {
         let mut router = ProviderRouter::new();
-        router.register(Arc::new(StubProvider::new("claude", &["claude-sonnet-4-20250514"])));
+        router.register(Arc::new(StubProvider::new(
+            "claude",
+            &["claude-sonnet-4-20250514"],
+        )));
 
         let result = router.chat(&make_request("nonexistent-model")).await;
         assert!(matches!(result, Err(ProviderError::NoProvider(_))));
@@ -706,7 +715,10 @@ mod tests {
             "claude",
             &["claude-sonnet-4-20250514", "claude-opus-4-20250514"],
         )));
-        router.register(Arc::new(StubProvider::new("copilot", &["gpt-4o", "o3-mini"])));
+        router.register(Arc::new(StubProvider::new(
+            "copilot",
+            &["gpt-4o", "o3-mini"],
+        )));
 
         let models = router.available_models();
         assert_eq!(models.len(), 4);
@@ -725,10 +737,7 @@ mod tests {
             let _ = router.chat(&make_request("claude-sonnet-4-20250514")).await;
         }
 
-        assert_eq!(
-            router.circuit_state("claude"),
-            Some(CircuitState::Open)
-        );
+        assert_eq!(router.circuit_state("claude"), Some(CircuitState::Open));
 
         // Now the circuit is open -- provider won't even be tried.
         let result = router.chat(&make_request("claude-sonnet-4-20250514")).await;

@@ -5,8 +5,8 @@
 //! - S256 code challenge derivation using SHA-256
 //! - Verification that a challenge matches a verifier
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use rand::Rng;
 use sha2::{Digest, Sha256};
 
@@ -100,9 +100,11 @@ mod tests {
     fn test_verifier_uses_safe_chars() {
         let pkce = Pkce::generate();
         assert!(
-            pkce.verifier
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.' || c == '_' || c == '~'),
+            pkce.verifier.chars().all(|c| c.is_ascii_alphanumeric()
+                || c == '-'
+                || c == '.'
+                || c == '_'
+                || c == '~'),
             "Verifier contains invalid characters: {}",
             pkce.verifier
         );
