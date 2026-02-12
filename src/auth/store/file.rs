@@ -41,6 +41,20 @@ impl FileTokenStorage {
 
     /// Get the file path for a specific provider.
     fn provider_path(&self, provider: &str) -> PathBuf {
+        // Reject path traversal attempts
+        if provider.contains('/') || provider.contains('\\') || provider.contains("..") {
+             tracing::warn!("Invalid provider name attempting path traversal: {}", provider);
+             // Sanitize by keeping only alphanumeric chars, or just return a safe fallback/error?
+             // Since this returns PathBuf, we can't return Result easily without changing signature.
+             // For now, we'll panic or return a safe path. Panicking is safer than allowing traversal,
+             // but maybe we can just strip bad chars.
+             // Better: return a dummy path that won't exist, or just filter.
+             // Let's filter to safe chars.
+             let safe_provider: String = provider.chars()
+                .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
+                .collect();
+             return self.dir.join(format!("{}.json", safe_provider));
+        }
         self.dir.join(format!("{}.json", provider))
     }
 

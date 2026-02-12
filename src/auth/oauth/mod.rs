@@ -23,17 +23,6 @@ pub use callback::{
 };
 pub use pkce::Pkce;
 
-// We need to import provider modules to call their specific flow methods
-// For now, we'll assume these are still in their original locations or will be moved.
-// To avoid circular deps or breakage, we might need to reference them via crate::providers::...
-// But wait, the plan says we are refactoring.
-// For this step, I will reference `crate::providers` modules.
-// If those modules don't exist yet in the new structure, we might have issues.
-// `src/providers/claude`, `src/providers/gemini`, `src/providers/copilot` exist.
-
-// Local modules
-
-
 // =============================================================================
 // OAuthStatus
 // =============================================================================
@@ -70,23 +59,23 @@ pub struct OAuthManager {
 
 impl OAuthManager {
     /// Create a new OAuthManager.
-    pub fn new(config: Arc<Config>, db: Database, storage: Arc<dyn TokenStorage>) -> Self {
+    pub fn new(config: Arc<Config>, db: Database, storage: Arc<dyn TokenStorage>) -> Result<Self, AuthError> {
         let http_client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .user_agent("gaud/0.1.0") // Standardized User-Agent
             .build()
-            .unwrap_or_default();
+            .map_err(|e| AuthError::Other(format!("Failed to build HTTP client: {}", e)))?;
 
-        Self {
+        Ok(Self {
             config,
             db,
             storage,
             http_client,
-        }
+        })
     }
 
     /// Create an OAuthManager using the storage backend from config.
-    pub fn from_config(config: Arc<Config>, db: Database) -> Self {
+    pub fn from_config(config: Arc<Config>, db: Database) -> Result<Self, AuthError> {
         use crate::auth::store::{FileTokenStorage, MemoryTokenStorage};
 
         // Handle Keyring conditionally
@@ -127,11 +116,15 @@ impl OAuthManager {
     // =========================================================================
 
     /// Start an OAuth flow for the given provider.
+    ///
+    /// Note: Copilot uses a device code flow and should use `start_copilot_device_flow` instead.
     pub fn start_flow(&self, provider: &str) -> Result<String, AuthError> {
         match provider {
             "claude" => self.start_claude_flow(),
             "gemini" => self.start_gemini_flow(),
-            "copilot" => Ok("https://github.com/login/device".to_string()),
+            "copilot" => Err(AuthError::Other(
+                "Copilot uses device code flow; use start_copilot_device_flow()".to_string(),
+            )),
             "kiro" => Err(AuthError::Other(
                 "Kiro uses internal auth (refresh token / AWS SSO); no browser OAuth flow required"
                     .to_string(),
@@ -236,15 +229,14 @@ impl OAuthManager {
             return Err(AuthError::InvalidState);
         }
 
-        // We encounter a slight issue here: the provider `exchange_code` methods likely return
-        // `crate::oauth::TokenInfo` (the old one) or their own types, and return `crate::oauth::OAuthError`.
-        // We need to map them to our new types.
-        // Assuming provider modules are NOT yet refactored to use `crate::auth::*`, we have a type mismatch.
-        // STRATEGY: For this step, we will assume standard translation logic here.
-
         let token = match provider {
             "claude" => self.complete_claude_flow(code, &code_verifier).await?,
             "gemini" => self.complete_gemini_flow(code, &code_verifier).await?,
+            "copilot" => {
+                 return Err(AuthError::Other(
+                    "Copilot uses device code flow; use complete_copilot_device_flow()".to_string(),
+                ));
+            }
             _ => {
                 return Err(AuthError::Other(format!(
                     "Cannot complete flow for provider: {}",
@@ -278,24 +270,10 @@ impl OAuthManager {
             provider_config.callback_port,
         );
 
-        // Map old OAuthError to new AuthError, and old TokenInfo to new TokenInfo if needed.
-        // But wait, `claude::exchange_code` probably returns the OLD TokenInfo struct.
-        // We'll need to manually convert if the types are distinct.
-        // Since we copied `TokenInfo` code verbatim, they are structurally identical.
-        // We can serialize/deserialize or field-map.
-
-        let old_token_result = claude::exchange_code(&self.http_client, &oauth_config, code, verifier).await;
-
-        match old_token_result {
-            Ok(t) => Ok(TokenInfo {
-                access_token: t.access_token,
-                refresh_token: t.refresh_token,
-                expires_at: t.expires_at,
-                token_type: t.token_type,
-                provider: t.provider,
-            }),
-            Err(e) => Err(AuthError::ExchangeFailed(e.to_string())),
-        }
+        claude::exchange_code(&self.http_client, &oauth_config, code, verifier)
+            .await
+            .map(TokenInfo::from)
+            .map_err(|e| AuthError::ExchangeFailed(e.to_string()))
     }
 
     async fn complete_gemini_flow(
@@ -318,18 +296,10 @@ impl OAuthManager {
             provider_config.callback_port,
         );
 
-        let old_token_result = gemini::exchange_code(&self.http_client, &oauth_config, code, verifier).await;
-
-        match old_token_result {
-            Ok(t) => Ok(TokenInfo {
-                access_token: t.access_token,
-                refresh_token: t.refresh_token,
-                expires_at: t.expires_at,
-                token_type: t.token_type,
-                provider: t.provider,
-            }),
-            Err(e) => Err(AuthError::ExchangeFailed(e.to_string())),
-        }
+        gemini::exchange_code(&self.http_client, &oauth_config, code, verifier)
+            .await
+            .map(TokenInfo::from)
+            .map_err(|e| AuthError::ExchangeFailed(e.to_string()))
     }
 
     // =========================================================================
@@ -357,17 +327,10 @@ impl OAuthManager {
                     pc.callback_port,
                 );
 
-                let old_res = claude::refresh_token(&self.http_client, &oc, refresh).await;
-                 match old_res {
-                    Ok(t) => TokenInfo {
-                        access_token: t.access_token,
-                        refresh_token: t.refresh_token,
-                        expires_at: t.expires_at,
-                        token_type: t.token_type,
-                        provider: t.provider,
-                    },
-                    Err(e) => return Err(AuthError::ExchangeFailed(e.to_string())),
-                }
+                claude::refresh_token(&self.http_client, &oc, refresh)
+                    .await
+                    .map(TokenInfo::from)
+                    .map_err(|e| AuthError::ExchangeFailed(e.to_string()))?
             }
             "gemini" => {
                 let pc = self.config.providers.gemini.as_ref().ok_or_else(|| {
@@ -381,17 +344,10 @@ impl OAuthManager {
                     pc.callback_port,
                 );
 
-                let old_res = gemini::refresh_token(&self.http_client, &oc, refresh).await;
-                match old_res {
-                    Ok(t) => TokenInfo {
-                        access_token: t.access_token,
-                        refresh_token: t.refresh_token,
-                        expires_at: t.expires_at,
-                        token_type: t.token_type,
-                        provider: t.provider,
-                    },
-                    Err(e) => return Err(AuthError::ExchangeFailed(e.to_string())),
-                }
+                gemini::refresh_token(&self.http_client, &oc, refresh)
+                    .await
+                    .map(TokenInfo::from)
+                    .map_err(|e| AuthError::ExchangeFailed(e.to_string()))?
             }
             "copilot" => {
                 return Err(AuthError::ExchangeFailed(

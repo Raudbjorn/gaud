@@ -80,8 +80,13 @@ impl HttpClientBuilder {
 
     /// Build the client.
     pub fn build(self) -> HttpClient {
-        HttpClient {
-            inner: self.builder.build().unwrap_or_default(),
-        }
+        let inner = match self.builder.build() {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("Failed to build HTTP client with custom config: {}; using defaults", e);
+                Client::default()
+            }
+        };
+        HttpClient { inner }
     }
 }

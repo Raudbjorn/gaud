@@ -48,11 +48,16 @@ impl<T: TokenProvider + 'static> ClaudeProvider<T> {
         self.tokens
             .get_token("claude")
             .await
-            .map_err(|e| ProviderError::Authentication {
-                provider: "claude".into(),
-                message: e.to_string(),
-                retry_count: 0,
-                max_retries: 0,
+            .map_err(|e| match e {
+                crate::auth::error::AuthError::TokenNotFound(_) => {
+                    ProviderError::NoToken { provider: "claude".into() }
+                }
+                _ => ProviderError::Authentication {
+                    provider: "claude".into(),
+                    message: e.to_string(),
+                    retry_count: 0,
+                    max_retries: 0,
+                },
             })
     }
 }
@@ -119,6 +124,23 @@ impl<T: TokenProvider + 'static> LlmProvider for ClaudeProvider<T> {
                         retry_after,
                     });
                 }
+
+                if code == 401 || code == 403 {
+                    return Err(ProviderError::Authentication {
+                        provider: "claude".into(),
+                        message: format!("API authentication failed: {}", text),
+                        retry_count: 0,
+                        max_retries: 0,
+                    });
+                }
+
+                if code >= 500 {
+                    return Err(ProviderError::Api {
+                        status: code,
+                        message:  format!("Server error: {}", text),
+                    });
+                }
+
                 return Err(ProviderError::Api {
                     status: code,
                     message: text,

@@ -66,8 +66,8 @@ where
                     this.buffer.push_str(&text);
 
                     while let Some(pos) = this.buffer.find("\n\n") {
-                        let block = this.buffer[..pos].to_string();
-                        *this.buffer = this.buffer[pos + 2..].to_string();
+                        let block: String = this.buffer.drain(..pos).collect();
+                        this.buffer.drain(..2);
 
                         if let Some(event) = parse_sse_block(&block) {
                             this.pending_events.push_back(event);
@@ -110,11 +110,11 @@ fn parse_sse_block(block: &str) -> Option<SseEvent> {
             if !data.is_empty() {
                 data.push('\n');
             }
-            data.push_str(value.trim());
+            data.push_str(value.strip_prefix(' ').unwrap_or(value));
         } else if let Some(value) = line.strip_prefix("event:") {
-            event = Some(value.trim().to_string());
+            event = Some(value.strip_prefix(' ').unwrap_or(value).to_string());
         } else if let Some(value) = line.strip_prefix("id:") {
-            id = Some(value.trim().to_string());
+            id = Some(value.strip_prefix(' ').unwrap_or(value).to_string());
         }
     }
 

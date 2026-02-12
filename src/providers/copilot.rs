@@ -52,11 +52,16 @@ impl<T: TokenProvider + 'static> CopilotProvider<T> {
         self.tokens
             .get_token("copilot")
             .await
-            .map_err(|e| ProviderError::Authentication {
-                provider: "copilot".into(),
-                message: e.to_string(),
-                retry_count: 0,
-                max_retries: 0,
+            .map_err(|e| match e {
+                crate::auth::error::AuthError::TokenNotFound(_) => {
+                    ProviderError::NoToken { provider: "copilot".into() }
+                }
+                _ => ProviderError::Authentication {
+                    provider: "copilot".into(),
+                    message: e.to_string(),
+                    retry_count: 0,
+                    max_retries: 0,
+                },
             })
     }
 }

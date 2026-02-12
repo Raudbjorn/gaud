@@ -34,7 +34,7 @@ use crate::net::sse::{SseStream as BaseSseStream, SseEvent};
 
 use pin_project_lite::pin_project;
 use serde::Deserialize;
-use tracing::{debug, warn};
+use tracing::warn;
 
 use crate::providers::gemini::constants::{MIN_SIGNATURE_LENGTH, ModelFamily, get_model_family};
 use crate::providers::gemini::error::{Error, Result};
@@ -137,8 +137,8 @@ fn process_json_data(json_text: &str, state: &mut StreamState) -> Result<Vec<Str
     let data: SseData = match serde_json::from_str(json_text) {
         Ok(d) => d,
         Err(e) => {
-            debug!(error = %e, data = %json_text.chars().take(100).collect::<String>(), "SSE parse warning");
-            return Ok(vec![]);
+            warn!(error = %e, data = %json_text.chars().take(100).collect::<String>(), "SSE JSON parsing error");
+            return Err(Error::api(500, format!("Failed to parse SSE JSON: {}", e), None));
         }
     };
     process_sse_data(data, state)
@@ -196,36 +196,7 @@ enum BlockType {
     ToolUse,
 }
 
-/// Process a single SSE line (for testing).
-#[cfg(test)]
-fn process_sse_line(line: &str, state: &mut StreamState) -> Result<Vec<StreamEvent>> {
-    let line = line.trim();
-    if line.is_empty() || line.starts_with(':') {
-        return Ok(vec![]);
-    }
 
-    let event = if let Some(rest) = line.strip_prefix("data:") {
-        SseEvent {
-            event: None,
-            data: rest.trim().to_string(),
-            id: None,
-        }
-    } else if let Some(rest) = line.strip_prefix("event:") {
-        SseEvent {
-            event: Some(rest.trim().to_string()),
-            data: String::new(),
-            id: None,
-        }
-    } else {
-        return Ok(vec![]);
-    };
-
-    if let Some(json_text) = parse_cloud_code_event(&event) {
-        process_json_data(json_text, state)
-    } else {
-        Ok(vec![])
-    }
-}
 
 
 /// Process parsed SSE data.
@@ -569,6 +540,36 @@ struct SseUsageMetadata {
 mod tests {
     use super::*;
 
+    /// Process a single SSE line (for testing).
+    fn process_sse_line(line: &str, state: &mut StreamState) -> Result<Vec<StreamEvent>> {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with(':') {
+            return Ok(vec![]);
+        }
+
+        let event = if let Some(rest) = line.strip_prefix("data:") {
+            SseEvent {
+                event: None,
+                data: rest.trim().to_string(),
+                id: None,
+            }
+        } else if let Some(rest) = line.strip_prefix("event:") {
+            SseEvent {
+                event: Some(rest.trim().to_string()),
+                data: String::new(),
+                id: None,
+            }
+        } else {
+            return Ok(vec![]);
+        };
+
+        if let Some(json_text) = parse_cloud_code_event(&event) {
+            process_json_data(json_text, state)
+        } else {
+            Ok(vec![])
+        }
+    }
+
     #[test]
     fn test_generate_message_id() {
         let id1 = generate_message_id();
@@ -671,10 +672,8 @@ mod tests {
         let mut state = StreamState::new("claude-sonnet-4-5".to_string());
 
         let json = r#"data: {not valid json}"#;
-        let events = process_sse_line(json, &mut state).unwrap();
-
-        // Should not crash, just return empty
-        assert!(events.is_empty());
+        // Should return an error now that we validate JSON
+        assert!(process_sse_line(json, &mut state).is_err());
     }
 
     #[test]

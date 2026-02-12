@@ -798,8 +798,8 @@ mod tests {
             cache: None,
             oauth_manager: std::sync::Arc::new(crate::auth::oauth::OAuthManager::from_config(
                 std::sync::Arc::new(crate::config::Config::default()),
-                db,
-            )),
+                db.clone(),
+            ).unwrap()),
         };
 
         let providers = configured_providers(&state);

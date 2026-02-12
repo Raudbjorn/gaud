@@ -1,5 +1,5 @@
 use gaud::providers::gemini::GeminiProvider;
-use gaud::providers::types::{ChatRequest, ChatResponse};
+use gaud::providers::types::ChatRequest;
 use gaud::providers::gemini::models::MessagesResponse;
 use std::sync::Arc;
 use crate::golden::GoldenTest;
