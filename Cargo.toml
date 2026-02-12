@@ -281,6 +281,9 @@ pin-project-lite.workspace = true
 [dev-dependencies]
 tempfile = "3"
 proptest = "1.4"
+wiremock.workspace = true
+tokio = { version = "1", features = ["full"] }
+pretty_assertions = "1.4.1"
 
 
 [features]

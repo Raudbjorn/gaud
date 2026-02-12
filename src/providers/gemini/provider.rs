@@ -54,9 +54,15 @@ impl GeminiProvider {
         Self { client }
     }
 
+    /// Create a new Gemini provider with a custom client (for testing).
+    pub fn with_client(client: CloudCodeClient) -> Self {
+        Self { client }
+    }
+
     // -- Conversion Helpers -------------------------------------------------
 
-    fn convert_request(&self, request: &ChatRequest) -> Result<MessagesRequest, ProviderError> {
+    /// Convert a generic ChatRequest into a Gemini-specific MessagesRequest.
+    pub fn convert_request(&self, request: &ChatRequest) -> Result<MessagesRequest, ProviderError> {
         let mut messages = Vec::new();
         let mut system = None;
 
@@ -207,7 +213,8 @@ impl GeminiProvider {
         })
     }
 
-    fn convert_response(
+    /// Convert a Gemini MessagesResponse into a generic ChatResponse.
+    pub fn convert_response(
         &self,
         resp: MessagesResponse,
         model: &str,

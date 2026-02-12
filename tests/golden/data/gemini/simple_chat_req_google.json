@@ -1,0 +1,20 @@
+{
+  "model": "gemini-1.5-pro",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Hello"
+        }
+      ]
+    }
+  ],
+  "max_tokens": 100,
+  "stream": false,
+  "stop_sequences": [
+    "stop"
+  ],
+  "temperature": 0.5
+}
