@@ -94,8 +94,10 @@ where
 
                     // Process complete lines
                     while let Some(newline_pos) = this.buffer.find('\n') {
-                        let line = this.buffer[..newline_pos].to_string();
-                        *this.buffer = this.buffer[newline_pos + 1..].to_string();
+                        // Extract the line up to (but not including) the newline without reallocating the remainder
+                        let line: String = this.buffer.drain(..newline_pos).collect();
+                        // Remove the newline character itself
+                        this.buffer.drain(..1);
 
                         match process_sse_line(&line, this.state) {
                             Ok(events) => {
