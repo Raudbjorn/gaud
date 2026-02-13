@@ -49,14 +49,20 @@ pub struct GeminiProvider {
 
 impl GeminiProvider {
     /// Create a new Gemini provider backed by the given token provider.
-    pub fn new(token_provider: std::sync::Arc<dyn crate::oauth::TokenProvider>) -> Self {
+    pub fn new(token_provider: std::sync::Arc<dyn crate::auth::TokenProvider>) -> Self {
         let client = CloudCodeClient::new(token_provider);
+        Self { client }
+    }
+
+    /// Create a new Gemini provider with a custom client (for testing).
+    pub fn with_client(client: CloudCodeClient) -> Self {
         Self { client }
     }
 
     // -- Conversion Helpers -------------------------------------------------
 
-    fn convert_request(&self, request: &ChatRequest) -> Result<MessagesRequest, ProviderError> {
+    /// Convert a generic ChatRequest into a Gemini-specific MessagesRequest.
+    pub fn convert_request(&self, request: &ChatRequest) -> Result<MessagesRequest, ProviderError> {
         let mut messages = Vec::new();
         let mut system = None;
 
@@ -207,7 +213,8 @@ impl GeminiProvider {
         })
     }
 
-    fn convert_response(
+    /// Convert a Gemini MessagesResponse into a generic ChatResponse.
+    pub fn convert_response(
         &self,
         resp: MessagesResponse,
         model: &str,
@@ -458,14 +465,14 @@ impl LlmProvider for GeminiProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::oauth::{OAuthError, TokenProvider};
+    use crate::auth::{error::AuthError, TokenProvider};
     use std::sync::Arc;
 
     struct MockTokenProvider;
 
     #[async_trait::async_trait]
     impl TokenProvider for MockTokenProvider {
-        async fn get_token(&self, _provider: &str) -> Result<String, OAuthError> {
+        async fn get_token(&self, _provider: &str) -> Result<String, AuthError> {
             Ok("mock_token".to_string())
         }
     }

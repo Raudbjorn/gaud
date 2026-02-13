@@ -12,7 +12,8 @@ pub mod cache;
 pub mod config;
 pub mod db;
 pub mod error;
-pub mod oauth;
+pub mod net;
+
 pub mod providers;
 
 pub mod web;
@@ -21,7 +22,7 @@ use crate::budget::BudgetTracker;
 use crate::cache::SemanticCacheService;
 use crate::config::Config;
 use crate::db::Database;
-use crate::oauth::OAuthManager;
+use crate::auth::oauth::OAuthManager;
 use crate::providers::cost::CostCalculator;
 use crate::providers::router::ProviderRouter;
 

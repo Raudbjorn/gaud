@@ -31,7 +31,7 @@ use gaud::budget::{BudgetTracker, spawn_audit_logger};
 use gaud::cache::SemanticCacheService;
 use gaud::config::{Config, KiroProviderConfig, LitellmProviderConfig};
 use gaud::db::Database;
-use gaud::oauth::OAuthManager;
+use gaud::auth::oauth::OAuthManager;
 use gaud::providers::LlmProvider;
 use gaud::providers::kiro::KiroProvider;
 use gaud::providers::litellm::{LitellmConfig, LitellmProvider};
@@ -157,7 +157,8 @@ async fn async_main() -> anyhow::Result<()> {
 
     // 5b. Create OAuth manager (needed for provider registration)
     let config_arc = Arc::new(config.clone());
-    let oauth_manager = Arc::new(OAuthManager::from_config(config_arc.clone(), db.clone()));
+    let oauth_manager = Arc::new(OAuthManager::from_config(config_arc.clone(), db.clone())
+        .map_err(|e| anyhow::anyhow!("Failed to initialize OAuthManager: {}", e))?);
     tracing::debug!("OAuth manager initialized");
 
     // 6. Create provider router

@@ -488,28 +488,28 @@ async fn api_copilot_poll(
     };
 
     let oauth_config =
-        crate::oauth::copilot::CopilotOAuthConfig::from_provider_config(&provider_config.client_id);
+        crate::auth::oauth::copilot::CopilotOAuthConfig::from_provider_config(&provider_config.client_id);
 
-    match crate::oauth::copilot::poll_for_token(
+    match crate::auth::oauth::copilot::poll_for_token(
         state.oauth_manager.http_client(),
         &oauth_config,
         &body.device_code,
     )
     .await
     {
-        Ok(crate::oauth::copilot::PollResult::Pending) => (
+        Ok(crate::auth::oauth::copilot::PollResult::Pending) => (
             StatusCode::OK,
             axum::Json(serde_json::json!({ "status": "pending" })),
         )
             .into_response(),
-        Ok(crate::oauth::copilot::PollResult::SlowDown) => (
+        Ok(crate::auth::oauth::copilot::PollResult::SlowDown) => (
             StatusCode::OK,
             axum::Json(serde_json::json!({ "status": "slow_down" })),
         )
             .into_response(),
-        Ok(crate::oauth::copilot::PollResult::Complete(access_token)) => {
+        Ok(crate::auth::oauth::copilot::PollResult::Complete(access_token)) => {
             // Store the token via OAuthManager's storage
-            let token = crate::oauth::copilot::create_token_info(&access_token);
+            let token = crate::auth::oauth::copilot::create_token_info(&access_token);
             if let Err(err) = state.oauth_manager.storage().save("copilot", &token) {
                 warn!(error = %err, "Failed to store Copilot token");
                 return (
@@ -796,10 +796,10 @@ mod tests {
             audit_tx,
             cost_calculator: std::sync::Arc::new(crate::providers::cost::CostCalculator::new()),
             cache: None,
-            oauth_manager: std::sync::Arc::new(crate::oauth::OAuthManager::from_config(
+            oauth_manager: std::sync::Arc::new(crate::auth::oauth::OAuthManager::from_config(
                 std::sync::Arc::new(crate::config::Config::default()),
-                db,
-            )),
+                db.clone(),
+            ).unwrap()),
         };
 
         let providers = configured_providers(&state);

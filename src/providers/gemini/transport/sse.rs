@@ -30,10 +30,11 @@ use std::task::{Context, Poll};
 
 use bytes::Bytes;
 use futures::stream::Stream;
+use crate::net::sse::{SseStream as BaseSseStream, SseEvent};
 
 use pin_project_lite::pin_project;
 use serde::Deserialize;
-use tracing::{debug, warn};
+use tracing::warn;
 
 use crate::providers::gemini::constants::{MIN_SIGNATURE_LENGTH, ModelFamily, get_model_family};
 use crate::providers::gemini::error::{Error, Result};
@@ -48,9 +49,8 @@ pin_project! {
     /// SSE stream parser that converts Cloud Code responses to Anthropic events.
     pub struct SseStream<S> {
         #[pin]
-        byte_stream: S,
+        inner: BaseSseStream<S>,
         state: StreamState,
-        buffer: String,
         pending_events: VecDeque<StreamEvent>,
     }
 }
@@ -62,9 +62,8 @@ where
     /// Create a new SSE stream parser.
     pub fn new(byte_stream: S, model: impl Into<String>) -> Self {
         Self {
-            byte_stream,
+            inner: BaseSseStream::new(byte_stream),
             state: StreamState::new(model.into()),
-            buffer: String::new(),
             pending_events: VecDeque::new(),
         }
     }
@@ -86,20 +85,11 @@ where
 
         // 2. Poll underlying stream
         loop {
-            match this.byte_stream.as_mut().poll_next(cx) {
-                Poll::Ready(Some(Ok(chunk))) => {
-                    // Process chunk
-                    let text = String::from_utf8_lossy(&chunk);
-                    this.buffer.push_str(&text);
-
-                    // Process complete lines
-                    while let Some(newline_pos) = this.buffer.find('\n') {
-                        // Extract the line up to (but not including) the newline without reallocating the remainder
-                        let line: String = this.buffer.drain(..newline_pos).collect();
-                        // Remove the newline character itself
-                        this.buffer.drain(..1);
-
-                        match process_sse_line(&line, this.state) {
+            match this.inner.as_mut().poll_next(cx) {
+                Poll::Ready(Some(Ok(event))) => {
+                    // Process SSE event from base stream
+                    if let Some(json_text) = parse_cloud_code_event(&event) {
+                        match process_json_data(json_text, this.state) {
                             Ok(events) => {
                                 this.pending_events.extend(events);
                             }
@@ -107,25 +97,13 @@ where
                         }
                     }
 
-                    // If we have events now, return the first one
                     if let Some(event) = this.pending_events.pop_front() {
                         return Poll::Ready(Some(Ok(event)));
                     }
-                    // Otherwise continue polling
                 }
                 Poll::Ready(Some(Err(e))) => return Poll::Ready(Some(Err(Error::from(e)))),
                 Poll::Ready(None) => {
                     // Stream finished
-                    // Process remaining buffer
-                    if !this.buffer.is_empty() {
-                        let line = std::mem::take(this.buffer);
-                        match process_sse_line(&line, this.state) {
-                            Ok(events) => this.pending_events.extend(events),
-                            Err(e) => return Poll::Ready(Some(Err(e))),
-                        }
-                    }
-
-                    // Finalize
                     match finalize_stream(this.state) {
                         Ok(events) => this.pending_events.extend(events),
                         Err(e) => return Poll::Ready(Some(Err(e))),
@@ -141,6 +119,29 @@ where
             }
         }
     }
+}
+
+/// Parse Cloud Code event data.
+fn parse_cloud_code_event(event: &SseEvent) -> Option<&str> {
+    if event.data == "[DONE]" {
+        return None;
+    }
+    if event.data.is_empty() {
+        return None;
+    }
+    Some(&event.data)
+}
+
+/// Process JSON data from SSE event.
+fn process_json_data(json_text: &str, state: &mut StreamState) -> Result<Vec<StreamEvent>> {
+    let data: SseData = match serde_json::from_str(json_text) {
+        Ok(d) => d,
+        Err(e) => {
+            warn!(error = %e, data = %json_text.chars().take(100).collect::<String>(), "SSE JSON parsing error");
+            return Err(Error::api(500, format!("Failed to parse SSE JSON: {}", e), None));
+        }
+    };
+    process_sse_data(data, state)
 }
 
 /// Internal state for stream parsing.
@@ -195,43 +196,8 @@ enum BlockType {
     ToolUse,
 }
 
-/// Process a single SSE line.
-fn process_sse_line(line: &str, state: &mut StreamState) -> Result<Vec<StreamEvent>> {
-    let line = line.trim();
 
-    // Skip empty lines and comments
-    if line.is_empty() || line.starts_with(':') {
-        return Ok(vec![]);
-    }
 
-    // Parse data lines
-    if !line.starts_with("data:") {
-        return Ok(vec![]);
-    }
-
-    let json_text = line[5..].trim();
-
-    // Handle [DONE] signal
-    if json_text == "[DONE]" {
-        return Ok(vec![]);
-    }
-
-    // Skip empty data
-    if json_text.is_empty() {
-        return Ok(vec![]);
-    }
-
-    // Parse JSON
-    let data: SseData = match serde_json::from_str(json_text) {
-        Ok(d) => d,
-        Err(e) => {
-            debug!(error = %e, data = %json_text.chars().take(100).collect::<String>(), "SSE parse warning");
-            return Ok(vec![]);
-        }
-    };
-
-    process_sse_data(data, state)
-}
 
 /// Process parsed SSE data.
 fn process_sse_data(data: SseData, state: &mut StreamState) -> Result<Vec<StreamEvent>> {
@@ -574,6 +540,36 @@ struct SseUsageMetadata {
 mod tests {
     use super::*;
 
+    /// Process a single SSE line (for testing).
+    fn process_sse_line(line: &str, state: &mut StreamState) -> Result<Vec<StreamEvent>> {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with(':') {
+            return Ok(vec![]);
+        }
+
+        let event = if let Some(rest) = line.strip_prefix("data:") {
+            SseEvent {
+                event: None,
+                data: rest.trim().to_string(),
+                id: None,
+            }
+        } else if let Some(rest) = line.strip_prefix("event:") {
+            SseEvent {
+                event: Some(rest.trim().to_string()),
+                data: String::new(),
+                id: None,
+            }
+        } else {
+            return Ok(vec![]);
+        };
+
+        if let Some(json_text) = parse_cloud_code_event(&event) {
+            process_json_data(json_text, state)
+        } else {
+            Ok(vec![])
+        }
+    }
+
     #[test]
     fn test_generate_message_id() {
         let id1 = generate_message_id();
@@ -676,10 +672,8 @@ mod tests {
         let mut state = StreamState::new("claude-sonnet-4-5".to_string());
 
         let json = r#"data: {not valid json}"#;
-        let events = process_sse_line(json, &mut state).unwrap();
-
-        // Should not crash, just return empty
-        assert!(events.is_empty());
+        // Should return an error now that we validate JSON
+        assert!(process_sse_line(json, &mut state).is_err());
     }
 
     #[test]
