@@ -38,7 +38,7 @@ impl<T: TokenProvider + 'static> ClaudeProvider<T> {
     /// Create a new Claude provider backed by the given token storage.
     pub fn new(tokens: std::sync::Arc<T>) -> Self {
         Self {
-            http: HttpClient::new(),
+            http: HttpClient::new().expect("Failed to create HTTP client"),
             tokens,
         }
     }

@@ -42,7 +42,7 @@ impl<T: TokenProvider + 'static> CopilotProvider<T> {
     /// Create a new Copilot provider backed by the given token storage.
     pub fn new(tokens: std::sync::Arc<T>) -> Self {
         Self {
-            http: HttpClient::new(),
+            http: HttpClient::new().expect("Failed to create HTTP client"),
             tokens,
         }
     }

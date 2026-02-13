@@ -67,7 +67,7 @@ where
 
                     while let Some(pos) = this.buffer.find("\n\n") {
                         let block: String = this.buffer.drain(..pos).collect();
-                        this.buffer.drain(..2);
+                        this.buffer.drain(..2); // Remove \n\n
 
                         if let Some(event) = parse_sse_block(&block) {
                             this.pending_events.push_back(event);

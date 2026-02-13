@@ -88,7 +88,7 @@ async fn test_gemini_streaming_contract() {
     let sse_body = format!("data: {}\n\n", serde_json::to_string(&json_data).unwrap());
 
     Mock::given(method("POST"))
-        .and(path("/v1internal:generateContent"))
+        .and(path("/v1internal:streamGenerateContent")) // Streaming endpoint
         .respond_with(ResponseTemplate::new(200)
             .set_body_string(sse_body)
             .insert_header("content-type", "text/event-stream"))

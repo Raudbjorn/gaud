@@ -22,7 +22,7 @@ pub struct HttpClient {
 
 impl HttpClient {
     /// Create a new HTTP client with default settings.
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self, reqwest::Error> {
         Self::builder().build()
     }
 
@@ -39,7 +39,7 @@ impl HttpClient {
 
 impl Default for HttpClient {
     fn default() -> Self {
-        Self::new()
+        Self::new().expect("Failed to create default HTTP client")
     }
 }
 
@@ -79,14 +79,8 @@ impl HttpClientBuilder {
     }
 
     /// Build the client.
-    pub fn build(self) -> HttpClient {
-        let inner = match self.builder.build() {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::warn!("Failed to build HTTP client with custom config: {}; using defaults", e);
-                Client::default()
-            }
-        };
-        HttpClient { inner }
+    pub fn build(self) -> Result<HttpClient, reqwest::Error> {
+        let inner = self.builder.build()?;
+        Ok(HttpClient { inner })
     }
 }

@@ -42,7 +42,7 @@ pub struct HttpClient {
 impl HttpClient {
     /// Create a new HTTP client with default settings.
     pub fn new() -> Self {
-        Self::builder().build()
+        Self::builder().build().expect("Failed to build default HTTP client")
     }
 
     /// Create a builder for constructing a custom HTTP client.
@@ -286,11 +286,11 @@ impl HttpClientBuilder {
     }
 
     /// Build the HTTP client.
-    pub fn build(self) -> HttpClient {
-        HttpClient {
-            inner: self.base_builder.build(),
+    pub fn build(self) -> std::result::Result<HttpClient, reqwest::Error> {
+        Ok(HttpClient {
+            inner: self.base_builder.build()?,
             base_url: self.base_url,
-        }
+        })
     }
 }
 
@@ -457,7 +457,7 @@ mod tests {
 
     #[test]
     fn test_http_client_builder_default() {
-        let client = HttpClientBuilder::default().build();
+        let client = HttpClientBuilder::default().build().unwrap();
         assert!(client.base_url.is_none());
     }
 
@@ -467,7 +467,8 @@ mod tests {
             .connect_timeout(Duration::from_secs(60))
             .request_timeout(Duration::from_secs(600))
             .base_url("https://test.example.com")
-            .build();
+            .build()
+            .unwrap();
 
         assert_eq!(
             client.base_url,

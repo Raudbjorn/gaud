@@ -11,6 +11,8 @@ pub mod gemini;
 use crate::auth::error::AuthError;
 use crate::auth::store::TokenStorage;
 use crate::auth::tokens::TokenInfo;
+
+
 use crate::config::{Config, StorageBackend};
 use crate::db::Database;
 use std::sync::Arc;
@@ -22,6 +24,9 @@ pub use callback::{
     validate_state_from_db, CallbackParams, CallbackResult,
 };
 pub use pkce::Pkce;
+
+// impl From for centralized conversion
+
 
 // =============================================================================
 // OAuthStatus
@@ -123,11 +128,10 @@ impl OAuthManager {
             "claude" => self.start_claude_flow(),
             "gemini" => self.start_gemini_flow(),
             "copilot" => Err(AuthError::Other(
-                "Copilot uses device code flow; use start_copilot_device_flow()".to_string(),
+                "Use start_copilot_device_flow()".to_string(),
             )),
             "kiro" => Err(AuthError::Other(
-                "Kiro uses internal auth (refresh token / AWS SSO); no browser OAuth flow required"
-                    .to_string(),
+                "Kiro uses internal auth (refresh token / AWS SSO); no browser OAuth flow required".to_string(),
             )),
             _ => Err(AuthError::Other(format!("Unknown provider: {}", provider))),
         }
@@ -141,7 +145,6 @@ impl OAuthManager {
             .as_ref()
             .ok_or_else(|| AuthError::Other("Claude provider not configured".to_string()))?;
 
-        // Note: Using existing provider structs. Might need refactoring later if we move them.
         let oauth_config = claude::ClaudeOAuthConfig::from_provider_config(
             &provider_config.client_id,
             &provider_config.auth_url,
@@ -273,7 +276,6 @@ impl OAuthManager {
         claude::exchange_code(&self.http_client, &oauth_config, code, verifier)
             .await
             .map(TokenInfo::from)
-            .map_err(|e| AuthError::ExchangeFailed(e.to_string()))
     }
 
     async fn complete_gemini_flow(
@@ -299,7 +301,6 @@ impl OAuthManager {
         gemini::exchange_code(&self.http_client, &oauth_config, code, verifier)
             .await
             .map(TokenInfo::from)
-            .map_err(|e| AuthError::ExchangeFailed(e.to_string()))
     }
 
     // =========================================================================
@@ -329,8 +330,7 @@ impl OAuthManager {
 
                 claude::refresh_token(&self.http_client, &oc, refresh)
                     .await
-                    .map(TokenInfo::from)
-                    .map_err(|e| AuthError::ExchangeFailed(e.to_string()))?
+                    .map(TokenInfo::from)?
             }
             "gemini" => {
                 let pc = self.config.providers.gemini.as_ref().ok_or_else(|| {
@@ -346,8 +346,7 @@ impl OAuthManager {
 
                 gemini::refresh_token(&self.http_client, &oc, refresh)
                     .await
-                    .map(TokenInfo::from)
-                    .map_err(|e| AuthError::ExchangeFailed(e.to_string()))?
+                    .map(TokenInfo::from)?
             }
             "copilot" => {
                 return Err(AuthError::ExchangeFailed(

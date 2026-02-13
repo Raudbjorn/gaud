@@ -40,22 +40,22 @@ impl FileTokenStorage {
     }
 
     /// Get the file path for a specific provider.
-    fn provider_path(&self, provider: &str) -> PathBuf {
-        // Reject path traversal attempts
-        if provider.contains('/') || provider.contains('\\') || provider.contains("..") {
-             tracing::warn!("Invalid provider name attempting path traversal: {}", provider);
-             // Sanitize by keeping only alphanumeric chars, or just return a safe fallback/error?
-             // Since this returns PathBuf, we can't return Result easily without changing signature.
-             // For now, we'll panic or return a safe path. Panicking is safer than allowing traversal,
-             // but maybe we can just strip bad chars.
-             // Better: return a dummy path that won't exist, or just filter.
-             // Let's filter to safe chars.
-             let safe_provider: String = provider.chars()
-                .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
-                .collect();
-             return self.dir.join(format!("{}.json", safe_provider));
+    fn provider_path(&self, provider: &str) -> Result<PathBuf, AuthError> {
+        if provider.is_empty() {
+             return Err(AuthError::Storage("Provider name cannot be empty".to_string()));
         }
-        self.dir.join(format!("{}.json", provider))
+
+        // Reject path traversal and ensure safe filename
+        if provider.contains('/') || provider.contains('\\') || provider.contains("..") {
+             return Err(AuthError::Storage(format!("Invalid provider name '{}': potential path traversal", provider)));
+        }
+
+        // Allow only alphanumeric, hyphen, and underscore
+        if !provider.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+             return Err(AuthError::Storage(format!("Invalid provider name '{}': contains invalid characters", provider)));
+        }
+
+        Ok(self.dir.join(format!("{}.json", provider)))
     }
 
     /// Ensure the storage directory exists with correct permissions.
@@ -89,7 +89,7 @@ impl FileTokenStorage {
 impl TokenStorage for FileTokenStorage {
     #[instrument(skip(self))]
     fn load(&self, provider: &str) -> Result<Option<TokenInfo>, AuthError> {
-        let path = self.provider_path(provider);
+        let path = self.provider_path(provider)?;
         let content = match std::fs::read_to_string(&path) {
             Ok(c) => c,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -121,7 +121,7 @@ impl TokenStorage for FileTokenStorage {
     fn save(&self, provider: &str, token: &TokenInfo) -> Result<(), AuthError> {
         self.ensure_dir()?;
 
-        let path = self.provider_path(provider);
+        let path = self.provider_path(provider)?;
         let content = serde_json::to_string_pretty(token)
             .map_err(|e| AuthError::Storage(format!("Failed to serialize token: {}", e)))?;
 
@@ -190,7 +190,7 @@ impl TokenStorage for FileTokenStorage {
 
     #[instrument(skip(self))]
     fn remove(&self, provider: &str) -> Result<(), AuthError> {
-        let path = self.provider_path(provider);
+        let path = self.provider_path(provider)?;
         match std::fs::remove_file(&path) {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -203,7 +203,7 @@ impl TokenStorage for FileTokenStorage {
     }
 
     fn exists(&self, provider: &str) -> Result<bool, AuthError> {
-        Ok(self.provider_path(provider).exists())
+        Ok(self.provider_path(provider)?.exists())
     }
 
     fn name(&self) -> &str {

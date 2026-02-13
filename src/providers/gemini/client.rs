@@ -336,7 +336,7 @@ impl CloudCodeClientBuilder {
 
         CloudCodeClient {
             token_provider,
-            http: self.http_builder.build(),
+            http: self.http_builder.build().expect("Failed to build HTTP client"),
             project_id: Arc::new(RwLock::new(None)),
             managed_project_id: Arc::new(RwLock::new(None)),
             signature_cache: self
