@@ -51,6 +51,7 @@ pub use storage::KeyringTokenStorage;
 
 use std::sync::Arc;
 
+use oauth2::basic::BasicErrorResponseType;
 use tracing::{debug, info, warn};
 
 use crate::config::{Config, StorageBackend};
@@ -113,6 +114,60 @@ pub enum OAuthError {
 }
 
 // =============================================================================
+// Shared OAuth2 Helpers
+// =============================================================================
+
+/// Fully-configured `BasicClient` with auth and token endpoints set.
+///
+/// Used by all `oauth2`-based providers (Claude, Gemini).
+pub(crate) type OAuthClient = oauth2::basic::BasicClient<
+    oauth2::EndpointSet,
+    oauth2::EndpointNotSet,
+    oauth2::EndpointNotSet,
+    oauth2::EndpointNotSet,
+    oauth2::EndpointSet,
+>;
+
+/// Map an `oauth2::RequestTokenError` to [`OAuthError`].
+///
+/// Shared across all `oauth2`-based providers. Preserves the
+/// `invalid_grant` → `TokenExpired` mapping used for refresh retry logic.
+pub(crate) fn map_oauth_token_error<RE: std::error::Error + 'static>(
+    provider: &str,
+    err: oauth2::RequestTokenError<RE, oauth2::StandardErrorResponse<BasicErrorResponseType>>,
+) -> OAuthError {
+    match err {
+        oauth2::RequestTokenError::ServerResponse(ref server_err) => {
+            let error_type = server_err.error();
+            let description = server_err
+                .error_description()
+                .cloned()
+                .unwrap_or_else(|| error_type.to_string());
+
+            warn!(
+                %provider,
+                error = %error_type,
+                description = %description,
+                "Token request failed"
+            );
+
+            if *error_type == BasicErrorResponseType::InvalidGrant {
+                return OAuthError::TokenExpired(provider.to_string());
+            }
+
+            OAuthError::ExchangeFailed(description)
+        }
+        oauth2::RequestTokenError::Request(ref req_err) => {
+            OAuthError::ExchangeFailed(format!("HTTP request failed: {}", req_err))
+        }
+        oauth2::RequestTokenError::Parse(ref parse_err, _) => {
+            OAuthError::ExchangeFailed(format!("Failed to parse token response: {}", parse_err))
+        }
+        oauth2::RequestTokenError::Other(msg) => OAuthError::ExchangeFailed(msg),
+    }
+}
+
+// =============================================================================
 // OAuthStatus
 // =============================================================================
 
@@ -150,6 +205,7 @@ impl OAuthManager {
     /// Create a new OAuthManager.
     pub fn new(config: Arc<Config>, db: Database, storage: Arc<dyn TokenStorage>) -> Self {
         let http_client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .unwrap_or_default();
@@ -232,13 +288,12 @@ impl OAuthManager {
             provider_config.callback_port,
         );
 
-        let pkce = Pkce::generate();
         let state = uuid::Uuid::new_v4().to_string();
+        let (url, verifier) = claude::build_authorize_url(&oauth_config, &state)?;
 
         // Store state in DB
-        store_state_in_db(&self.db, &state, "claude", &pkce.verifier)?;
+        store_state_in_db(&self.db, &state, "claude", &verifier)?;
 
-        let url = claude::build_authorize_url(&oauth_config, &pkce, &state);
         info!(provider = "claude", "Started OAuth flow");
         Ok(url)
     }
@@ -259,12 +314,11 @@ impl OAuthManager {
             provider_config.callback_port,
         );
 
-        let pkce = Pkce::generate();
         let state = uuid::Uuid::new_v4().to_string();
+        let (url, verifier) = gemini::build_authorize_url(&oauth_config, &state)?;
 
-        store_state_in_db(&self.db, &state, "gemini", &pkce.verifier)?;
+        store_state_in_db(&self.db, &state, "gemini", &verifier)?;
 
-        let url = gemini::build_authorize_url(&oauth_config, &pkce, &state);
         info!(provider = "gemini", "Started OAuth flow");
         Ok(url)
     }
