@@ -60,13 +60,35 @@ use oauth2::{
 
 > **Key detail**: `TokenResponse as _` brings the trait methods (`.access_token()`, `.refresh_token()`, `.expires_in()`) into scope without a named import. Without it you get "private field, not a method" errors.
 
-### 3. Add the three helpers
+### 3. Add the helpers
 
-These are identical across providers except for the provider name in log messages:
+**Shared helpers** (in `src/oauth/mod.rs`):
 
 ```rust
-/// Build a typed BasicClient from config.
-fn build_oauth2_client(config: &ProviderOAuthConfig) -> Result<BasicClient<...>, OAuthError> {
+/// Fully-configured BasicClient with auth and token endpoints set.
+pub(crate) type OAuthClient = BasicClient<
+    EndpointSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointSet,
+>;
+
+/// Map oauth2 errors to OAuthError, preserving invalid_grant -> TokenExpired.
+pub(crate) fn map_oauth_token_error<RE: std::error::Error + 'static>(
+    provider: &str,
+    err: oauth2::RequestTokenError<RE, oauth2::StandardErrorResponse<BasicErrorResponseType>>,
+) -> OAuthError { /* ... */ }
+```
+
+**Per-provider helper** (thin delegate):
+
+```rust
+fn map_token_error<RE: std::error::Error + 'static>(err: ...) -> OAuthError {
+    super::map_oauth_token_error(PROVIDER_ID, err)
+}
+```
+
+**Per-provider `build_oauth2_client`**:
+
+```rust
+fn build_oauth2_client(config: &ProviderOAuthConfig) -> Result<OAuthClient, OAuthError> {
     let client = BasicClient::new(ClientId::new(config.client_id.clone()))
         .set_client_secret(ClientSecret::new(config.client_secret.clone())) // if needed
         .set_auth_uri(AuthUrl::new(config.auth_url.clone()).map_err(...)?)
@@ -75,38 +97,9 @@ fn build_oauth2_client(config: &ProviderOAuthConfig) -> Result<BasicClient<...>,
         .set_auth_type(AuthType::RequestBody); // see provider notes below
     Ok(client)
 }
-
-/// Build a reqwest::Client with no-redirect for SSRF safety.
-fn build_oauth2_http_client() -> Result<reqwest::Client, OAuthError> {
-    reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| OAuthError::Other(format!("Failed to build HTTP client: {}", e)))
-}
-
-/// Map oauth2 errors to OAuthError, preserving invalid_grant -> TokenExpired.
-fn map_token_error<RE: std::error::Error + 'static>(
-    err: oauth2::RequestTokenError<RE, oauth2::StandardErrorResponse<BasicErrorResponseType>>,
-) -> OAuthError {
-    match err {
-        oauth2::RequestTokenError::ServerResponse(ref server_err) => {
-            if *server_err.error() == BasicErrorResponseType::InvalidGrant {
-                return OAuthError::TokenExpired(PROVIDER_ID.to_string());
-            }
-            let desc = server_err.error_description().cloned()
-                .unwrap_or_else(|| server_err.error().to_string());
-            OAuthError::ExchangeFailed(desc)
-        }
-        oauth2::RequestTokenError::Request(ref e) =>
-            OAuthError::ExchangeFailed(format!("HTTP request failed: {}", e)),
-        oauth2::RequestTokenError::Parse(ref e, _) =>
-            OAuthError::ExchangeFailed(format!("Failed to parse response: {}", e)),
-        oauth2::RequestTokenError::Other(msg) =>
-            OAuthError::ExchangeFailed(msg),
-    }
-}
 ```
+
+**HTTP client**: `OAuthManager` creates a shared `reqwest::Client` with `redirect(Policy::none())` and passes it to provider functions. No per-call client construction.
 
 ### 4. Rewrite `build_authorize_url`
 
@@ -143,16 +136,17 @@ pub fn build_authorize_url(config: &Config, state: &str) -> Result<(String, Stri
 ### 5. Rewrite `exchange_code`
 
 **Old signature**: `(http_client, config, code, verifier) -> Result<TokenInfo>`
-**New signature**: `(config, code, verifier) -> Result<TokenInfo>` (creates own HTTP client)
+**New signature**: `(http_client, config, code, verifier) -> Result<TokenInfo>` (uses shared HTTP client)
 
 ```rust
 pub async fn exchange_code(
+    http_client: &reqwest::Client,
     config: &Config,
     code: &str,
     verifier: &str,
 ) -> Result<TokenInfo, OAuthError> {
     let client = build_oauth2_client(config)?;
-    let http_client = build_oauth2_http_client()?;
+    let http_client = http_client.clone(); // cheap Arc clone for owned AsyncHttpClient
 
     let token_response = client
         .exchange_code(AuthorizationCode::new(code.to_string()))
@@ -177,6 +171,7 @@ Same pattern as `exchange_code` but uses `exchange_refresh_token`. Preserve the 
 
 ```rust
 pub async fn refresh_token(
+    http_client: &reqwest::Client,
     config: &Config,
     refresh_token_value: &str,
 ) -> Result<TokenInfo, OAuthError> {
@@ -184,7 +179,7 @@ pub async fn refresh_token(
     let base_refresh = parts[0];
 
     let client = build_oauth2_client(config)?;
-    let http_client = build_oauth2_http_client()?;
+    let http_client = http_client.clone(); // cheap Arc clone for owned AsyncHttpClient
 
     let token_response = client
         .exchange_refresh_token(&RefreshToken::new(base_refresh.to_string()))
@@ -215,8 +210,8 @@ pub async fn refresh_token(
 | Call site | Change |
 |-----------|--------|
 | `start_*_flow()` | Remove `Pkce::generate()`, use new `build_authorize_url` returning `(url, verifier)` |
-| `complete_*_flow()` | Remove `&self.http_client` arg |
-| `refresh_token()` | Remove `&self.http_client` arg |
+| `complete_*_flow()` | Pass `&self.http_client` as first arg to provider's `exchange_code` |
+| `refresh_token()` | Pass `&self.http_client` as first arg to provider's `refresh_token` |
 
 ### 8. Delete dead code
 
@@ -236,18 +231,14 @@ Remove `TokenResponse` struct, `TokenErrorResponse` struct, and any `use serde::
 - **Client secret**: Required
 - **Refresh behavior**: Google typically does not return a new refresh token on refresh
 
-### Claude (Anthropic) — TODO
+### Claude (Anthropic) — Done
 
-Claude's token endpoint expects **JSON-encoded** requests, not form-encoded. The `oauth2` crate sends form-encoded by default. Options:
+Claude's token endpoint requires **JSON-encoded** requests. The `oauth2` crate sends form-encoded by default, so the migration uses a custom `JsonHttpClient` wrapper (in `src/oauth/claude.rs`) that implements `oauth2::AsyncHttpClient`. It intercepts outgoing requests, detects `application/x-www-form-urlencoded` content type, re-serializes the body as JSON via `form_to_json()`, and sets `Content-Type: application/json` before executing with `reqwest::Client`.
 
-1. **Custom `AsyncHttpClient`**: Wrap `reqwest::Client` to override `Content-Type` to `application/json` and serialize the body as JSON. The `oauth2` crate's `AsyncHttpClient` trait is implementable.
-2. **Check if Anthropic also accepts form-encoded**: If their endpoint accepts standard `application/x-www-form-urlencoded` (many do despite documenting JSON), the migration is straightforward.
-3. **Keep manual**: If the JSON requirement is strict and a custom client is too much ceremony, Claude may be better left as-is.
-
-Other Claude specifics:
 - **Auth type**: No client secret (PKCE-only) — omit `.set_client_secret()`
 - **Extra params**: `.add_extra_param("code", "true")`
 - **Scopes**: `org:create_api_key`, `user:profile`, `user:inference`
+- **HTTP client**: Accepts a shared `&reqwest::Client` from `OAuthManager`, wrapped in `JsonHttpClient` for the JSON conversion
 
 ### Copilot (GitHub) — Not Applicable
 
@@ -441,7 +432,11 @@ async fn test_exchange_code_success() {
         .await;
 
     let config = mock_config(&mock_server.uri()); // token_url -> mock server
-    let result = exchange_code(&config, "code", "verifier").await;
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let result = exchange_code(&client, &config, "code", "verifier").await;
     let token = result.unwrap();
     assert_eq!(token.access_token, "test-access");
 }

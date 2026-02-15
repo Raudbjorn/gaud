@@ -14,13 +14,14 @@
 //! - Token: `https://oauth2.googleapis.com/token`
 
 use oauth2::TokenResponse as _;
-use oauth2::basic::{BasicClient, BasicErrorResponseType};
+use oauth2::basic::BasicClient;
 use oauth2::{
     AuthType, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
     PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken, Scope, TokenUrl,
 };
-use tracing::{debug, warn};
+use tracing::debug;
 
+use super::OAuthClient;
 use super::OAuthError;
 use super::token::TokenInfo;
 
@@ -105,12 +106,7 @@ impl GeminiOAuthConfig {
 ///
 /// Google expects client credentials in the request body (not Basic Auth header),
 /// so we set `AuthType::RequestBody`.
-fn build_oauth2_client(
-    config: &GeminiOAuthConfig,
-) -> Result<
-    BasicClient<oauth2::EndpointSet, oauth2::EndpointNotSet, oauth2::EndpointNotSet, oauth2::EndpointNotSet, oauth2::EndpointSet>,
-    OAuthError,
-> {
+fn build_oauth2_client(config: &GeminiOAuthConfig) -> Result<OAuthClient, OAuthError> {
     let client_id = ClientId::new(config.client_id.clone());
     let client_secret = ClientSecret::new(config.client_secret.clone());
     let auth_url = AuthUrl::new(config.auth_url.clone())
@@ -130,52 +126,14 @@ fn build_oauth2_client(
     Ok(client)
 }
 
-/// Build a `reqwest::Client` suitable for OAuth token requests.
-///
-/// Disables redirect following for SSRF safety (token endpoints should not redirect).
-fn build_oauth2_http_client() -> Result<reqwest::Client, OAuthError> {
-    reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| OAuthError::Other(format!("Failed to build HTTP client: {}", e)))
-}
-
-/// Map an `oauth2::RequestTokenError` to our `OAuthError`.
-///
-/// Preserves the `invalid_grant` → `TokenExpired` mapping that the caller depends on
-/// for refresh flow retry logic.
+/// Map oauth2 errors to OAuthError, delegating to the shared helper.
 fn map_token_error<RE: std::error::Error + 'static>(
-    err: oauth2::RequestTokenError<RE, oauth2::StandardErrorResponse<BasicErrorResponseType>>,
+    err: oauth2::RequestTokenError<
+        RE,
+        oauth2::StandardErrorResponse<oauth2::basic::BasicErrorResponseType>,
+    >,
 ) -> OAuthError {
-    match err {
-        oauth2::RequestTokenError::ServerResponse(ref server_err) => {
-            let error_type = server_err.error();
-            let description = server_err
-                .error_description()
-                .cloned()
-                .unwrap_or_else(|| error_type.to_string());
-
-            warn!(
-                error = %error_type,
-                description = %description,
-                "Gemini token request failed"
-            );
-
-            if *error_type == BasicErrorResponseType::InvalidGrant {
-                return OAuthError::TokenExpired(PROVIDER_ID.to_string());
-            }
-
-            OAuthError::ExchangeFailed(description)
-        }
-        oauth2::RequestTokenError::Request(ref req_err) => {
-            OAuthError::ExchangeFailed(format!("HTTP request failed: {}", req_err))
-        }
-        oauth2::RequestTokenError::Parse(ref parse_err, _) => {
-            OAuthError::ExchangeFailed(format!("Failed to parse token response: {}", parse_err))
-        }
-        oauth2::RequestTokenError::Other(msg) => OAuthError::ExchangeFailed(msg),
-    }
+    super::map_oauth_token_error(PROVIDER_ID, err)
 }
 
 // =============================================================================
@@ -217,6 +175,7 @@ pub fn build_authorize_url(
 ///
 /// Uses the oauth2 crate's typed `exchange_code` with PKCE verifier completion.
 pub async fn exchange_code(
+    http_client: &reqwest::Client,
     config: &GeminiOAuthConfig,
     code: &str,
     verifier: &str,
@@ -224,7 +183,7 @@ pub async fn exchange_code(
     debug!("Exchanging authorization code for Gemini tokens");
 
     let client = build_oauth2_client(config)?;
-    let http_client = build_oauth2_http_client()?;
+    let http_client = http_client.clone(); // cheap Arc clone for owned AsyncHttpClient
 
     let token_response = client
         .exchange_code(AuthorizationCode::new(code.to_string()))
@@ -263,6 +222,7 @@ pub async fn exchange_code(
 /// using only the base refresh token for the request and re-attaching
 /// project IDs to the result.
 pub async fn refresh_token(
+    http_client: &reqwest::Client,
     config: &GeminiOAuthConfig,
     refresh_token_value: &str,
 ) -> Result<TokenInfo, OAuthError> {
@@ -273,7 +233,7 @@ pub async fn refresh_token(
     debug!("Refreshing Gemini access token");
 
     let client = build_oauth2_client(config)?;
-    let http_client = build_oauth2_http_client()?;
+    let http_client = http_client.clone(); // cheap Arc clone for owned AsyncHttpClient
 
     let token_response = client
         .exchange_refresh_token(&RefreshToken::new(base_refresh.to_string()))
@@ -324,6 +284,15 @@ mod tests {
             mock_server_uri,
             19285,
         )
+    }
+
+    /// Shared test HTTP client (reused across tests like `OAuthManager` does).
+    fn test_http_client() -> reqwest::Client {
+        reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(std::time::Duration::from_secs(5))
+            .build()
+            .unwrap()
     }
 
     /// Standard successful token response JSON from Google.
@@ -448,7 +417,8 @@ mod tests {
             .await;
 
         let config = mock_config(&mock_server.uri());
-        let result = exchange_code(&config, "test-auth-code", "test-verifier").await;
+        let client = test_http_client();
+        let result = exchange_code(&client, &config, "test-auth-code", "test-verifier").await;
 
         let token = result.expect("exchange_code should succeed");
         assert_eq!(token.access_token, "ya29.test-access-token");
@@ -475,7 +445,8 @@ mod tests {
             .await;
 
         let config = mock_config(&mock_server.uri());
-        let result = exchange_code(&config, "test-auth-code", "test-verifier").await;
+        let client = test_http_client();
+        let result = exchange_code(&client, &config, "test-auth-code", "test-verifier").await;
 
         let err = result.expect_err("should fail without refresh token");
         match err {
@@ -505,7 +476,8 @@ mod tests {
             .await;
 
         let config = mock_config(&mock_server.uri());
-        let result = exchange_code(&config, "expired-code", "test-verifier").await;
+        let client = test_http_client();
+        let result = exchange_code(&client, &config, "expired-code", "test-verifier").await;
 
         let err = result.expect_err("should fail with invalid_grant");
         assert!(
@@ -530,7 +502,8 @@ mod tests {
             .await;
 
         let config = mock_config(&mock_server.uri());
-        let result = exchange_code(&config, "test-code", "test-verifier").await;
+        let client = test_http_client();
+        let result = exchange_code(&client, &config, "test-code", "test-verifier").await;
 
         let err = result.expect_err("should fail with server error");
         match err {
@@ -558,7 +531,8 @@ mod tests {
             .await;
 
         let config = mock_config(&mock_server.uri());
-        let result = refresh_token(&config, "1//original-refresh").await;
+        let client = test_http_client();
+        let result = refresh_token(&client, &config, "1//original-refresh").await;
 
         let token = result.expect("refresh should succeed");
         assert_eq!(token.access_token, "ya29.new-access-token");
@@ -585,7 +559,8 @@ mod tests {
             .await;
 
         let config = mock_config(&mock_server.uri());
-        let result = refresh_token(&config, "old-refresh").await;
+        let client = test_http_client();
+        let result = refresh_token(&client, &config, "old-refresh").await;
 
         let token = result.expect("refresh should succeed");
         // When server returns a new refresh token, use it
@@ -611,7 +586,8 @@ mod tests {
             .await;
 
         let config = mock_config(&mock_server.uri());
-        let result = refresh_token(&config, "revoked-refresh").await;
+        let client = test_http_client();
+        let result = refresh_token(&client, &config, "revoked-refresh").await;
 
         let err = result.expect_err("should fail with invalid_grant");
         assert!(
@@ -634,9 +610,10 @@ mod tests {
             .await;
 
         let config = mock_config(&mock_server.uri());
+        let client = test_http_client();
         // Composite token: refresh|project_id|managed_project_id
         let result =
-            refresh_token(&config, "1//base-refresh|proj-123|managed-456").await;
+            refresh_token(&client, &config, "1//base-refresh|proj-123|managed-456").await;
 
         let token = result.expect("refresh should succeed");
         assert_eq!(token.access_token, "ya29.new-access-token");
@@ -662,8 +639,9 @@ mod tests {
             .await;
 
         let config = mock_config(&mock_server.uri());
+        let client = test_http_client();
         // Composite with only project_id (no managed)
-        let result = refresh_token(&config, "1//base-refresh|proj-only").await;
+        let result = refresh_token(&client, &config, "1//base-refresh|proj-only").await;
 
         let token = result.expect("refresh should succeed");
         let (base, project, managed) = token.parse_refresh_parts();

@@ -17,7 +17,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use oauth2::TokenResponse as _;
-use oauth2::basic::{BasicClient, BasicErrorResponseType};
+use oauth2::basic::BasicClient;
 use oauth2::{
     AuthType, AuthUrl, AuthorizationCode, ClientId, CsrfToken, HttpClientError,
     PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken, Scope, TokenUrl,
@@ -25,6 +25,7 @@ use oauth2::{
 use tracing::{debug, warn};
 
 use super::OAuthError;
+use super::OAuthClient;
 use super::token::TokenInfo;
 
 /// Provider identifier for Claude OAuth.
@@ -76,18 +77,7 @@ impl ClaudeOAuthConfig {
 /// Claude uses PKCE without a client secret. We set `AuthType::RequestBody`
 /// so `client_id` is included as a body parameter (which the `JsonHttpClient`
 /// converts to JSON).
-fn build_oauth2_client(
-    config: &ClaudeOAuthConfig,
-) -> Result<
-    BasicClient<
-        oauth2::EndpointSet,
-        oauth2::EndpointNotSet,
-        oauth2::EndpointNotSet,
-        oauth2::EndpointNotSet,
-        oauth2::EndpointSet,
-    >,
-    OAuthError,
-> {
+fn build_oauth2_client(config: &ClaudeOAuthConfig) -> Result<OAuthClient, OAuthError> {
     let client_id = ClientId::new(config.client_id.clone());
     let auth_url = AuthUrl::new(config.auth_url.clone())
         .map_err(|e| OAuthError::Other(format!("Invalid auth URL: {}", e)))?;
@@ -110,27 +100,23 @@ fn build_oauth2_client(
 /// Claude's token endpoint expects JSON-encoded request bodies, but the
 /// `oauth2` crate sends form-encoded by default. This wrapper intercepts
 /// requests with `application/x-www-form-urlencoded` content type and
-/// re-serializes the body as JSON before forwarding to the inner client.
+/// re-serializes the body as JSON before executing.
+///
+/// Wraps a shared `reqwest::Client` (cheap `Arc` clone) to reuse the
+/// connection pool and TLS state from `OAuthManager`.
 struct JsonHttpClient(reqwest::Client);
-
-impl JsonHttpClient {
-    fn new() -> Result<Self, OAuthError> {
-        let client = reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .map_err(|e| OAuthError::Other(format!("Failed to build HTTP client: {}", e)))?;
-        Ok(Self(client))
-    }
-}
 
 /// Convert a form-encoded body (`key1=value1&key2=value2`) to a JSON object.
 fn form_to_json(body: Vec<u8>) -> Vec<u8> {
     let form_str = String::from_utf8_lossy(&body);
     let map: serde_json::Map<String, serde_json::Value> = form_str
         .split('&')
+        .filter(|pair| !pair.is_empty())
         .filter_map(|pair| {
-            let (key, value) = pair.split_once('=')?;
+            let Some((key, value)) = pair.split_once('=') else {
+                warn!(pair = %pair, "Skipping malformed form pair (no '=' separator)");
+                return None;
+            };
             let key = urlencoding::decode(key)
                 .unwrap_or_else(|_| key.into())
                 .into_owned();
@@ -140,7 +126,10 @@ fn form_to_json(body: Vec<u8>) -> Vec<u8> {
             Some((key, serde_json::Value::String(value)))
         })
         .collect();
-    serde_json::to_vec(&map).unwrap_or(body)
+    serde_json::to_vec(&map).unwrap_or_else(|e| {
+        warn!(error = %e, "Failed to serialize form data as JSON, using original body");
+        body
+    })
 }
 
 impl<'c> oauth2::AsyncHttpClient<'c> for JsonHttpClient {
@@ -149,64 +138,57 @@ impl<'c> oauth2::AsyncHttpClient<'c> for JsonHttpClient {
         Pin<Box<dyn Future<Output = Result<oauth2::HttpResponse, Self::Error>> + Send + Sync + 'c>>;
 
     fn call(&'c self, request: oauth2::HttpRequest) -> Self::Future {
-        let (mut parts, body) = request.into_parts();
+        Box::pin(async move {
+            let (mut parts, body) = request.into_parts();
 
-        let is_form = parts
-            .headers
-            .get(reqwest::header::CONTENT_TYPE)
-            .and_then(|v| v.to_str().ok())
-            .is_some_and(|ct| ct.starts_with("application/x-www-form-urlencoded"));
+            let is_form = parts
+                .headers
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok())
+                .is_some_and(|ct| ct.starts_with("application/x-www-form-urlencoded"));
 
-        let body = if is_form {
-            parts.headers.insert(
-                reqwest::header::CONTENT_TYPE,
-                reqwest::header::HeaderValue::from_static("application/json"),
-            );
-            form_to_json(body)
-        } else {
-            body
-        };
+            let body = if is_form {
+                parts.headers.insert(
+                    reqwest::header::CONTENT_TYPE,
+                    reqwest::header::HeaderValue::from_static("application/json"),
+                );
+                form_to_json(body)
+            } else {
+                body
+            };
 
-        let request = oauth2::HttpRequest::from_parts(parts, body);
-        self.0.call(request)
+            let request = oauth2::HttpRequest::from_parts(parts, body);
+
+            // Build and execute the request explicitly.
+            let response = self
+                .0
+                .execute(request.try_into().map_err(Box::new)?)
+                .await
+                .map_err(Box::new)?;
+
+            let mut builder = oauth2::http::Response::builder()
+                .status(response.status())
+                .version(response.version());
+
+            for (name, value) in response.headers().iter() {
+                builder = builder.header(name, value);
+            }
+
+            builder
+                .body(response.bytes().await.map_err(Box::new)?.to_vec())
+                .map_err(HttpClientError::Http)
+        })
     }
 }
 
-/// Map an `oauth2::RequestTokenError` to our `OAuthError`.
-///
-/// Preserves the `invalid_grant` -> `TokenExpired` mapping that the caller
-/// depends on for refresh flow retry logic.
+/// Map oauth2 errors to OAuthError, delegating to the shared helper.
 fn map_token_error<RE: std::error::Error + 'static>(
-    err: oauth2::RequestTokenError<RE, oauth2::StandardErrorResponse<BasicErrorResponseType>>,
+    err: oauth2::RequestTokenError<
+        RE,
+        oauth2::StandardErrorResponse<oauth2::basic::BasicErrorResponseType>,
+    >,
 ) -> OAuthError {
-    match err {
-        oauth2::RequestTokenError::ServerResponse(ref server_err) => {
-            let error_type = server_err.error();
-            let description = server_err
-                .error_description()
-                .cloned()
-                .unwrap_or_else(|| error_type.to_string());
-
-            warn!(
-                error = %error_type,
-                description = %description,
-                "Claude token request failed"
-            );
-
-            if *error_type == BasicErrorResponseType::InvalidGrant {
-                return OAuthError::TokenExpired(PROVIDER_ID.to_string());
-            }
-
-            OAuthError::ExchangeFailed(description)
-        }
-        oauth2::RequestTokenError::Request(ref req_err) => {
-            OAuthError::ExchangeFailed(format!("HTTP request failed: {}", req_err))
-        }
-        oauth2::RequestTokenError::Parse(ref parse_err, _) => {
-            OAuthError::ExchangeFailed(format!("Failed to parse token response: {}", parse_err))
-        }
-        oauth2::RequestTokenError::Other(msg) => OAuthError::ExchangeFailed(msg),
-    }
+    super::map_oauth_token_error(PROVIDER_ID, err)
 }
 
 // =============================================================================
@@ -246,6 +228,7 @@ pub fn build_authorize_url(
 /// Uses a custom `JsonHttpClient` to convert the oauth2 crate's form-encoded
 /// request body to JSON, as required by Claude's token endpoint.
 pub async fn exchange_code(
+    http_client: &reqwest::Client,
     config: &ClaudeOAuthConfig,
     code: &str,
     verifier: &str,
@@ -253,7 +236,7 @@ pub async fn exchange_code(
     debug!("Exchanging authorization code for Claude tokens");
 
     let client = build_oauth2_client(config)?;
-    let http_client = JsonHttpClient::new()?;
+    let http_client = JsonHttpClient(http_client.clone());
 
     let token_response = client
         .exchange_code(AuthorizationCode::new(code.to_string()))
@@ -287,6 +270,7 @@ pub async fn exchange_code(
 /// using only the base refresh token for the request and re-attaching
 /// project IDs to the result.
 pub async fn refresh_token(
+    http_client: &reqwest::Client,
     config: &ClaudeOAuthConfig,
     refresh_token_value: &str,
 ) -> Result<TokenInfo, OAuthError> {
@@ -297,7 +281,7 @@ pub async fn refresh_token(
     debug!("Refreshing Claude access token");
 
     let client = build_oauth2_client(config)?;
-    let http_client = JsonHttpClient::new()?;
+    let http_client = JsonHttpClient(http_client.clone());
 
     let token_response = client
         .exchange_refresh_token(&RefreshToken::new(base_refresh.to_string()))
@@ -345,6 +329,15 @@ mod tests {
             redirect_uri: "http://localhost:19284/oauth/callback/claude".to_string(),
             scopes: DEFAULT_SCOPES.iter().map(|s| s.to_string()).collect(),
         }
+    }
+
+    /// Shared test HTTP client (reused across tests like `OAuthManager` does).
+    fn test_http_client() -> reqwest::Client {
+        reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(std::time::Duration::from_secs(5))
+            .build()
+            .unwrap()
     }
 
     /// Standard successful token response JSON.
@@ -470,7 +463,8 @@ mod tests {
             .await;
 
         let config = mock_config(&mock_server.uri());
-        let result = exchange_code(&config, "test-auth-code", "test-verifier").await;
+        let client = test_http_client();
+        let result = exchange_code(&client, &config, "test-auth-code", "test-verifier").await;
 
         let token = result.expect("exchange_code should succeed");
         assert_eq!(token.access_token, "claude-test-access-token");
@@ -496,7 +490,8 @@ mod tests {
             .await;
 
         let config = mock_config(&mock_server.uri());
-        let result = exchange_code(&config, "test-auth-code", "test-verifier").await;
+        let client = test_http_client();
+        let result = exchange_code(&client, &config, "test-auth-code", "test-verifier").await;
 
         let err = result.expect_err("should fail without refresh token");
         match err {
@@ -526,7 +521,8 @@ mod tests {
             .await;
 
         let config = mock_config(&mock_server.uri());
-        let result = exchange_code(&config, "expired-code", "test-verifier").await;
+        let client = test_http_client();
+        let result = exchange_code(&client, &config, "expired-code", "test-verifier").await;
 
         let err = result.expect_err("should fail with invalid_grant");
         assert!(
@@ -551,7 +547,8 @@ mod tests {
             .await;
 
         let config = mock_config(&mock_server.uri());
-        let result = exchange_code(&config, "test-code", "test-verifier").await;
+        let client = test_http_client();
+        let result = exchange_code(&client, &config, "test-code", "test-verifier").await;
 
         let err = result.expect_err("should fail with server error");
         match err {
@@ -579,7 +576,8 @@ mod tests {
             .await;
 
         let config = mock_config(&mock_server.uri());
-        let result = exchange_code(&config, "test-code", "test-verifier").await;
+        let client = test_http_client();
+        let result = exchange_code(&client, &config, "test-code", "test-verifier").await;
 
         // If the mock matched (JSON content-type), the request succeeded
         result.expect("exchange_code should send JSON and succeed");
@@ -598,7 +596,8 @@ mod tests {
             .await;
 
         let config = mock_config(&mock_server.uri());
-        let result = refresh_token(&config, "original-refresh").await;
+        let client = test_http_client();
+        let result = refresh_token(&client, &config, "original-refresh").await;
 
         let token = result.expect("refresh should succeed");
         assert_eq!(token.access_token, "claude-new-access-token");
@@ -621,7 +620,8 @@ mod tests {
             .await;
 
         let config = mock_config(&mock_server.uri());
-        let result = refresh_token(&config, "old-refresh").await;
+        let client = test_http_client();
+        let result = refresh_token(&client, &config, "old-refresh").await;
 
         let token = result.expect("refresh should succeed");
         // When server returns a new refresh token, use it
@@ -647,7 +647,8 @@ mod tests {
             .await;
 
         let config = mock_config(&mock_server.uri());
-        let result = refresh_token(&config, "revoked-refresh").await;
+        let client = test_http_client();
+        let result = refresh_token(&client, &config, "revoked-refresh").await;
 
         let err = result.expect_err("should fail with invalid_grant");
         assert!(
@@ -669,8 +670,9 @@ mod tests {
             .await;
 
         let config = mock_config(&mock_server.uri());
+        let client = test_http_client();
         // Composite token: refresh|project_id|managed_project_id
-        let result = refresh_token(&config, "base-refresh|proj-123|managed-456").await;
+        let result = refresh_token(&client, &config, "base-refresh|proj-123|managed-456").await;
 
         let token = result.expect("refresh should succeed");
         assert_eq!(token.access_token, "claude-new-access-token");
@@ -695,8 +697,9 @@ mod tests {
             .await;
 
         let config = mock_config(&mock_server.uri());
+        let client = test_http_client();
         // Composite with only project_id (no managed)
-        let result = refresh_token(&config, "base-refresh|proj-only").await;
+        let result = refresh_token(&client, &config, "base-refresh|proj-only").await;
 
         let token = result.expect("refresh should succeed");
         let (base, project, managed) = token.parse_refresh_parts();

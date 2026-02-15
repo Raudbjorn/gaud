@@ -51,6 +51,7 @@ pub use storage::KeyringTokenStorage;
 
 use std::sync::Arc;
 
+use oauth2::basic::BasicErrorResponseType;
 use tracing::{debug, info, warn};
 
 use crate::config::{Config, StorageBackend};
@@ -113,6 +114,60 @@ pub enum OAuthError {
 }
 
 // =============================================================================
+// Shared OAuth2 Helpers
+// =============================================================================
+
+/// Fully-configured `BasicClient` with auth and token endpoints set.
+///
+/// Used by all `oauth2`-based providers (Claude, Gemini).
+pub(crate) type OAuthClient = oauth2::basic::BasicClient<
+    oauth2::EndpointSet,
+    oauth2::EndpointNotSet,
+    oauth2::EndpointNotSet,
+    oauth2::EndpointNotSet,
+    oauth2::EndpointSet,
+>;
+
+/// Map an `oauth2::RequestTokenError` to [`OAuthError`].
+///
+/// Shared across all `oauth2`-based providers. Preserves the
+/// `invalid_grant` → `TokenExpired` mapping used for refresh retry logic.
+pub(crate) fn map_oauth_token_error<RE: std::error::Error + 'static>(
+    provider: &str,
+    err: oauth2::RequestTokenError<RE, oauth2::StandardErrorResponse<BasicErrorResponseType>>,
+) -> OAuthError {
+    match err {
+        oauth2::RequestTokenError::ServerResponse(ref server_err) => {
+            let error_type = server_err.error();
+            let description = server_err
+                .error_description()
+                .cloned()
+                .unwrap_or_else(|| error_type.to_string());
+
+            warn!(
+                %provider,
+                error = %error_type,
+                description = %description,
+                "Token request failed"
+            );
+
+            if *error_type == BasicErrorResponseType::InvalidGrant {
+                return OAuthError::TokenExpired(provider.to_string());
+            }
+
+            OAuthError::ExchangeFailed(description)
+        }
+        oauth2::RequestTokenError::Request(ref req_err) => {
+            OAuthError::ExchangeFailed(format!("HTTP request failed: {}", req_err))
+        }
+        oauth2::RequestTokenError::Parse(ref parse_err, _) => {
+            OAuthError::ExchangeFailed(format!("Failed to parse token response: {}", parse_err))
+        }
+        oauth2::RequestTokenError::Other(msg) => OAuthError::ExchangeFailed(msg),
+    }
+}
+
+// =============================================================================
 // OAuthStatus
 // =============================================================================
 
@@ -150,6 +205,7 @@ impl OAuthManager {
     /// Create a new OAuthManager.
     pub fn new(config: Arc<Config>, db: Database, storage: Arc<dyn TokenStorage>) -> Self {
         let http_client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .unwrap_or_default();
@@ -350,7 +406,7 @@ impl OAuthManager {
             provider_config.callback_port,
         );
 
-        claude::exchange_code(&oauth_config, code, verifier).await
+        claude::exchange_code(&self.http_client, &oauth_config, code, verifier).await
     }
 
     async fn complete_gemini_flow(
@@ -373,7 +429,7 @@ impl OAuthManager {
             provider_config.callback_port,
         );
 
-        gemini::exchange_code(&oauth_config, code, verifier).await
+        gemini::exchange_code(&self.http_client, &oauth_config, code, verifier).await
     }
 
     /// Complete the Copilot device code flow by polling until authorized.
@@ -441,7 +497,7 @@ impl OAuthManager {
                     &pc.auth_url,
                     pc.callback_port,
                 );
-                claude::refresh_token(&oc, refresh).await?
+                claude::refresh_token(&self.http_client, &oc, refresh).await?
             }
             "gemini" => {
                 let pc = self.config.providers.gemini.as_ref().ok_or_else(|| {
@@ -454,7 +510,7 @@ impl OAuthManager {
                     &pc.token_url,
                     pc.callback_port,
                 );
-                gemini::refresh_token(&oc, refresh).await?
+                gemini::refresh_token(&self.http_client, &oc, refresh).await?
             }
             "copilot" => {
                 // Copilot doesn't use refresh tokens in the traditional sense;
