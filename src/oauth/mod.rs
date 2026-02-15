@@ -232,13 +232,12 @@ impl OAuthManager {
             provider_config.callback_port,
         );
 
-        let pkce = Pkce::generate();
         let state = uuid::Uuid::new_v4().to_string();
+        let (url, verifier) = claude::build_authorize_url(&oauth_config, &state)?;
 
         // Store state in DB
-        store_state_in_db(&self.db, &state, "claude", &pkce.verifier)?;
+        store_state_in_db(&self.db, &state, "claude", &verifier)?;
 
-        let url = claude::build_authorize_url(&oauth_config, &pkce, &state);
         info!(provider = "claude", "Started OAuth flow");
         Ok(url)
     }
@@ -259,12 +258,11 @@ impl OAuthManager {
             provider_config.callback_port,
         );
 
-        let pkce = Pkce::generate();
         let state = uuid::Uuid::new_v4().to_string();
+        let (url, verifier) = gemini::build_authorize_url(&oauth_config, &state)?;
 
-        store_state_in_db(&self.db, &state, "gemini", &pkce.verifier)?;
+        store_state_in_db(&self.db, &state, "gemini", &verifier)?;
 
-        let url = gemini::build_authorize_url(&oauth_config, &pkce, &state);
         info!(provider = "gemini", "Started OAuth flow");
         Ok(url)
     }
@@ -352,7 +350,7 @@ impl OAuthManager {
             provider_config.callback_port,
         );
 
-        claude::exchange_code(&self.http_client, &oauth_config, code, verifier).await
+        claude::exchange_code(&oauth_config, code, verifier).await
     }
 
     async fn complete_gemini_flow(
@@ -375,7 +373,7 @@ impl OAuthManager {
             provider_config.callback_port,
         );
 
-        gemini::exchange_code(&self.http_client, &oauth_config, code, verifier).await
+        gemini::exchange_code(&oauth_config, code, verifier).await
     }
 
     /// Complete the Copilot device code flow by polling until authorized.
@@ -443,7 +441,7 @@ impl OAuthManager {
                     &pc.auth_url,
                     pc.callback_port,
                 );
-                claude::refresh_token(&self.http_client, &oc, refresh).await?
+                claude::refresh_token(&oc, refresh).await?
             }
             "gemini" => {
                 let pc = self.config.providers.gemini.as_ref().ok_or_else(|| {
@@ -456,7 +454,7 @@ impl OAuthManager {
                     &pc.token_url,
                     pc.callback_port,
                 );
-                gemini::refresh_token(&self.http_client, &oc, refresh).await?
+                gemini::refresh_token(&oc, refresh).await?
             }
             "copilot" => {
                 // Copilot doesn't use refresh tokens in the traditional sense;
