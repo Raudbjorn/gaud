@@ -107,8 +107,11 @@ fn build_oauth2_client(config: &ClaudeOAuthConfig) -> Result<OAuthClient, OAuthE
 struct JsonHttpClient(reqwest::Client);
 
 /// Convert a form-encoded body (`key1=value1&key2=value2`) to a JSON object.
-fn form_to_json(body: Vec<u8>) -> Vec<u8> {
-    let form_str = String::from_utf8_lossy(&body);
+///
+/// Returns `Some(json_bytes)` on success, or `None` if serialization fails
+/// (so the caller can keep the original body and Content-Type unchanged).
+fn form_to_json(body: &[u8]) -> Option<Vec<u8>> {
+    let form_str = String::from_utf8_lossy(body);
     let map: serde_json::Map<String, serde_json::Value> = form_str
         .split('&')
         .filter(|pair| !pair.is_empty())
@@ -126,10 +129,13 @@ fn form_to_json(body: Vec<u8>) -> Vec<u8> {
             Some((key, serde_json::Value::String(value)))
         })
         .collect();
-    serde_json::to_vec(&map).unwrap_or_else(|e| {
-        warn!(error = %e, "Failed to serialize form data as JSON, using original body");
-        body
-    })
+    match serde_json::to_vec(&map) {
+        Ok(json) => Some(json),
+        Err(e) => {
+            warn!(error = %e, "Failed to serialize form data as JSON, keeping original body");
+            None
+        }
+    }
 }
 
 impl<'c> oauth2::AsyncHttpClient<'c> for JsonHttpClient {
@@ -147,12 +153,18 @@ impl<'c> oauth2::AsyncHttpClient<'c> for JsonHttpClient {
                 .and_then(|v| v.to_str().ok())
                 .is_some_and(|ct| ct.starts_with("application/x-www-form-urlencoded"));
 
+            // Only replace Content-Type and body when conversion actually succeeds;
+            // on failure, keep the original form-encoded body and header intact.
             let body = if is_form {
-                parts.headers.insert(
-                    reqwest::header::CONTENT_TYPE,
-                    reqwest::header::HeaderValue::from_static("application/json"),
-                );
-                form_to_json(body)
+                if let Some(json) = form_to_json(&body) {
+                    parts.headers.insert(
+                        reqwest::header::CONTENT_TYPE,
+                        reqwest::header::HeaderValue::from_static("application/json"),
+                    );
+                    json
+                } else {
+                    body
+                }
             } else {
                 body
             };
@@ -431,8 +443,8 @@ mod tests {
 
     #[test]
     fn test_form_to_json_basic() {
-        let body = b"grant_type=authorization_code&code=test-code".to_vec();
-        let json = form_to_json(body);
+        let body = b"grant_type=authorization_code&code=test-code";
+        let json = form_to_json(body).expect("conversion should succeed");
         let parsed: serde_json::Value = serde_json::from_slice(&json).unwrap();
         assert_eq!(parsed["grant_type"], "authorization_code");
         assert_eq!(parsed["code"], "test-code");
@@ -440,8 +452,8 @@ mod tests {
 
     #[test]
     fn test_form_to_json_decodes_percent_encoding() {
-        let body = b"redirect_uri=http%3A%2F%2Flocalhost%3A8080%2Fcallback".to_vec();
-        let json = form_to_json(body);
+        let body = b"redirect_uri=http%3A%2F%2Flocalhost%3A8080%2Fcallback";
+        let json = form_to_json(body).expect("conversion should succeed");
         let parsed: serde_json::Value = serde_json::from_slice(&json).unwrap();
         assert_eq!(parsed["redirect_uri"], "http://localhost:8080/callback");
     }
