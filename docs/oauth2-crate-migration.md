@@ -258,7 +258,7 @@ Kiro uses **two distinct auth paths**, detected at startup based on whether cred
 | **KIRO_DESKTOP** | No `clientId`/`clientSecret` (IDE users) | `prod.{region}.auth.desktop.kiro.dev/refreshToken` | No |
 | **AWS_SSO_OIDC** | Has `clientId`/`clientSecret` (kiro-cli / enterprise) | `oidc.{region}.amazonaws.com/token` | Partially |
 
-Reference implementation: [`kiro-gateway/kiro/auth.py`](../../../kiro-gateway/kiro/auth.py)
+Reference implementation: `kiro-gateway/kiro/auth.py` (local sibling repo)
 
 #### Auth type detection
 
