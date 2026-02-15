@@ -1,6 +1,7 @@
 //! Gemini (Google Cloud) OAuth PKCE flow.
 //!
-//! Implements OAuth 2.0 with PKCE for Google's Cloud Platform API (Gemini access).
+//! Implements OAuth 2.0 with PKCE for Google's Cloud Platform API (Gemini access)
+//! using the [`oauth2`] crate for type-safe token exchange and refresh.
 //!
 //! # Key Characteristics
 //! - Token request format: Form-encoded (standard OAuth)
@@ -12,11 +13,15 @@
 //! - Authorization: `https://accounts.google.com/o/oauth2/v2/auth`
 //! - Token: `https://oauth2.googleapis.com/token`
 
-use serde::Deserialize;
+use oauth2::TokenResponse as _;
+use oauth2::basic::{BasicClient, BasicErrorResponseType};
+use oauth2::{
+    AuthType, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
+    PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken, Scope, TokenUrl,
+};
 use tracing::{debug, warn};
 
 use super::OAuthError;
-use super::pkce::Pkce;
 use super::token::TokenInfo;
 
 /// Provider identifier for Gemini OAuth.
@@ -92,115 +97,172 @@ impl GeminiOAuthConfig {
     }
 }
 
-/// Build the Gemini authorization URL.
+// =============================================================================
+// Helpers
+// =============================================================================
+
+/// Build a typed `BasicClient` from a `GeminiOAuthConfig`.
+///
+/// Google expects client credentials in the request body (not Basic Auth header),
+/// so we set `AuthType::RequestBody`.
+fn build_oauth2_client(
+    config: &GeminiOAuthConfig,
+) -> Result<
+    BasicClient<oauth2::EndpointSet, oauth2::EndpointNotSet, oauth2::EndpointNotSet, oauth2::EndpointNotSet, oauth2::EndpointSet>,
+    OAuthError,
+> {
+    let client_id = ClientId::new(config.client_id.clone());
+    let client_secret = ClientSecret::new(config.client_secret.clone());
+    let auth_url = AuthUrl::new(config.auth_url.clone())
+        .map_err(|e| OAuthError::Other(format!("Invalid auth URL: {}", e)))?;
+    let token_url = TokenUrl::new(config.token_url.clone())
+        .map_err(|e| OAuthError::Other(format!("Invalid token URL: {}", e)))?;
+    let redirect_url = RedirectUrl::new(config.redirect_uri.clone())
+        .map_err(|e| OAuthError::Other(format!("Invalid redirect URI: {}", e)))?;
+
+    let client = BasicClient::new(client_id)
+        .set_client_secret(client_secret)
+        .set_auth_uri(auth_url)
+        .set_token_uri(token_url)
+        .set_redirect_uri(redirect_url)
+        .set_auth_type(AuthType::RequestBody);
+
+    Ok(client)
+}
+
+/// Build a `reqwest::Client` suitable for OAuth token requests.
+///
+/// Disables redirect following for SSRF safety (token endpoints should not redirect).
+fn build_oauth2_http_client() -> Result<reqwest::Client, OAuthError> {
+    reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| OAuthError::Other(format!("Failed to build HTTP client: {}", e)))
+}
+
+/// Map an `oauth2::RequestTokenError` to our `OAuthError`.
+///
+/// Preserves the `invalid_grant` → `TokenExpired` mapping that the caller depends on
+/// for refresh flow retry logic.
+fn map_token_error<RE: std::error::Error + 'static>(
+    err: oauth2::RequestTokenError<RE, oauth2::StandardErrorResponse<BasicErrorResponseType>>,
+) -> OAuthError {
+    match err {
+        oauth2::RequestTokenError::ServerResponse(ref server_err) => {
+            let error_type = server_err.error();
+            let description = server_err
+                .error_description()
+                .cloned()
+                .unwrap_or_else(|| error_type.to_string());
+
+            warn!(
+                error = %error_type,
+                description = %description,
+                "Gemini token request failed"
+            );
+
+            if *error_type == BasicErrorResponseType::InvalidGrant {
+                return OAuthError::TokenExpired(PROVIDER_ID.to_string());
+            }
+
+            OAuthError::ExchangeFailed(description)
+        }
+        oauth2::RequestTokenError::Request(ref req_err) => {
+            OAuthError::ExchangeFailed(format!("HTTP request failed: {}", req_err))
+        }
+        oauth2::RequestTokenError::Parse(ref parse_err, _) => {
+            OAuthError::ExchangeFailed(format!("Failed to parse token response: {}", parse_err))
+        }
+        oauth2::RequestTokenError::Other(msg) => OAuthError::ExchangeFailed(msg),
+    }
+}
+
+// =============================================================================
+// Public API
+// =============================================================================
+
+/// Build the Gemini authorization URL with PKCE.
+///
+/// Generates a PKCE challenge/verifier pair internally and returns both the
+/// authorization URL and the PKCE verifier secret (which must be stored for
+/// the token exchange step).
 ///
 /// Google OAuth requires:
 /// - `access_type=offline` to receive a refresh token
 /// - `prompt=consent` to force consent screen, ensuring refresh token is returned
-pub fn build_authorize_url(config: &GeminiOAuthConfig, pkce: &Pkce, state: &str) -> String {
-    let scopes = config.scopes.join(" ");
-    format!(
-        "{}?client_id={}&redirect_uri={}&response_type=code&scope={}&code_challenge={}&code_challenge_method=S256&state={}&access_type=offline&prompt=consent",
-        config.auth_url,
-        urlencoding::encode(&config.client_id),
-        urlencoding::encode(&config.redirect_uri),
-        urlencoding::encode(&scopes),
-        urlencoding::encode(&pkce.challenge),
-        urlencoding::encode(state),
-    )
-}
+pub fn build_authorize_url(
+    config: &GeminiOAuthConfig,
+    state: &str,
+) -> Result<(String, String), OAuthError> {
+    let client = build_oauth2_client(config)?;
+    let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
-/// Token response from Google's token endpoint.
-#[derive(Deserialize)]
-struct TokenResponse {
-    access_token: String,
-    #[serde(default)]
-    refresh_token: Option<String>,
-    expires_in: i64,
-}
+    let mut auth_request = client
+        .authorize_url(|| CsrfToken::new(state.to_string()))
+        .set_pkce_challenge(pkce_challenge)
+        .add_extra_param("access_type", "offline")
+        .add_extra_param("prompt", "consent");
 
-/// Error response from Google's token endpoint.
-#[derive(Debug, Deserialize)]
-struct TokenErrorResponse {
-    error: String,
-    #[serde(default)]
-    error_description: Option<String>,
+    for scope in &config.scopes {
+        auth_request = auth_request.add_scope(Scope::new(scope.clone()));
+    }
+
+    let (url, _csrf_token) = auth_request.url();
+
+    Ok((url.to_string(), pkce_verifier.secret().to_string()))
 }
 
 /// Exchange an authorization code for tokens.
 ///
-/// Google's token endpoint expects standard form-encoded requests,
-/// including the client_secret.
+/// Uses the oauth2 crate's typed `exchange_code` with PKCE verifier completion.
 pub async fn exchange_code(
-    http_client: &reqwest::Client,
     config: &GeminiOAuthConfig,
     code: &str,
     verifier: &str,
 ) -> Result<TokenInfo, OAuthError> {
     debug!("Exchanging authorization code for Gemini tokens");
 
-    let form_data = [
-        ("code", code),
-        ("code_verifier", verifier),
-        ("grant_type", "authorization_code"),
-        ("redirect_uri", &config.redirect_uri),
-        ("client_id", &config.client_id),
-        ("client_secret", &config.client_secret),
-    ];
+    let client = build_oauth2_client(config)?;
+    let http_client = build_oauth2_http_client()?;
 
-    let response = http_client
-        .post(&config.token_url)
-        .form(&form_data)
-        .send()
-        .await?;
+    let token_response = client
+        .exchange_code(AuthorizationCode::new(code.to_string()))
+        .set_pkce_verifier(PkceCodeVerifier::new(verifier.to_string()))
+        .request_async(&http_client)
+        .await
+        .map_err(map_token_error)?;
 
-    let status = response.status();
-    let body = response.text().await?;
-
-    if !status.is_success() {
-        if let Ok(error) = serde_json::from_str::<TokenErrorResponse>(&body) {
-            warn!(
-                error = %error.error,
-                description = ?error.error_description,
-                "Gemini token exchange failed"
-            );
-            return Err(OAuthError::ExchangeFailed(
-                error.error_description.unwrap_or(error.error),
-            ));
-        }
-        return Err(OAuthError::ExchangeFailed(format!(
-            "HTTP {}: {}",
-            status.as_u16(),
-            body
-        )));
-    }
-
-    let token_response: TokenResponse = serde_json::from_str(&body).map_err(|e| {
-        OAuthError::ExchangeFailed(format!("Failed to parse token response: {}", e))
-    })?;
-
-    let refresh_token = token_response.refresh_token.ok_or_else(|| {
-        OAuthError::ExchangeFailed(
-            "No refresh token in response - ensure access_type=offline and prompt=consent"
-                .to_string(),
-        )
-    })?;
+    let access_token = token_response.access_token().secret().to_string();
+    let refresh_token = token_response
+        .refresh_token()
+        .map(|rt| rt.secret().to_string())
+        .ok_or_else(|| {
+            OAuthError::ExchangeFailed(
+                "No refresh token in response - ensure access_type=offline and prompt=consent"
+                    .to_string(),
+            )
+        })?;
+    let expires_in = token_response
+        .expires_in()
+        .map(|d| d.as_secs() as i64);
 
     debug!("Gemini token exchange successful");
 
     Ok(TokenInfo::new(
-        token_response.access_token,
+        access_token,
         Some(refresh_token),
-        Some(token_response.expires_in),
+        expires_in,
         PROVIDER_ID,
     ))
 }
 
 /// Refresh the Gemini access token.
 ///
-/// Uses form-encoded body with client_secret.
+/// Handles composite token format (`refresh|project_id|managed_project_id`),
+/// using only the base refresh token for the request and re-attaching
+/// project IDs to the result.
 pub async fn refresh_token(
-    http_client: &reqwest::Client,
     config: &GeminiOAuthConfig,
     refresh_token_value: &str,
 ) -> Result<TokenInfo, OAuthError> {
@@ -210,60 +272,28 @@ pub async fn refresh_token(
 
     debug!("Refreshing Gemini access token");
 
-    let form_data = [
-        ("refresh_token", base_refresh),
-        ("grant_type", "refresh_token"),
-        ("client_id", config.client_id.as_str()),
-        ("client_secret", config.client_secret.as_str()),
-    ];
+    let client = build_oauth2_client(config)?;
+    let http_client = build_oauth2_http_client()?;
 
-    let response = http_client
-        .post(&config.token_url)
-        .form(&form_data)
-        .send()
-        .await?;
-
-    let status = response.status();
-    let body = response.text().await?;
-
-    if !status.is_success() {
-        if let Ok(error) = serde_json::from_str::<TokenErrorResponse>(&body) {
-            warn!(
-                error = %error.error,
-                description = ?error.error_description,
-                "Gemini token refresh failed"
-            );
-            if error.error == "invalid_grant" {
-                return Err(OAuthError::TokenExpired(PROVIDER_ID.to_string()));
-            }
-            return Err(OAuthError::ExchangeFailed(
-                error.error_description.unwrap_or(error.error),
-            ));
-        }
-        return Err(OAuthError::ExchangeFailed(format!(
-            "HTTP {}: {}",
-            status.as_u16(),
-            body
-        )));
-    }
-
-    let token_response: TokenResponse = serde_json::from_str(&body).map_err(|e| {
-        OAuthError::ExchangeFailed(format!("Failed to parse refresh response: {}", e))
-    })?;
+    let token_response = client
+        .exchange_refresh_token(&RefreshToken::new(base_refresh.to_string()))
+        .request_async(&http_client)
+        .await
+        .map_err(map_token_error)?;
 
     debug!("Gemini token refresh successful");
 
+    let access_token = token_response.access_token().secret().to_string();
     // Google typically doesn't return a new refresh token on refresh
     let new_refresh = token_response
-        .refresh_token
+        .refresh_token()
+        .map(|rt| rt.secret().to_string())
         .unwrap_or_else(|| base_refresh.to_string());
+    let expires_in = token_response
+        .expires_in()
+        .map(|d| d.as_secs() as i64);
 
-    let mut token = TokenInfo::new(
-        token_response.access_token,
-        Some(new_refresh),
-        Some(token_response.expires_in),
-        PROVIDER_ID,
-    );
+    let mut token = TokenInfo::new(access_token, Some(new_refresh), expires_in, PROVIDER_ID);
 
     // Preserve project IDs from composite token
     let project_id = parts
@@ -285,11 +315,42 @@ pub async fn refresh_token(
 mod tests {
     use super::*;
 
+    /// Create a `GeminiOAuthConfig` whose `token_url` points at the given wiremock server.
+    fn mock_config(mock_server_uri: &str) -> GeminiOAuthConfig {
+        GeminiOAuthConfig::from_provider_config(
+            "test-client",
+            "test-secret",
+            DEFAULT_AUTH_URL,
+            mock_server_uri,
+            19285,
+        )
+    }
+
+    /// Standard successful token response JSON from Google.
+    fn success_token_json() -> serde_json::Value {
+        serde_json::json!({
+            "access_token": "ya29.test-access-token",
+            "token_type": "Bearer",
+            "expires_in": 3600,
+            "refresh_token": "1//test-refresh-token",
+            "scope": "https://www.googleapis.com/auth/cloud-platform"
+        })
+    }
+
+    /// Successful token response without a refresh token (happens on refresh).
+    fn success_no_refresh_json() -> serde_json::Value {
+        serde_json::json!({
+            "access_token": "ya29.new-access-token",
+            "token_type": "Bearer",
+            "expires_in": 3600,
+            "scope": "https://www.googleapis.com/auth/cloud-platform"
+        })
+    }
+
     #[test]
     fn test_build_authorize_url_contains_offline_access() {
         let config = GeminiOAuthConfig::new("test-client", "test-secret", 19285);
-        let pkce = Pkce::generate();
-        let url = build_authorize_url(&config, &pkce, "test_state");
+        let (url, _verifier) = build_authorize_url(&config, "test_state").unwrap();
 
         assert!(url.contains("access_type=offline"));
         assert!(url.contains("prompt=consent"));
@@ -298,8 +359,7 @@ mod tests {
     #[test]
     fn test_build_authorize_url_contains_standard_params() {
         let config = GeminiOAuthConfig::new("test-client", "test-secret", 19285);
-        let pkce = Pkce::generate();
-        let url = build_authorize_url(&config, &pkce, "test_state");
+        let (url, _verifier) = build_authorize_url(&config, "test_state").unwrap();
 
         assert!(url.contains("response_type=code"));
         assert!(url.contains("client_id="));
@@ -311,18 +371,29 @@ mod tests {
     }
 
     #[test]
-    fn test_build_authorize_url_contains_pkce_challenge() {
+    fn test_build_authorize_url_returns_verifier() {
         let config = GeminiOAuthConfig::new("test-client", "test-secret", 19285);
-        let pkce = Pkce::generate();
-        let url = build_authorize_url(&config, &pkce, "state");
-        assert!(url.contains(&pkce.challenge));
+        let (url, verifier) = build_authorize_url(&config, "state").unwrap();
+
+        // Verifier should be non-empty
+        assert!(!verifier.is_empty());
+        // URL should contain a code_challenge derived from the verifier
+        assert!(url.contains("code_challenge="));
+    }
+
+    #[test]
+    fn test_build_authorize_url_unique_verifiers() {
+        let config = GeminiOAuthConfig::new("test-client", "test-secret", 19285);
+        let (_url1, verifier1) = build_authorize_url(&config, "state1").unwrap();
+        let (_url2, verifier2) = build_authorize_url(&config, "state2").unwrap();
+
+        assert_ne!(verifier1, verifier2);
     }
 
     #[test]
     fn test_build_authorize_url_starts_with_google() {
         let config = GeminiOAuthConfig::new("test-client", "test-secret", 19285);
-        let pkce = Pkce::generate();
-        let url = build_authorize_url(&config, &pkce, "state");
+        let (url, _verifier) = build_authorize_url(&config, "state").unwrap();
         assert!(url.starts_with("https://accounts.google.com/"));
     }
 
@@ -357,5 +428,247 @@ mod tests {
         let config = GeminiOAuthConfig::new("my-client", "my-secret", 9999);
         assert!(config.redirect_uri.contains("9999"));
         assert!(config.redirect_uri.contains("127.0.0.1"));
+    }
+
+    // =========================================================================
+    // Async wiremock tests for exchange_code and refresh_token
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_exchange_code_success() {
+        let mock_server = wiremock::MockServer::start().await;
+
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_json(success_token_json()),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let config = mock_config(&mock_server.uri());
+        let result = exchange_code(&config, "test-auth-code", "test-verifier").await;
+
+        let token = result.expect("exchange_code should succeed");
+        assert_eq!(token.access_token, "ya29.test-access-token");
+        assert_eq!(
+            token.refresh_token.as_deref(),
+            Some("1//test-refresh-token")
+        );
+        assert!(token.expires_at.is_some());
+        assert_eq!(token.provider, PROVIDER_ID);
+        assert!(!token.is_expired());
+    }
+
+    #[tokio::test]
+    async fn test_exchange_code_missing_refresh_token() {
+        let mock_server = wiremock::MockServer::start().await;
+
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_json(success_no_refresh_json()),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let config = mock_config(&mock_server.uri());
+        let result = exchange_code(&config, "test-auth-code", "test-verifier").await;
+
+        let err = result.expect_err("should fail without refresh token");
+        match err {
+            OAuthError::ExchangeFailed(msg) => {
+                assert!(
+                    msg.contains("refresh token"),
+                    "Error should mention refresh token: {msg}"
+                );
+            }
+            other => panic!("Expected ExchangeFailed, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_exchange_code_invalid_grant() {
+        let mock_server = wiremock::MockServer::start().await;
+
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(400).set_body_json(serde_json::json!({
+                    "error": "invalid_grant",
+                    "error_description": "Code has expired"
+                })),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let config = mock_config(&mock_server.uri());
+        let result = exchange_code(&config, "expired-code", "test-verifier").await;
+
+        let err = result.expect_err("should fail with invalid_grant");
+        assert!(
+            matches!(err, OAuthError::TokenExpired(_)),
+            "Expected TokenExpired, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_exchange_code_server_error() {
+        let mock_server = wiremock::MockServer::start().await;
+
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(400).set_body_json(serde_json::json!({
+                    "error": "invalid_client",
+                    "error_description": "The OAuth client was not found."
+                })),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let config = mock_config(&mock_server.uri());
+        let result = exchange_code(&config, "test-code", "test-verifier").await;
+
+        let err = result.expect_err("should fail with server error");
+        match err {
+            OAuthError::ExchangeFailed(msg) => {
+                assert!(
+                    msg.contains("client was not found"),
+                    "Error should contain description: {msg}"
+                );
+            }
+            other => panic!("Expected ExchangeFailed, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_refresh_token_success() {
+        let mock_server = wiremock::MockServer::start().await;
+
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_json(success_no_refresh_json()),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let config = mock_config(&mock_server.uri());
+        let result = refresh_token(&config, "1//original-refresh").await;
+
+        let token = result.expect("refresh should succeed");
+        assert_eq!(token.access_token, "ya29.new-access-token");
+        // Google doesn't return new refresh on refresh; should preserve original
+        assert_eq!(
+            token.refresh_token.as_deref(),
+            Some("1//original-refresh")
+        );
+        assert!(token.expires_at.is_some());
+        assert_eq!(token.provider, PROVIDER_ID);
+    }
+
+    #[tokio::test]
+    async fn test_refresh_token_returns_new_refresh() {
+        let mock_server = wiremock::MockServer::start().await;
+
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_json(success_token_json()),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let config = mock_config(&mock_server.uri());
+        let result = refresh_token(&config, "old-refresh").await;
+
+        let token = result.expect("refresh should succeed");
+        // When server returns a new refresh token, use it
+        assert_eq!(
+            token.refresh_token.as_deref(),
+            Some("1//test-refresh-token")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_refresh_token_invalid_grant() {
+        let mock_server = wiremock::MockServer::start().await;
+
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(400).set_body_json(serde_json::json!({
+                    "error": "invalid_grant",
+                    "error_description": "Token has been expired or revoked."
+                })),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let config = mock_config(&mock_server.uri());
+        let result = refresh_token(&config, "revoked-refresh").await;
+
+        let err = result.expect_err("should fail with invalid_grant");
+        assert!(
+            matches!(err, OAuthError::TokenExpired(_)),
+            "Expected TokenExpired, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_refresh_token_preserves_composite_format() {
+        let mock_server = wiremock::MockServer::start().await;
+
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_json(success_no_refresh_json()),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let config = mock_config(&mock_server.uri());
+        // Composite token: refresh|project_id|managed_project_id
+        let result =
+            refresh_token(&config, "1//base-refresh|proj-123|managed-456").await;
+
+        let token = result.expect("refresh should succeed");
+        assert_eq!(token.access_token, "ya29.new-access-token");
+
+        // Project IDs should be preserved in the composite token
+        let (base, project, managed) = token.parse_refresh_parts();
+        assert_eq!(base, "1//base-refresh");
+        assert_eq!(project.as_deref(), Some("proj-123"));
+        assert_eq!(managed.as_deref(), Some("managed-456"));
+    }
+
+    #[tokio::test]
+    async fn test_refresh_token_preserves_partial_composite() {
+        let mock_server = wiremock::MockServer::start().await;
+
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_json(success_no_refresh_json()),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let config = mock_config(&mock_server.uri());
+        // Composite with only project_id (no managed)
+        let result = refresh_token(&config, "1//base-refresh|proj-only").await;
+
+        let token = result.expect("refresh should succeed");
+        let (base, project, managed) = token.parse_refresh_parts();
+        assert_eq!(base, "1//base-refresh");
+        assert_eq!(project.as_deref(), Some("proj-only"));
+        assert!(managed.is_none());
     }
 }

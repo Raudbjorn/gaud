@@ -244,6 +244,9 @@ hmac = "0.12"
 # HTTP Client
 reqwest = { version = "0.12", features = ["json", "stream"] }
 
+# OAuth2
+oauth2 = "5.0"
+
 async-trait = { workspace = true }
 
 
@@ -281,6 +284,7 @@ pin-project-lite.workspace = true
 [dev-dependencies]
 tempfile = "3"
 proptest = "1.4"
+wiremock = "0.6"
 
 
 [features]
