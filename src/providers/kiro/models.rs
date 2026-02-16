@@ -40,7 +40,7 @@ impl std::fmt::Display for CredentialSource {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct KiroTokenInfo {
     pub access_token: String,
     pub refresh_token: String,
@@ -51,9 +51,28 @@ pub struct KiroTokenInfo {
     pub source: CredentialSource,
     /// AWS SSO client registration
     pub client_id: Option<String>,
+    #[serde(skip_serializing)]
     pub client_secret: Option<String>,
     pub sso_region: Option<String>,
     pub scopes: Option<Vec<String>>,
+}
+
+impl std::fmt::Debug for KiroTokenInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KiroTokenInfo")
+            .field("access_token", &"[REDACTED]")
+            .field("refresh_token", &"[REDACTED]")
+            .field("expires_at", &self.expires_at)
+            .field("region", &self.region)
+            .field("profile_arn", &self.profile_arn)
+            .field("auth_type", &self.auth_type)
+            .field("source", &self.source)
+            .field("client_id", &self.client_id)
+            .field("client_secret", &"[REDACTED]")
+            .field("sso_region", &self.sso_region)
+            .field("scopes", &self.scopes)
+            .finish()
+    }
 }
 
 impl KiroTokenInfo {

@@ -519,10 +519,12 @@ impl CacheStore {
         }
 
         let to_remove = total - max_entries as u64;
-        // LRU: remove entries with oldest last_hit, falling back to oldest created_at if last_hit is NULL.
-        let sql = "DELETE FROM cache WHERE id IN (
-            SELECT id FROM cache
-            ORDER BY last_hit ASC, created_at ASC
+        // LRU: remove entries with oldest last_hit first. Entries that have never
+        // been accessed (last_hit = NONE) are evicted before any accessed entry.
+        // Uses idiomatic SurrealDB DELETE-from-subquery to avoid the id indirection.
+        let sql = "DELETE (
+            SELECT * FROM cache
+            ORDER BY last_hit = NONE DESC, last_hit ASC, created_at ASC
             LIMIT $to_remove
         ) RETURN BEFORE";
         let mut response = self
@@ -780,6 +782,7 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(feature = "cache-persistent")]
     #[tokio::test]
     async fn test_compatibility_guard_purges_on_dimension_mismatch() -> Result<(), CacheError> {
         let temp = tempfile::tempdir().map_err(|e| CacheError::InitFailed(e.to_string()))?;
