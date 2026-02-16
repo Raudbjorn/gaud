@@ -145,7 +145,9 @@ fn generate_message_id() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::gemini::models::google::{Candidate, Content, FunctionCall, Part, UsageMetadata};
+    use crate::providers::gemini::models::google::{
+        Candidate, Content, FunctionCall, Part, UsageMetadata,
+    };
     use serde_json::json;
 
     fn create_text_response(text: &str, finish_reason: &str) -> GoogleResponse {
@@ -178,7 +180,10 @@ mod tests {
 
         assert!(result.id.starts_with("msg_"));
         assert_eq!(result.response_type, "message");
-        assert_eq!(result.role, crate::providers::gemini::models::request::Role::Assistant);
+        assert_eq!(
+            result.role,
+            crate::providers::gemini::models::request::Role::Assistant
+        );
         assert_eq!(result.content.len(), 1);
         assert_eq!(result.content[0].as_text(), Some("Hello, world!"));
         assert_eq!(result.stop_reason, Some(StopReason::EndTurn));

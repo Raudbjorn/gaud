@@ -10,9 +10,9 @@
 //! ```rust,ignore
 //! use std::sync::Arc;
 //! use gaud::providers::gemini::CloudCodeClient;
-//! use gaud::oauth::TokenProvider;
+//! use gaud::providers::TokenService;
 //!
-//! # async fn example(token_provider: Arc<dyn TokenProvider>) -> gaud::providers::gemini::Result<()> {
+//! # async fn example(token_provider: Arc<dyn TokenService>) -> gaud::providers::gemini::Result<()> {
 //! // Create client with a token provider
 //! let client = CloudCodeClient::new(token_provider);
 //!

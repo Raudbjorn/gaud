@@ -1389,7 +1389,13 @@ impl Config {
                     "providers.kiro.auth_method",
                     "Kiro",
                     "Auth Method",
-                    serde_json::json!(self.providers.kiro.as_ref().map(|k| k.auth_method.to_string()).unwrap_or("auto".to_string())),
+                    serde_json::json!(
+                        self.providers
+                            .kiro
+                            .as_ref()
+                            .map(|k| k.auth_method.to_string())
+                            .unwrap_or("auto".to_string())
+                    ),
                     "GAUD_KIRO_AUTH_METHOD",
                     "select",
                 );
@@ -1405,7 +1411,13 @@ impl Config {
                 "providers.kiro.region",
                 "Kiro",
                 "AWS Region",
-                serde_json::json!(self.providers.kiro.as_ref().map(|k| k.region.as_str()).unwrap_or("us-east-1")),
+                serde_json::json!(
+                    self.providers
+                        .kiro
+                        .as_ref()
+                        .map(|k| k.region.as_str())
+                        .unwrap_or("us-east-1")
+                ),
                 "GAUD_KIRO_REGION",
                 "text",
             ),
@@ -1413,7 +1425,13 @@ impl Config {
                 "providers.kiro.aws_profile",
                 "Kiro",
                 "AWS Profile",
-                serde_json::json!(self.providers.kiro.as_ref().and_then(|k| k.aws_profile.as_deref()).unwrap_or("")),
+                serde_json::json!(
+                    self.providers
+                        .kiro
+                        .as_ref()
+                        .and_then(|k| k.aws_profile.as_deref())
+                        .unwrap_or("")
+                ),
                 "GAUD_KIRO_AWS_PROFILE",
                 "text",
             ),
@@ -1421,7 +1439,13 @@ impl Config {
                 "providers.kiro.sso_cache_dir",
                 "Kiro",
                 "SSO Cache Directory",
-                serde_json::json!(self.providers.kiro.as_ref().and_then(|k| k.sso_cache_dir.as_deref()).unwrap_or("")),
+                serde_json::json!(
+                    self.providers
+                        .kiro
+                        .as_ref()
+                        .and_then(|k| k.sso_cache_dir.as_deref())
+                        .unwrap_or("")
+                ),
                 "GAUD_KIRO_SSO_CACHE",
                 "text",
             ),
@@ -1429,7 +1453,13 @@ impl Config {
                 "providers.kiro.kiro_db_path",
                 "Kiro",
                 "Kiro CLI DB Path",
-                serde_json::json!(self.providers.kiro.as_ref().and_then(|k| k.kiro_db_path.as_deref()).unwrap_or("")),
+                serde_json::json!(
+                    self.providers
+                        .kiro
+                        .as_ref()
+                        .and_then(|k| k.kiro_db_path.as_deref())
+                        .unwrap_or("")
+                ),
                 "GAUD_KIRO_DB_PATH",
                 "text",
             ),
@@ -1789,19 +1819,31 @@ impl Config {
             "providers.kiro.aws_profile" => {
                 let s = value.as_str().ok_or("Expected string")?;
                 if let Some(ref mut kiro) = self.providers.kiro {
-                    kiro.aws_profile = if s.is_empty() { None } else { Some(s.to_string()) };
+                    kiro.aws_profile = if s.is_empty() {
+                        None
+                    } else {
+                        Some(s.to_string())
+                    };
                 }
             }
             "providers.kiro.sso_cache_dir" => {
                 let s = value.as_str().ok_or("Expected string")?;
                 if let Some(ref mut kiro) = self.providers.kiro {
-                    kiro.sso_cache_dir = if s.is_empty() { None } else { Some(s.to_string()) };
+                    kiro.sso_cache_dir = if s.is_empty() {
+                        None
+                    } else {
+                        Some(s.to_string())
+                    };
                 }
             }
             "providers.kiro.kiro_db_path" => {
                 let s = value.as_str().ok_or("Expected string")?;
                 if let Some(ref mut kiro) = self.providers.kiro {
-                    kiro.kiro_db_path = if s.is_empty() { None } else { Some(s.to_string()) };
+                    kiro.kiro_db_path = if s.is_empty() {
+                        None
+                    } else {
+                        Some(s.to_string())
+                    };
                 }
             }
             _ => return Err(format!("Unknown setting key: {key}")),

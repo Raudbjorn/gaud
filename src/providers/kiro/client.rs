@@ -1,14 +1,14 @@
-use std::pin::Pin;
-use std::sync::Arc;
-use std::time::Duration;
 use futures::Stream;
 use futures::stream::StreamExt;
 use serde_json::Value;
-use uuid::Uuid;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::time::Duration;
 use tracing::warn;
+use uuid::Uuid;
 
-use crate::providers::ProviderError;
 use super::auth::KiroTokenProvider;
+use crate::providers::ProviderError;
 
 /// URL template for the Kiro API host.
 const KIRO_API_HOST_TEMPLATE: &str = "https://q.{region}.amazonaws.com";
@@ -99,7 +99,8 @@ impl KiroClient {
             HeaderValue::from_str(&format!(
                 "aws-sdk-js/{SDK_VERSION} KiroIDE-{IDE_VERSION}-{f}",
                 f = self.fingerprint
-            )).unwrap(),
+            ))
+            .unwrap(),
         );
         headers.insert(
             "x-amzn-codewhisperer-optout",
@@ -137,7 +138,10 @@ impl KiroClient {
             let status = resp.status();
 
             if is_auth_error(status) && retry {
-                warn!("Kiro API returned {}, attempting force refresh and retry", status);
+                warn!(
+                    "Kiro API returned {}, attempting force refresh and retry",
+                    status
+                );
                 self.auth.force_refresh().await?;
                 retry = false;
                 continue;
@@ -187,7 +191,10 @@ impl KiroClient {
             let status = resp.status();
 
             if is_auth_error(status) && retry {
-                warn!("Kiro API (stream) returned {}, attempting force refresh and retry", status);
+                warn!(
+                    "Kiro API (stream) returned {}, attempting force refresh and retry",
+                    status
+                );
                 self.auth.force_refresh().await?;
                 retry = false;
                 continue;

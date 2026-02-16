@@ -1,14 +1,14 @@
 pub mod auth;
 pub mod client;
 pub mod models;
-pub mod strategies;
 pub mod stores;
+pub mod strategies;
 
-use std::pin::Pin;
-use std::sync::Arc;
 use futures::Stream;
 use futures::stream::StreamExt;
 use serde_json::Value;
+use std::pin::Pin;
+use std::sync::Arc;
 use tracing::debug;
 
 use crate::providers::pricing::ModelPricing;
@@ -17,7 +17,7 @@ use crate::providers::transformer::{ProviderResponseMeta, ProviderTransformer};
 use crate::providers::types::*;
 use crate::providers::{LlmProvider, ProviderError};
 
-pub use self::auth::{KiroTokenProvider, KiroAuthManager, AutoDetectProvider};
+pub use self::auth::{AutoDetectProvider, KiroAuthManager, KiroTokenProvider};
 pub use self::client::{KiroClient, machine_fingerprint};
 
 pub struct KiroProvider {
