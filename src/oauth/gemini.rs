@@ -16,8 +16,8 @@
 use oauth2::TokenResponse as _;
 use oauth2::basic::BasicClient;
 use oauth2::{
-    AuthType, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
-    PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken, Scope, TokenUrl,
+    AuthType, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge,
+    PkceCodeVerifier, RedirectUrl, RefreshToken, Scope, TokenUrl,
 };
 use tracing::debug;
 
@@ -202,9 +202,7 @@ pub async fn exchange_code(
                     .to_string(),
             )
         })?;
-    let expires_in = token_response
-        .expires_in()
-        .map(|d| d.as_secs() as i64);
+    let expires_in = token_response.expires_in().map(|d| d.as_secs() as i64);
 
     debug!("Gemini token exchange successful");
 
@@ -249,9 +247,7 @@ pub async fn refresh_token(
         .refresh_token()
         .map(|rt| rt.secret().to_string())
         .unwrap_or_else(|| base_refresh.to_string());
-    let expires_in = token_response
-        .expires_in()
-        .map(|d| d.as_secs() as i64);
+    let expires_in = token_response.expires_in().map(|d| d.as_secs() as i64);
 
     let mut token = TokenInfo::new(access_token, Some(new_refresh), expires_in, PROVIDER_ID);
 
@@ -409,10 +405,7 @@ mod tests {
 
         wiremock::Mock::given(wiremock::matchers::method("POST"))
             .and(wiremock::matchers::path("/"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200)
-                    .set_body_json(success_token_json()),
-            )
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(success_token_json()))
             .mount(&mock_server)
             .await;
 
@@ -438,8 +431,7 @@ mod tests {
         wiremock::Mock::given(wiremock::matchers::method("POST"))
             .and(wiremock::matchers::path("/"))
             .respond_with(
-                wiremock::ResponseTemplate::new(200)
-                    .set_body_json(success_no_refresh_json()),
+                wiremock::ResponseTemplate::new(200).set_body_json(success_no_refresh_json()),
             )
             .mount(&mock_server)
             .await;
@@ -524,8 +516,7 @@ mod tests {
         wiremock::Mock::given(wiremock::matchers::method("POST"))
             .and(wiremock::matchers::path("/"))
             .respond_with(
-                wiremock::ResponseTemplate::new(200)
-                    .set_body_json(success_no_refresh_json()),
+                wiremock::ResponseTemplate::new(200).set_body_json(success_no_refresh_json()),
             )
             .mount(&mock_server)
             .await;
@@ -537,10 +528,7 @@ mod tests {
         let token = result.expect("refresh should succeed");
         assert_eq!(token.access_token, "ya29.new-access-token");
         // Google doesn't return new refresh on refresh; should preserve original
-        assert_eq!(
-            token.refresh_token.as_deref(),
-            Some("1//original-refresh")
-        );
+        assert_eq!(token.refresh_token.as_deref(), Some("1//original-refresh"));
         assert!(token.expires_at.is_some());
         assert_eq!(token.provider, PROVIDER_ID);
     }
@@ -551,10 +539,7 @@ mod tests {
 
         wiremock::Mock::given(wiremock::matchers::method("POST"))
             .and(wiremock::matchers::path("/"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200)
-                    .set_body_json(success_token_json()),
-            )
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(success_token_json()))
             .mount(&mock_server)
             .await;
 
@@ -603,8 +588,7 @@ mod tests {
         wiremock::Mock::given(wiremock::matchers::method("POST"))
             .and(wiremock::matchers::path("/"))
             .respond_with(
-                wiremock::ResponseTemplate::new(200)
-                    .set_body_json(success_no_refresh_json()),
+                wiremock::ResponseTemplate::new(200).set_body_json(success_no_refresh_json()),
             )
             .mount(&mock_server)
             .await;
@@ -612,8 +596,7 @@ mod tests {
         let config = mock_config(&mock_server.uri());
         let client = test_http_client();
         // Composite token: refresh|project_id|managed_project_id
-        let result =
-            refresh_token(&client, &config, "1//base-refresh|proj-123|managed-456").await;
+        let result = refresh_token(&client, &config, "1//base-refresh|proj-123|managed-456").await;
 
         let token = result.expect("refresh should succeed");
         assert_eq!(token.access_token, "ya29.new-access-token");
@@ -632,8 +615,7 @@ mod tests {
         wiremock::Mock::given(wiremock::matchers::method("POST"))
             .and(wiremock::matchers::path("/"))
             .respond_with(
-                wiremock::ResponseTemplate::new(200)
-                    .set_body_json(success_no_refresh_json()),
+                wiremock::ResponseTemplate::new(200).set_body_json(success_no_refresh_json()),
             )
             .mount(&mock_server)
             .await;

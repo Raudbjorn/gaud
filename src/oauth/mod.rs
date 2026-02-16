@@ -66,6 +66,9 @@ use crate::providers::{ProviderError, TokenService};
 ///
 /// This abstracts the source of tokens (e.g., OAuthManager, static token)
 /// from the consumers (e.g., API clients).
+#[deprecated(
+    note = "Use `providers::TokenService` instead — it returns `ProviderError` and is used by all current consumers"
+)]
 #[async_trait::async_trait]
 pub trait TokenProvider: Send + Sync {
     /// Get a valid access token for the specified provider.
@@ -626,6 +629,7 @@ impl TokenService for OAuthManager {
     }
 }
 
+#[allow(deprecated)]
 #[async_trait::async_trait]
 impl TokenProvider for OAuthManager {
     async fn get_token(&self, provider: &str) -> Result<String, OAuthError> {

@@ -38,7 +38,7 @@ mod thinking;
 // Re-export public utilities
 pub use content::convert_role;
 pub use schema::sanitize_schema;
-pub use thinking::{SignatureCache, GLOBAL_SIGNATURE_CACHE};
+pub use thinking::{GLOBAL_SIGNATURE_CACHE, SignatureCache};
 
 // Re-export internal conversion functions for use within the crate
 // These will be used by the client/transport modules in future phases

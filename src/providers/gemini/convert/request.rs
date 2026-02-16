@@ -27,13 +27,15 @@
 //! - For Gemini thinking models: `{ includeThoughts: true, thinkingBudget: N }`
 
 use crate::providers::gemini::constants::{
-    get_model_family, is_thinking_model, ModelFamily, GEMINI_MAX_OUTPUT_TOKENS,
+    GEMINI_MAX_OUTPUT_TOKENS, ModelFamily, get_model_family, is_thinking_model,
 };
 use crate::providers::gemini::models::google::{
     Content, FunctionDeclaration, GenerationConfig, GoogleRequest, GoogleThinkingConfig,
     GoogleTool, Part, ToolConfig,
 };
-use crate::providers::gemini::models::request::{Message, MessageContent, MessagesRequest, SystemPrompt};
+use crate::providers::gemini::models::request::{
+    Message, MessageContent, MessagesRequest, SystemPrompt,
+};
 
 use super::content::{convert_content_to_parts, convert_role, text_to_parts};
 use super::schema::sanitize_schema;
@@ -159,10 +161,11 @@ pub(crate) fn convert_request(request: &MessagesRequest) -> GoogleRequest {
             // For Claude models, set VALIDATED mode for strict parameter validation
             if is_claude {
                 google_request.tool_config = Some(ToolConfig {
-                    function_calling_config: crate::providers::gemini::models::google::FunctionCallingConfig {
-                        mode: "VALIDATED".to_string(),
-                        allowed_function_names: None,
-                    },
+                    function_calling_config:
+                        crate::providers::gemini::models::google::FunctionCallingConfig {
+                            mode: "VALIDATED".to_string(),
+                            allowed_function_names: None,
+                        },
                 });
             }
         }
@@ -189,7 +192,8 @@ fn convert_system_prompt(system: &SystemPrompt) -> Vec<Part> {
         SystemPrompt::Blocks(blocks) => blocks
             .iter()
             .filter_map(|block| {
-                let crate::providers::gemini::models::request::SystemBlock::Text { text, .. } = block;
+                let crate::providers::gemini::models::request::SystemBlock::Text { text, .. } =
+                    block;
                 if text.is_empty() {
                     None
                 } else {
@@ -239,7 +243,9 @@ fn convert_message_content(content: &MessageContent, model: &str) -> Vec<Part> {
 }
 
 /// Convert tools to FunctionDeclarations.
-fn convert_tools(tools: &[crate::providers::gemini::models::tools::Tool]) -> Vec<FunctionDeclaration> {
+fn convert_tools(
+    tools: &[crate::providers::gemini::models::tools::Tool],
+) -> Vec<FunctionDeclaration> {
     tools
         .iter()
         .enumerate()
@@ -286,7 +292,9 @@ fn convert_tool_choice(choice: &crate::providers::gemini::models::tools::ToolCho
         crate::providers::gemini::models::tools::ToolChoice::Auto => ToolConfig::auto(),
         crate::providers::gemini::models::tools::ToolChoice::Any => ToolConfig::any(),
         crate::providers::gemini::models::tools::ToolChoice::None => ToolConfig::none(),
-        crate::providers::gemini::models::tools::ToolChoice::Tool { name } => ToolConfig::force(name),
+        crate::providers::gemini::models::tools::ToolChoice::Tool { name } => {
+            ToolConfig::force(name)
+        }
     }
 }
 
@@ -443,7 +451,8 @@ mod tests {
 
     #[test]
     fn test_convert_tool_choice_auto() {
-        let config = convert_tool_choice(&crate::providers::gemini::models::tools::ToolChoice::Auto);
+        let config =
+            convert_tool_choice(&crate::providers::gemini::models::tools::ToolChoice::Auto);
         assert_eq!(config.function_calling_config.mode, "AUTO");
     }
 
@@ -455,13 +464,16 @@ mod tests {
 
     #[test]
     fn test_convert_tool_choice_none() {
-        let config = convert_tool_choice(&crate::providers::gemini::models::tools::ToolChoice::None);
+        let config =
+            convert_tool_choice(&crate::providers::gemini::models::tools::ToolChoice::None);
         assert_eq!(config.function_calling_config.mode, "NONE");
     }
 
     #[test]
     fn test_convert_tool_choice_specific() {
-        let config = convert_tool_choice(&crate::providers::gemini::models::tools::ToolChoice::tool("my_tool"));
+        let config = convert_tool_choice(
+            &crate::providers::gemini::models::tools::ToolChoice::tool("my_tool"),
+        );
         assert_eq!(config.function_calling_config.mode, "ANY");
         assert_eq!(
             config.function_calling_config.allowed_function_names,

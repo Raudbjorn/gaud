@@ -315,8 +315,7 @@ async fn async_main() -> anyhow::Result<()> {
 /// the kiro-aws reference implementation.
 async fn build_kiro_provider(kiro_config: &KiroProviderConfig) -> anyhow::Result<KiroProvider> {
     use gaud::providers::kiro::{
-        AutoDetectProvider, KiroAuthManager, KiroClient, KiroProvider,
-        machine_fingerprint,
+        AutoDetectProvider, KiroAuthManager, KiroClient, KiroProvider, machine_fingerprint,
     };
 
     let region = kiro_config.effective_region();
@@ -324,12 +323,15 @@ async fn build_kiro_provider(kiro_config: &KiroProviderConfig) -> anyhow::Result
 
     let manager = Arc::new(KiroAuthManager::new(fingerprint.clone(), region.clone()));
 
-    let auth = Arc::new(AutoDetectProvider::new(
-        manager,
-        kiro_config.credentials_file.as_ref().map(PathBuf::from),
-        kiro_config.kiro_db_path.as_ref().map(PathBuf::from),
-        kiro_config.sso_cache_dir.as_ref().map(PathBuf::from),
-    ).await);
+    let auth = Arc::new(
+        AutoDetectProvider::new(
+            manager,
+            kiro_config.credentials_file.as_ref().map(PathBuf::from),
+            kiro_config.kiro_db_path.as_ref().map(PathBuf::from),
+            kiro_config.sso_cache_dir.as_ref().map(PathBuf::from),
+        )
+        .await,
+    );
 
     let client = KiroClient::new(
         auth,

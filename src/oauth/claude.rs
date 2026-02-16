@@ -19,13 +19,13 @@ use std::pin::Pin;
 use oauth2::TokenResponse as _;
 use oauth2::basic::BasicClient;
 use oauth2::{
-    AuthType, AuthUrl, AuthorizationCode, ClientId, CsrfToken, HttpClientError,
-    PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken, Scope, TokenUrl,
+    AuthType, AuthUrl, AuthorizationCode, ClientId, CsrfToken, HttpClientError, PkceCodeChallenge,
+    PkceCodeVerifier, RedirectUrl, RefreshToken, Scope, TokenUrl,
 };
 use tracing::{debug, warn};
 
-use super::OAuthError;
 use super::OAuthClient;
+use super::OAuthError;
 use super::token::TokenInfo;
 
 /// Provider identifier for Claude OAuth.
@@ -108,25 +108,18 @@ struct JsonHttpClient(reqwest::Client);
 
 /// Convert a form-encoded body (`key1=value1&key2=value2`) to a JSON object.
 ///
+/// Uses [`url::form_urlencoded::parse`] which correctly handles `+` as space
+/// (per the `application/x-www-form-urlencoded` spec) and percent-decoding.
+///
 /// Returns `Some(json_bytes)` on success, or `None` if serialization fails
 /// (so the caller can keep the original body and Content-Type unchanged).
 fn form_to_json(body: &[u8]) -> Option<Vec<u8>> {
-    let form_str = String::from_utf8_lossy(body);
-    let map: serde_json::Map<String, serde_json::Value> = form_str
-        .split('&')
-        .filter(|pair| !pair.is_empty())
-        .filter_map(|pair| {
-            let Some((key, value)) = pair.split_once('=') else {
-                warn!(pair = %pair, "Skipping malformed form pair (no '=' separator)");
-                return None;
-            };
-            let key = urlencoding::decode(key)
-                .unwrap_or_else(|_| key.into())
-                .into_owned();
-            let value = urlencoding::decode(value)
-                .unwrap_or_else(|_| value.into())
-                .into_owned();
-            Some((key, serde_json::Value::String(value)))
+    let map: serde_json::Map<String, serde_json::Value> = url::form_urlencoded::parse(body)
+        .map(|(key, value)| {
+            (
+                key.into_owned(),
+                serde_json::Value::String(value.into_owned()),
+            )
         })
         .collect();
     match serde_json::to_vec(&map) {
@@ -261,9 +254,7 @@ pub async fn exchange_code(
     let refresh_token = token_response
         .refresh_token()
         .map(|rt| rt.secret().to_string())
-        .ok_or_else(|| {
-            OAuthError::ExchangeFailed("No refresh token in response".to_string())
-        })?;
+        .ok_or_else(|| OAuthError::ExchangeFailed("No refresh token in response".to_string()))?;
     let expires_in = token_response.expires_in().map(|d| d.as_secs() as i64);
 
     debug!("Claude token exchange successful");
@@ -458,6 +449,22 @@ mod tests {
         assert_eq!(parsed["redirect_uri"], "http://localhost:8080/callback");
     }
 
+    #[test]
+    fn test_form_to_json_decodes_plus_as_space() {
+        let body = b"scope=org%3Acreate_api_key+user%3Aprofile";
+        let json = form_to_json(body).expect("conversion should succeed");
+        let parsed: serde_json::Value = serde_json::from_slice(&json).unwrap();
+        assert_eq!(parsed["scope"], "org:create_api_key user:profile");
+    }
+
+    #[test]
+    fn test_form_to_json_empty_body() {
+        let body = b"";
+        let json = form_to_json(body).expect("conversion should succeed");
+        let parsed: serde_json::Value = serde_json::from_slice(&json).unwrap();
+        assert!(parsed.as_object().unwrap().is_empty());
+    }
+
     // =========================================================================
     // Async wiremock tests for exchange_code and refresh_token
     // =========================================================================
@@ -468,9 +475,7 @@ mod tests {
 
         wiremock::Mock::given(wiremock::matchers::method("POST"))
             .and(wiremock::matchers::path("/"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200).set_body_json(success_token_json()),
-            )
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(success_token_json()))
             .mount(&mock_server)
             .await;
 
@@ -580,10 +585,11 @@ mod tests {
 
         wiremock::Mock::given(wiremock::matchers::method("POST"))
             .and(wiremock::matchers::path("/"))
-            .and(wiremock::matchers::header("Content-Type", "application/json"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200).set_body_json(success_token_json()),
-            )
+            .and(wiremock::matchers::header(
+                "Content-Type",
+                "application/json",
+            ))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(success_token_json()))
             .mount(&mock_server)
             .await;
 
@@ -625,9 +631,7 @@ mod tests {
 
         wiremock::Mock::given(wiremock::matchers::method("POST"))
             .and(wiremock::matchers::path("/"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200).set_body_json(success_token_json()),
-            )
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(success_token_json()))
             .mount(&mock_server)
             .await;
 

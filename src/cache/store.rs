@@ -128,7 +128,11 @@ impl CacheStore {
 
         if let Some(v) = version {
             if v < CURRENT_VERSION {
-                tracing::info!(current = v, target = CURRENT_VERSION, "Migrating cache schema");
+                tracing::info!(
+                    current = v,
+                    target = CURRENT_VERSION,
+                    "Migrating cache schema"
+                );
                 // Migration logic would go here if needed
             }
         } else {
@@ -191,6 +195,16 @@ impl CacheStore {
                                     "Cache embedding dimension mismatch! Purging incompatible cache."
                                 );
                                 self.flush_all().await?;
+                                // DEFINE INDEX IF NOT EXISTS won't update the
+                                // dimension on an existing index, so we must
+                                // drop and recreate it after purging.
+                                let reindex = format!(
+                                    "REMOVE INDEX IF EXISTS hnsw_embedding ON cache; \
+                                     DEFINE INDEX hnsw_embedding ON cache FIELDS embedding \
+                                     HNSW DIMENSION {} DIST COSINE;",
+                                    self.dimension
+                                );
+                                self.db.query(&reindex).await.schema_err()?;
                             }
                         }
                     }

@@ -4,13 +4,17 @@ use reqwest::Client;
 use serde::Deserialize;
 use tracing::debug;
 
-use crate::providers::ProviderError;
 use super::models::{AuthType, KiroTokenInfo, TokenUpdate};
+use crate::providers::ProviderError;
 
 #[async_trait]
 pub trait AuthStrategy: Send + Sync {
     /// Refresh the token using this strategy
-    async fn refresh(&self, current_token: &KiroTokenInfo, http: &Client) -> Result<TokenUpdate, ProviderError>;
+    async fn refresh(
+        &self,
+        current_token: &KiroTokenInfo,
+        http: &Client,
+    ) -> Result<TokenUpdate, ProviderError>;
 
     /// Check if this strategy handles the given auth type
     fn can_handle(&self, auth_type: AuthType) -> bool;
@@ -41,25 +45,38 @@ impl AuthStrategy for KiroDesktopStrategy {
         auth_type == AuthType::KiroDesktop
     }
 
-    async fn refresh(&self, info: &KiroTokenInfo, http: &Client) -> Result<TokenUpdate, ProviderError> {
+    async fn refresh(
+        &self,
+        info: &KiroTokenInfo,
+        http: &Client,
+    ) -> Result<TokenUpdate, ProviderError> {
         debug!("Refreshing via Kiro Desktop Auth");
-        let url = format!("https://prod.{}.auth.desktop.kiro.dev/refreshToken", info.region);
+        let url = format!(
+            "https://prod.{}.auth.desktop.kiro.dev/refreshToken",
+            info.region
+        );
         let payload = serde_json::json!({ "refreshToken": info.refresh_token });
         let ua = format!("KiroIDE-0.7.45-{}", self.fingerprint);
 
-        let resp = http.post(&url)
+        let resp = http
+            .post(&url)
             .header("user-agent", &ua)
             .json(&payload)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::Other(format!("Kiro refresh error: {e}")))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::NoToken { provider: format!("kiro: refresh failed {}: {}", status, body) });
+            return Err(ProviderError::NoToken {
+                provider: format!("kiro: refresh failed {}: {}", status, body),
+            });
         }
 
-        let data: KiroDesktopRefreshResponse = resp.json().await
+        let data: KiroDesktopRefreshResponse = resp
+            .json()
+            .await
             .map_err(|e| ProviderError::Other(format!("Kiro parse error: {e}")))?;
 
         Ok(TokenUpdate {
@@ -87,13 +104,23 @@ impl AuthStrategy for AwsSsoOidcStrategy {
         auth_type == AuthType::AwsSsoOidc
     }
 
-    async fn refresh(&self, info: &KiroTokenInfo, http: &Client) -> Result<TokenUpdate, ProviderError> {
+    async fn refresh(
+        &self,
+        info: &KiroTokenInfo,
+        http: &Client,
+    ) -> Result<TokenUpdate, ProviderError> {
         debug!("Refreshing via AWS SSO OIDC");
         let sso_region = info.sso_region.as_deref().unwrap_or(&info.region);
         let url = format!("https://oidc.{}.amazonaws.com/token", sso_region);
 
-        let client_id = info.client_id.as_ref().ok_or_else(|| ProviderError::Other("Missing client_id for SSO refresh".into()))?;
-        let client_secret = info.client_secret.as_ref().ok_or_else(|| ProviderError::Other("Missing client_secret for SSO refresh".into()))?;
+        let client_id = info
+            .client_id
+            .as_ref()
+            .ok_or_else(|| ProviderError::Other("Missing client_id for SSO refresh".into()))?;
+        let client_secret = info
+            .client_secret
+            .as_ref()
+            .ok_or_else(|| ProviderError::Other("Missing client_secret for SSO refresh".into()))?;
 
         let payload = serde_json::json!({
             "grantType": "refresh_token",
@@ -102,16 +129,24 @@ impl AuthStrategy for AwsSsoOidcStrategy {
             "refreshToken": info.refresh_token,
         });
 
-        let resp = http.post(&url).json(&payload).send().await
+        let resp = http
+            .post(&url)
+            .json(&payload)
+            .send()
+            .await
             .map_err(|e| ProviderError::Other(format!("AWS SSO OIDC refresh error: {e}")))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::NoToken { provider: format!("aws_sso: refresh failed {}: {}", status, body) });
+            return Err(ProviderError::NoToken {
+                provider: format!("aws_sso: refresh failed {}: {}", status, body),
+            });
         }
 
-        let data: AwsSsoOidcRefreshResponse = resp.json().await
+        let data: AwsSsoOidcRefreshResponse = resp
+            .json()
+            .await
             .map_err(|e| ProviderError::Other(format!("AWS SSO OIDC parse error: {e}")))?;
 
         Ok(TokenUpdate {

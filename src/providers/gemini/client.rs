@@ -1,7 +1,7 @@
 //! Cloud Code API client.
 //!
 //! This module provides the main client for interacting with the Cloud Code API.
-//! It handles authentication via the `TokenProvider` trait.
+//! It handles authentication via the [`TokenService`](crate::providers::TokenService) trait.
 
 use std::pin::Pin;
 use std::sync::Arc;
