@@ -1,3 +1,4 @@
+use rand::Rng;
 use srrldb::Database;
 
 use crate::cache::types::{
@@ -90,10 +91,53 @@ impl CacheStore {
 
     /// Apply schema with versioning and compatibility checks.
     async fn apply_schema(&self) -> Result<(), CacheError> {
-        // self.db.use_ns_db("gaud", "cache").await.schema_err()?; -- handled in constructor
+        // 1. Schema versioning
+        self.db
+            .query(
+                "DEFINE TABLE IF NOT EXISTS schema_version SCHEMAFULL;
+                 DEFINE FIELD IF NOT EXISTS version ON schema_version TYPE int;",
+            )
+            .await
+            .schema_err()?;
 
-        // 1. Schema versioning - removed dead code
-        // The schema_version table was defined but never used.
+        let mut response = self
+            .db
+            .query("SELECT version FROM schema_version LIMIT 1")
+            .await
+            .schema_err()?;
+
+        let version: Option<i64> = response.take(0usize).schema_err().ok().and_then(|v| {
+            if let srrldb::types::Value::Array(arr) = v {
+                arr.first().and_then(|row| {
+                    if let srrldb::types::Value::Object(obj) = row {
+                        obj.get("version").and_then(|v| match v {
+                            srrldb::types::Value::Number(n) => n.to_int(),
+                            _ => None,
+                        })
+                    } else {
+                        None
+                    }
+                })
+            } else {
+                None
+            }
+        });
+
+        // Current schema version is 1
+        const CURRENT_VERSION: i64 = 1;
+
+        if let Some(v) = version {
+            if v < CURRENT_VERSION {
+                tracing::info!(current = v, target = CURRENT_VERSION, "Migrating cache schema");
+                // Migration logic would go here if needed
+            }
+        } else {
+            self.db
+                .query("INSERT INTO schema_version { version: $v }")
+                .bind(("v", CURRENT_VERSION))
+                .await
+                .schema_err()?;
+        }
 
         // 2. Main cache table
         let schema = format!(
@@ -126,6 +170,34 @@ impl CacheStore {
 
         self.db.query(&schema).await.schema_err()?;
 
+        // 3. Compatibility Guard: Verify embedding dimension
+        // We can check if any existing row has a different dimension.
+        let mut response = self
+            .db
+            .query("SELECT array::len(embedding) AS len FROM cache WHERE embedding IS NOT NONE LIMIT 1")
+            .await
+            .schema_err()?;
+
+        if let Ok(v) = response.take::<srrldb::types::Value>(0usize) {
+            if let srrldb::types::Value::Array(arr) = v {
+                if let Some(row) = arr.first() {
+                    if let srrldb::types::Value::Object(obj) = row {
+                        if let Some(srrldb::types::Value::Number(n)) = obj.get("len") {
+                            let existing_dim = n.to_int().unwrap_or(0) as u16;
+                            if existing_dim > 0 && existing_dim != self.dimension {
+                                tracing::error!(
+                                    expected = self.dimension,
+                                    actual = existing_dim,
+                                    "Cache embedding dimension mismatch! Purging incompatible cache."
+                                );
+                                self.flush_all().await?;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -138,9 +210,20 @@ impl CacheStore {
         let count = self.entry_count().await?;
 
         if count > 0 {
-            // Unit vector along the first axis (magnitude = 1.0 exactly).
+            // Random unit vector for warmup
+            let mut rng = rand::rng();
             let mut dummy = vec![0.0f32; self.dimension as usize];
-            dummy[0] = 1.0;
+            for x in &mut dummy {
+                *x = rng.random_range(-1.0..1.0);
+            }
+            let mag = dummy.iter().map(|x| x * x).sum::<f32>().sqrt();
+            if mag > 1e-6 {
+                for x in &mut dummy {
+                    *x /= mag;
+                }
+            } else {
+                dummy[0] = 1.0;
+            }
 
             let _ = self
                 .db
@@ -436,7 +519,12 @@ impl CacheStore {
         }
 
         let to_remove = total - max_entries as u64;
-        let sql = "DELETE FROM cache WHERE id IN (SELECT id FROM cache ORDER BY hit_count ASC, created_at ASC LIMIT $to_remove) RETURN BEFORE";
+        // LRU: remove entries with oldest last_hit, falling back to oldest created_at if last_hit is NULL.
+        let sql = "DELETE FROM cache WHERE id IN (
+            SELECT id FROM cache
+            ORDER BY last_hit ASC, created_at ASC
+            LIMIT $to_remove
+        ) RETURN BEFORE";
         let mut response = self
             .db
             .query(sql)
@@ -623,6 +711,120 @@ mod tests {
         };
         let res = store.insert(&entry_unnorm, &metadata).await;
         assert!(matches!(res, Err(CacheError::NotNormalized { .. })));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_lru_eviction_uses_last_hit() -> Result<(), CacheError> {
+        let store = CacheStore::ephemeral(3).await?;
+        let metadata = CacheMetadata {
+            model: "m".into(),
+            system_prompt_hash: "s".into(),
+            tool_definitions_hash: "t".into(),
+            temperature: None,
+            confidence: None,
+        };
+
+        // Insert 3 entries
+        for i in 1..=3 {
+            let entry = CacheEntry {
+                exact_hash: format!("h{}", i),
+                model: "m".into(),
+                system_prompt_hash: "s".into(),
+                tool_definitions_hash: "t".into(),
+                semantic_text: "txt".into(),
+                embedding: Some(vec![1.0, 0.0, 0.0]),
+                request_json: "{}".into(),
+                response_json: "{}".into(),
+                created_at: srrldb::types::Datetime::now(),
+                hit_count: 0,
+                last_hit: None,
+                hash_version: "v1".into(),
+                stream_events: None,
+                stream_format: None,
+            };
+            store.insert(&entry, &metadata).await?;
+            // Small sleep to ensure different created_at
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        }
+
+        // Record hits for h1 and h2, but h1 hit is OLDER than h2 hit
+        store.record_hit("h1").await?;
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        store.record_hit("h2").await?;
+
+        // Current state:
+        // h3: last_hit=None (oldest by creation if we count hits first, but query says ORDER BY last_hit ASC, created_at ASC)
+        // h1: last_hit=T1
+        // h2: last_hit=T2 (T2 > T1)
+
+        // In SurrealDB, NULLs usually come first in ASC order.
+        // So h3 (last_hit IS NULL) should be first to go.
+
+        store.evict_lru(2).await?;
+        assert_eq!(store.count().await?, 2);
+        assert!(store.lookup_exact("h3", 3600).await?.is_none());
+        assert!(store.lookup_exact("h1", 3600).await?.is_some());
+        assert!(store.lookup_exact("h2", 3600).await?.is_some());
+
+        // Now hit h1 again, making it NEWER than h2
+        store.record_hit("h1").await?;
+        // Evict one more
+        store.evict_lru(1).await?;
+        assert_eq!(store.count().await?, 1);
+        // h2 should be gone as its last_hit is now the oldest
+        assert!(store.lookup_exact("h2", 3600).await?.is_none());
+        assert!(store.lookup_exact("h1", 3600).await?.is_some());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_compatibility_guard_purges_on_dimension_mismatch() -> Result<(), CacheError> {
+        let temp = tempfile::tempdir().map_err(|e| CacheError::InitFailed(e.to_string()))?;
+        let path = temp.path().join("gaud.cache");
+        let path_str = path.to_str().unwrap();
+
+        // 1. Initialize with dimension 3 and insert an entry
+        {
+            let store = CacheStore::persistent(path_str, 3).await?;
+            let metadata = CacheMetadata {
+                model: "m".into(),
+                system_prompt_hash: "s".into(),
+                tool_definitions_hash: "t".into(),
+                temperature: None,
+                confidence: None,
+            };
+            let entry = CacheEntry {
+                exact_hash: "h".into(),
+                model: "m".into(),
+                system_prompt_hash: "s".into(),
+                tool_definitions_hash: "t".into(),
+                semantic_text: "txt".into(),
+                embedding: Some(vec![1.0, 0.0, 0.0]),
+                request_json: "{}".into(),
+                response_json: "{}".into(),
+                created_at: srrldb::types::Datetime::now(),
+                hit_count: 0,
+                last_hit: None,
+                hash_version: "v1".into(),
+                stream_events: None,
+                stream_format: None,
+            };
+            store.insert(&entry, &metadata).await?;
+            assert_eq!(store.count().await?, 1);
+        }
+
+        // 2. Re-initialize with dimension 4. Compatibility guard should purge.
+        {
+            let store = CacheStore::persistent(path_str, 4).await?;
+            assert_eq!(
+                store.count().await?,
+                0,
+                "Cache should have been purged due to dimension mismatch"
+            );
+        }
 
         Ok(())
     }

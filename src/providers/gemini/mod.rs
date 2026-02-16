@@ -7,6 +7,7 @@
 //!
 //! ## Quick Start
 //!
+//! ```rust,ignore
 //! use std::sync::Arc;
 //! use gaud::providers::gemini::CloudCodeClient;
 //! use gaud::oauth::TokenProvider;
@@ -44,8 +45,8 @@
 #![warn(missing_docs)]
 #![warn(rustdoc::missing_crate_level_docs)]
 // Implemented modules
-// Implemented modules
 pub mod client;
+pub mod convert;
 pub mod discovery;
 pub mod provider;
 pub mod thinking;

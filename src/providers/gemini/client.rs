@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use tokio::sync::RwLock;
 use tracing::{debug, info, instrument};
 
-use crate::oauth::TokenProvider;
+use crate::providers::TokenService;
 use crate::providers::gemini::constants::{
     ANTIGRAVITY_SYSTEM_INSTRUCTION, API_PATH_GENERATE_CONTENT, API_PATH_STREAM_GENERATE_CONTENT,
 };
@@ -32,7 +32,7 @@ use crate::providers::gemini::thinking::SignatureCache;
 #[derive(Clone)]
 pub struct CloudCodeClient {
     /// Token provider for authentication.
-    token_provider: Arc<dyn TokenProvider>,
+    token_provider: Arc<dyn TokenService>,
     /// HTTP client for API requests.
     http: HttpClient,
     /// Cached project ID.
@@ -49,8 +49,8 @@ impl CloudCodeClient {
         CloudCodeClientBuilder::default()
     }
 
-    /// Create a new client with the given token provider.
-    pub fn new(token_provider: Arc<dyn TokenProvider>) -> Self {
+    /// Create a new client with the given token service.
+    pub fn new(token_provider: Arc<dyn TokenService>) -> Self {
         Self::builder().with_token_provider(token_provider).build()
     }
 
@@ -285,7 +285,7 @@ fn derive_session_id(request: &GoogleRequest) -> String {
 
 /// Builder for [`CloudCodeClient`].
 pub struct CloudCodeClientBuilder {
-    token_provider: Option<Arc<dyn TokenProvider>>,
+    token_provider: Option<Arc<dyn TokenService>>,
     http_builder: crate::providers::gemini::transport::http::HttpClientBuilder,
     signature_cache: Option<Arc<SignatureCache>>,
 }
@@ -297,7 +297,7 @@ impl CloudCodeClientBuilder {
     }
 
     /// Set the token provider.
-    pub fn with_token_provider(mut self, provider: Arc<dyn TokenProvider>) -> Self {
+    pub fn with_token_provider(mut self, provider: Arc<dyn TokenService>) -> Self {
         self.token_provider = Some(provider);
         self
     }
@@ -359,12 +359,13 @@ impl Default for CloudCodeClientBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::ProviderError;
 
     struct MockTokenProvider;
 
     #[async_trait::async_trait]
-    impl TokenProvider for MockTokenProvider {
-        async fn get_token(&self, _provider: &str) -> std::result::Result<String, crate::oauth::OAuthError> {
+    impl TokenService for MockTokenProvider {
+        async fn get_token(&self, _provider: &str) -> std::result::Result<String, ProviderError> {
             Ok("mock-token".to_string())
         }
     }

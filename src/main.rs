@@ -314,20 +314,29 @@ async fn async_main() -> anyhow::Result<()> {
 /// Constructs a `KiroClient` using the refresh-token auth flow that matches
 /// the kiro-aws reference implementation.
 async fn build_kiro_provider(kiro_config: &KiroProviderConfig) -> anyhow::Result<KiroProvider> {
-    let refresh_token = kiro_config.effective_refresh_token().ok_or_else(|| {
-        anyhow::anyhow!(
-            "Kiro provider requires a refresh token. Set `refresh_token` in config, \
-             provide a `credentials_file`, or set the GAUD_KIRO_REFRESH_TOKEN environment variable."
-        )
-    })?;
-
-    let client_config = gaud::providers::kiro::KiroClientConfig {
-        refresh_token,
-        region: kiro_config.effective_region(),
-        profile_arn: kiro_config.effective_profile_arn(),
+    use gaud::providers::kiro::{
+        AutoDetectProvider, KiroAuthManager, KiroClient, KiroProvider,
+        machine_fingerprint,
     };
 
-    let client = gaud::providers::kiro::KiroClient::new(client_config);
+    let region = kiro_config.effective_region();
+    let fingerprint = machine_fingerprint();
+
+    let manager = Arc::new(KiroAuthManager::new(fingerprint.clone(), region.clone()));
+
+    let auth = Arc::new(AutoDetectProvider::new(
+        manager,
+        kiro_config.credentials_file.as_ref().map(PathBuf::from),
+        kiro_config.kiro_db_path.as_ref().map(PathBuf::from),
+        kiro_config.sso_cache_dir.as_ref().map(PathBuf::from),
+    ).await);
+
+    let client = KiroClient::new(
+        auth,
+        region,
+        kiro_config.effective_profile_arn(),
+        fingerprint,
+    );
     Ok(KiroProvider::new(client))
 }
 
