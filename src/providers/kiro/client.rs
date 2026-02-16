@@ -16,6 +16,15 @@ const KIRO_API_HOST_TEMPLATE: &str = "https://q.{region}.amazonaws.com";
 /// Origin query parameter sent with every Kiro API request.
 const API_ORIGIN: &str = "AI_EDITOR";
 
+/// AWS SDK for JS version emulated in the User-Agent.
+const SDK_VERSION: &str = "1.0.27";
+
+/// Node.js version emulated in the User-Agent.
+const NODE_VERSION: &str = "22.21.1";
+
+/// Kiro IDE version emulated in the User-Agent.
+const IDE_VERSION: &str = "0.7.45";
+
 pub struct KiroClient {
     http: reqwest::Client,
     auth: Arc<dyn KiroTokenProvider>,
@@ -80,14 +89,17 @@ impl KiroClient {
         headers.insert("content-type", HeaderValue::from_static("application/json"));
 
         let ua = format!(
-            "aws-sdk-js/1.0.27 ua/2.1 os/linux lang/js md/nodejs#22.21.1 \
-             api/codewhispererstreaming#1.0.27 m/E KiroIDE-0.7.45-{f}",
+            "aws-sdk-js/{SDK_VERSION} ua/2.1 os/linux lang/js md/nodejs#{NODE_VERSION} \
+             api/codewhispererstreaming#{SDK_VERSION} m/E KiroIDE-{IDE_VERSION}-{f}",
             f = self.fingerprint
         );
         headers.insert("user-agent", HeaderValue::from_str(&ua).unwrap());
         headers.insert(
             "x-amz-user-agent",
-            HeaderValue::from_str(&format!("aws-sdk-js/1.0.27 KiroIDE-0.7.45-{f}", f = self.fingerprint)).unwrap(),
+            HeaderValue::from_str(&format!(
+                "aws-sdk-js/{SDK_VERSION} KiroIDE-{IDE_VERSION}-{f}",
+                f = self.fingerprint
+            )).unwrap(),
         );
         headers.insert(
             "x-amzn-codewhisperer-optout",
@@ -123,8 +135,8 @@ impl KiroClient {
                 .map_err(ProviderError::Http)?;
 
             let status = resp.status();
-            
-            if (status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN) && retry {
+
+            if is_auth_error(status) && retry {
                 warn!("Kiro API returned {}, attempting force refresh and retry", status);
                 self.auth.force_refresh().await?;
                 retry = false;
@@ -132,16 +144,7 @@ impl KiroClient {
             }
 
             if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-                let retry_after = resp
-                    .headers()
-                    .get("retry-after")
-                    .and_then(|v| v.to_str().ok())
-                    .and_then(|v| v.parse::<u64>().ok())
-                    .map(Duration::from_secs);
-                return Err(ProviderError::RateLimited {
-                    retry_after_secs: retry_after.map(|d| d.as_secs()).unwrap_or(60),
-                    retry_after,
-                });
+                return Err(parse_rate_limit(resp.headers()));
             }
 
             if !status.is_success() {
@@ -183,11 +186,15 @@ impl KiroClient {
 
             let status = resp.status();
 
-            if (status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN) && retry {
+            if is_auth_error(status) && retry {
                 warn!("Kiro API (stream) returned {}, attempting force refresh and retry", status);
                 self.auth.force_refresh().await?;
                 retry = false;
                 continue;
+            }
+
+            if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                return Err(parse_rate_limit(resp.headers()));
             }
 
             if !status.is_success() {
@@ -207,6 +214,24 @@ impl KiroClient {
 
     pub async fn health_check(&self) -> bool {
         self.auth.get_token().await.is_ok()
+    }
+}
+
+/// Check if an HTTP status code indicates an auth error (401/403).
+fn is_auth_error(status: reqwest::StatusCode) -> bool {
+    status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN
+}
+
+/// Parse a `ProviderError::RateLimited` from a 429 response's headers.
+fn parse_rate_limit(headers: &reqwest::header::HeaderMap) -> ProviderError {
+    let retry_after = headers
+        .get("retry-after")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<u64>().ok())
+        .map(Duration::from_secs);
+    ProviderError::RateLimited {
+        retry_after_secs: retry_after.map(|d| d.as_secs()).unwrap_or(60),
+        retry_after,
     }
 }
 

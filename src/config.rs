@@ -334,7 +334,7 @@ pub enum KiroAuthMethod {
 impl FromStr for KiroAuthMethod {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
+        match s.to_lowercase().replace('-', "_").as_str() {
             "auto" => Ok(Self::Auto),
             "refresh_token" | "refreshtoken" => Ok(Self::RefreshToken),
             "aws_sso" | "awssso" | "sso" => Ok(Self::AwsSso),
@@ -980,6 +980,10 @@ impl Config {
                 if let Some(ref mut kiro) = self.providers.kiro {
                     kiro.auth_method = method;
                     ov.record("providers.kiro.auth_method", "GAUD_KIRO_AUTH_METHOD");
+                } else {
+                    tracing::warn!(
+                        "GAUD_KIRO_AUTH_METHOD={val} is set but no [providers.kiro] config exists; ignoring"
+                    );
                 }
             }
         }
@@ -2000,6 +2004,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_env_cors_origins_split() {
         // SAFETY: Tests are run sequentially for env-mutating tests.
         unsafe {

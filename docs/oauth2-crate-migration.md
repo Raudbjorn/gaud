@@ -264,7 +264,7 @@ Reference implementation: `kiro-gateway/kiro/auth.py` (private Kiro Gateway repo
 
 The gateway determines which path to use based on credential shape (mirrors `_detect_auth_type()` in kiro-gateway):
 
-```
+```text
 if credentials contain clientId + clientSecret → AWS_SSO_OIDC
 else                                            → KIRO_DESKTOP
 ```
@@ -285,7 +285,7 @@ For AWS SSO OIDC, device registration (`clientId`/`clientSecret`) is loaded from
 
 #### KIRO_DESKTOP flow (proprietary, NOT standard OAuth2)
 
-```
+```http
 POST https://prod.{region}.auth.desktop.kiro.dev/refreshToken
 Content-Type: application/json
 User-Agent: KiroIDE-0.7.45-{machine_fingerprint}
@@ -313,7 +313,7 @@ Response: { "accessToken": "eyJ...", "refreshToken": "eyJ...", "expiresIn": 3600
 
 #### AWS_SSO_OIDC flow (semi-standard, `oauth2` crate partially applicable)
 
-```
+```http
 POST https://oidc.{region}.amazonaws.com/token
 Content-Type: application/json
 
@@ -333,7 +333,7 @@ The `oauth2` crate's `exchange_refresh_token()` sends standard form-encoded `gra
 
 #### Token lifecycle (both paths)
 
-```
+```text
 KiroAuthManager
 ├── get_access_token()
 │   ├── Fast path: token valid and not expiring within 10 min → return cached
@@ -391,7 +391,7 @@ The trait-based architecture (`AuthStrategy` + `CredentialStore`) provides the s
 
 #### Architecture (trait-based decoupling)
 
-```
+```text
 src/providers/kiro/
 ├── mod.rs          — KiroProvider (LlmProvider impl)
 ├── auth.rs         — KiroAuthManager, KiroTokenProvider trait, AutoDetectProvider
