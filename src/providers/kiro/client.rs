@@ -84,7 +84,8 @@ impl KiroClient {
         let mut headers = HeaderMap::new();
         headers.insert(
             "authorization",
-            HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
+            HeaderValue::from_str(&format!("Bearer {token}"))
+                .expect("bearer token contains only visible ASCII"),
         );
         headers.insert("content-type", HeaderValue::from_static("application/json"));
 
@@ -93,14 +94,17 @@ impl KiroClient {
              api/codewhispererstreaming#{SDK_VERSION} m/E KiroIDE-{IDE_VERSION}-{f}",
             f = self.fingerprint
         );
-        headers.insert("user-agent", HeaderValue::from_str(&ua).unwrap());
+        headers.insert(
+            "user-agent",
+            HeaderValue::from_str(&ua).expect("user-agent is visible ASCII"),
+        );
         headers.insert(
             "x-amz-user-agent",
             HeaderValue::from_str(&format!(
                 "aws-sdk-js/{SDK_VERSION} KiroIDE-{IDE_VERSION}-{f}",
                 f = self.fingerprint
             ))
-            .unwrap(),
+            .expect("x-amz-user-agent is visible ASCII"),
         );
         headers.insert(
             "x-amzn-codewhisperer-optout",
@@ -109,7 +113,7 @@ impl KiroClient {
         headers.insert("x-amzn-kiro-agent-mode", HeaderValue::from_static("vibe"));
         headers.insert(
             HeaderName::from_static("amz-sdk-invocation-id"),
-            HeaderValue::from_str(&Uuid::new_v4().to_string()).unwrap(),
+            HeaderValue::from_str(&Uuid::new_v4().to_string()).expect("UUID is visible ASCII"),
         );
         headers.insert(
             HeaderName::from_static("amz-sdk-request"),

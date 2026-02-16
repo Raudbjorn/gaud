@@ -125,7 +125,11 @@ impl CredentialStore for JsonFileStore {
 
             let content = serde_json::to_string_pretty(&data)
                 .map_err(|e| ProviderError::Other(e.to_string()))?;
-            std::fs::write(&path, content).map_err(|e| ProviderError::Other(e.to_string()))?;
+
+            // Atomic write: temp file + rename to avoid partial writes
+            let tmp = path.with_extension("tmp");
+            std::fs::write(&tmp, &content).map_err(|e| ProviderError::Other(e.to_string()))?;
+            std::fs::rename(&tmp, &path).map_err(|e| ProviderError::Other(e.to_string()))?;
             Ok(())
         })
         .await
