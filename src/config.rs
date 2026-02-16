@@ -1841,6 +1841,7 @@ mod dirs {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn test_default_config() {
@@ -1942,6 +1943,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_env_override_applies() {
         // Set an env var, load config, verify it's applied and tracked.
         // SAFETY: Tests are run sequentially for env-mutating tests.
@@ -1972,6 +1974,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_env_bool_variants() {
         for (val, expected) in [
             ("1", true),
@@ -2048,6 +2051,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_settings_report_env_override_flag() {
         // SAFETY: Tests are run sequentially for env-mutating tests.
         unsafe {
@@ -2171,14 +2175,8 @@ json = true
     }
 
     #[test]
+    #[serial]
     fn test_config_save_and_reload() {
-        // Clear env vars that other tests may have leaked (tests run in parallel).
-        unsafe {
-            std::env::remove_var("GAUD_SERVER_HOST");
-            std::env::remove_var("GAUD_SERVER_PORT");
-            std::env::remove_var("GAUD_AUTH_ENABLED");
-        }
-
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("save_test.toml");
 

@@ -199,33 +199,7 @@ impl KiroClient {
             }
 
             let byte_stream = resp.bytes_stream();
-            let line_stream = byte_stream
-                .map(|result| {
-                    result.map_err(|e| ProviderError::Stream(format!("Stream read error: {e}")))
-                })
-                .flat_map(|result| {
-                    let lines: Vec<Result<String, ProviderError>> = match result {
-                        Ok(bytes) => {
-                            let text = String::from_utf8_lossy(&bytes);
-                            text.lines()
-                                .filter_map(|line| {
-                                    let line = line.trim();
-                                    if let Some(data) = line.strip_prefix("data: ") {
-                                        if data == "[DONE]" {
-                                            None
-                                        } else {
-                                            Some(Ok(data.to_string()))
-                                        }
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect()
-                        }
-                        Err(e) => vec![Err(e)],
-                    };
-                    futures::stream::iter(lines)
-                });
+            let line_stream = sse_line_stream(byte_stream);
 
             return Ok(Box::pin(line_stream));
         }
@@ -234,6 +208,62 @@ impl KiroClient {
     pub async fn health_check(&self) -> bool {
         self.auth.get_token().await.is_ok()
     }
+}
+
+/// Convert a raw byte stream into a stream of parsed SSE `data:` payloads.
+///
+/// Uses a line-buffered accumulator so that SSE lines split across TCP chunks
+/// are correctly reassembled before parsing. Only complete lines prefixed with
+/// `data: ` are yielded; `[DONE]` sentinels and non-data lines are filtered out.
+fn sse_line_stream<S>(byte_stream: S) -> impl Stream<Item = Result<String, ProviderError>>
+where
+    S: Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send + 'static,
+{
+    futures::stream::unfold(
+        (byte_stream.boxed(), String::new()),
+        |(mut stream, mut buffer)| async move {
+            loop {
+                // Drain complete lines from the buffer first.
+                if let Some(newline_pos) = buffer.find('\n') {
+                    let line = buffer[..newline_pos].trim().to_string();
+                    buffer.drain(..=newline_pos);
+
+                    if let Some(data) = line.strip_prefix("data: ") {
+                        if data == "[DONE]" {
+                            continue;
+                        }
+                        return Some((Ok(data.to_string()), (stream, buffer)));
+                    }
+                    // Non-data line (empty keep-alive, event:, id:, etc.) — skip.
+                    continue;
+                }
+
+                // Buffer has no complete line — read the next chunk.
+                match stream.next().await {
+                    Some(Ok(bytes)) => {
+                        buffer.push_str(&String::from_utf8_lossy(&bytes));
+                    }
+                    Some(Err(e)) => {
+                        return Some((
+                            Err(ProviderError::Stream(format!("Stream read error: {e}"))),
+                            (stream, buffer),
+                        ));
+                    }
+                    None => {
+                        // Stream ended. Flush any trailing partial line.
+                        let remaining = buffer.trim().to_string();
+                        buffer.clear();
+                        if let Some(data) = remaining.strip_prefix("data: ") {
+                            if data != "[DONE]" && !data.is_empty() {
+                                return Some((Ok(data.to_string()), (stream, buffer)));
+                            }
+                        }
+                        return None;
+                    }
+                }
+            }
+        },
+    )
 }
 
 /// Generate a machine fingerprint for User-Agent (SHA-256 of hostname-user).
