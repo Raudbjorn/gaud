@@ -125,21 +125,15 @@ impl ProviderError {
 }
 
 // ---------------------------------------------------------------------------
-// TokenStorage trait (minimal interface for the oauth module)
+// TokenService trait
 // ---------------------------------------------------------------------------
 
-/// Minimal trait to retrieve OAuth access tokens for a given provider.
-///
-/// The concrete implementation lives in the `oauth` module; we only define the
-/// interface here so that provider implementations can depend on it without
-/// pulling in the full oauth crate.
-pub trait TokenStorage: Send + Sync {
+/// Unified interface for retrieving access tokens for LLM providers.
+#[async_trait::async_trait]
+pub trait TokenService: Send + Sync {
     /// Return a valid access token for the given provider, refreshing if
-    /// necessary. Returns `None` if the user is not authenticated.
-    fn get_access_token(
-        &self,
-        provider: &str,
-    ) -> impl std::future::Future<Output = Result<Option<String>, ProviderError>> + Send;
+    /// necessary.
+    async fn get_token(&self, provider: &str) -> Result<String, ProviderError>;
 }
 
 // ---------------------------------------------------------------------------

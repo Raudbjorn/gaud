@@ -249,7 +249,7 @@ If migrated:
 - **No PKCE**: Device code flow doesn't use PKCE
 - **Polling**: `client.exchange_device_access_token().request_async()` with retry loop
 
-### Kiro (Amazon Q / AWS CodeWhisperer) — Partial `oauth2` Crate Applicability
+### Kiro (Amazon Q / AWS CodeWhisperer) — Completed: Trait-Based Architecture (No `oauth2` Crate)
 
 Kiro uses **two distinct auth paths**, detected at startup based on whether credentials contain a `clientId`/`clientSecret`:
 
@@ -360,53 +360,51 @@ The kiro-gateway reference has resilient error handling that gaud should mirror:
 3. **On 403 from the API**: Force-refresh the token and retry the request once
 4. **Thread safety**: `asyncio.Lock` in Python → `RwLock` in gaud (already implemented)
 
-#### Current gaud implementation gaps
+#### Implementation status
 
-Comparing `providers/kiro.rs` against the kiro-gateway reference:
+The Kiro provider has been refactored from a monolithic `providers/kiro.rs` into a modular `providers/kiro/` directory using **strategy** and **repository** patterns. All features from the kiro-gateway reference are implemented:
 
-| Feature | kiro-gateway | gaud | Gap |
-|---------|-------------|------|-----|
-| KIRO_DESKTOP refresh | Yes | Yes | — |
-| AWS_SSO_OIDC refresh | Yes | No | Missing auth path |
-| Auth type detection | Yes | No | Always assumes Desktop |
-| SQLite credential source | Yes | No | Only file/env/config |
-| Social login tokens | Yes (`kirocli:social:token`) | No | Missing |
-| Persist refreshed tokens to file/SQLite | Yes | No | Tokens not written back |
-| Force-refresh on 403 | Yes | No | No retry-after-refresh |
-| Graceful degradation on refresh failure | Yes | No | Fails hard |
-| New refreshToken from response | Yes (persisted) | No | Ignored |
+| Feature | kiro-gateway | gaud | Status |
+|---------|-------------|------|--------|
+| KIRO_DESKTOP refresh | Yes | `KiroDesktopStrategy` | Done |
+| AWS_SSO_OIDC refresh | Yes | `AwsSsoOidcStrategy` | Done |
+| Auth type detection | Yes | `KiroTokenInfo::detect_auth_type()` | Done |
+| SQLite credential source | Yes | `SqliteStore` | Done |
+| JSON file credential source | Yes | `JsonFileStore` | Done |
+| Environment variable source | Yes | `EnvStore` | Done |
+| Social login tokens | Yes (`kirocli:social:token`) | Yes (SQLite key list) | Done |
+| Persist refreshed tokens to file/SQLite | Yes | `CredentialStore::save()` | Done |
+| Force-refresh on 403 | Yes | `KiroClient` retry logic | Done |
+| Graceful degradation on refresh failure | Yes | Uses cached token until expiry | Done |
+| New refreshToken from response | Yes (persisted) | Yes | Done |
+| Async-safe I/O | N/A (Python) | `spawn_blocking` for fs/SQLite | Done |
+| Enterprise device registration | Yes | `load_enterprise_device_registration()` | Done |
 
-#### `oauth2` crate migration path (if pursued)
+#### Why the `oauth2` crate was not used
 
-The AWS_SSO_OIDC path _could_ use the `oauth2` crate if a custom HTTP client adapter is written to handle the JSON/camelCase requirement:
+Both Kiro auth paths deviate too far from standard OAuth2 for the `oauth2` crate to add value:
 
-```rust
-/// Custom AsyncHttpClient that sends JSON with camelCase fields
-/// instead of form-encoded with snake_case.
-struct AwsOidcHttpClient {
-    inner: reqwest::Client,
-}
+1. **KIRO_DESKTOP**: Proprietary — no client ID, JSON body, camelCase fields, no standard error format
+2. **AWS_SSO_OIDC**: Semi-standard — but uses JSON body with camelCase fields (`grantType`, `clientId`) instead of form-encoded snake_case. A custom `AsyncHttpClient` adapter would be needed to rewrite content type and field names, which is more complexity than using reqwest directly.
 
-// Implement oauth2::AsyncHttpClient for AwsOidcHttpClient
-// - Intercept the form-encoded body
-// - Re-serialize as JSON with camelCase field names
-// - Set Content-Type: application/json
+The trait-based architecture (`AuthStrategy` + `CredentialStore`) provides the same decoupling benefits that `oauth2` crate types would offer, while correctly handling the proprietary protocol details.
+
+#### Architecture (trait-based decoupling)
+
+```
+src/providers/kiro/
+├── mod.rs          — KiroProvider (LlmProvider impl)
+├── auth.rs         — KiroAuthManager, KiroTokenProvider trait, AutoDetectProvider
+├── models.rs       — AuthType, CredentialSource, KiroTokenInfo, TokenUpdate
+├── strategies.rs   — AuthStrategy trait, KiroDesktopStrategy, AwsSsoOidcStrategy
+├── stores.rs       — CredentialStore trait, JsonFileStore, SqliteStore, EnvStore
+└── client.rs       — KiroClient HTTP transport, machine fingerprint
 ```
 
-However, this is significant ceremony for a refresh-only flow. The pragmatic recommendation:
-
-1. **KIRO_DESKTOP**: Keep as manual reqwest — too proprietary for `oauth2` crate
-2. **AWS_SSO_OIDC**: Keep as manual reqwest — the camelCase JSON deviation makes the `oauth2` crate more trouble than it's worth
-3. **Focus instead on**: Adding the missing features from the gap table above
-
-#### Patterns worth reusing from the Gemini migration
-
-Even without the `oauth2` crate, the `KiroAuthManager` should adopt:
-
-1. **SSRF-safe HTTP client**: `reqwest::Client::builder().redirect(Policy::none()).timeout(30s)` — currently uses `reqwest::Client::new()` with defaults
-2. **Error mapping consistency**: Map refresh failures to `OAuthError::TokenExpired` / `OAuthError::ExchangeFailed` if auth logic moves to `src/oauth/`
-3. **Wiremock testing**: Mock the refresh endpoint to test success, new-refresh-token, expired-token, 403-retry, and SQLite-reload paths
-4. **Force-refresh on 403**: The kiro-gateway retries API requests after a forced token refresh — gaud should do the same
+Key traits:
+- **`AuthStrategy`**: Strategy pattern for auth flows (`refresh()`, `can_handle()`)
+- **`CredentialStore`**: Repository pattern for credential persistence (`load()`, `save()`, `can_handle()`)
+- **`KiroTokenProvider`**: Token lifecycle abstraction (`get_access_token()`, `force_refresh()`)
 
 ## Testing Pattern
 

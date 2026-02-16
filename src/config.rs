@@ -285,6 +285,9 @@ pub struct CopilotProviderConfig {
 /// | `profile_arn`      | `GAUD_KIRO_PROFILE_ARN`    | AWS CodeWhisperer profile ARN (optional)         |
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct KiroProviderConfig {
+    /// Authentication method to use.
+    #[serde(default)]
+    pub auth_method: KiroAuthMethod,
     /// OAuth refresh token for obtaining access tokens.
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -300,10 +303,56 @@ pub struct KiroProviderConfig {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub profile_arn: Option<String>,
+    /// AWS profile name for SSO (optional).
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aws_profile: Option<String>,
+    /// Path to AWS SSO cache directory (optional).
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sso_cache_dir: Option<String>,
+    /// Path to Kiro CLI SQLite database (optional).
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kiro_db_path: Option<String>,
     /// Default model to use when none is specified.
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_model: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum KiroAuthMethod {
+    #[default]
+    Auto,
+    RefreshToken,
+    AwsSso,
+    KiroCli,
+}
+
+impl FromStr for KiroAuthMethod {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "auto" => Ok(Self::Auto),
+            "refresh_token" | "refreshtoken" => Ok(Self::RefreshToken),
+            "aws_sso" | "awssso" | "sso" => Ok(Self::AwsSso),
+            "kiro_cli" | "kirocli" | "cli" => Ok(Self::KiroCli),
+            _ => Err(format!("Unknown Kiro auth method: {s}")),
+        }
+    }
+}
+
+impl std::fmt::Display for KiroAuthMethod {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Auto => write!(f, "auto"),
+            Self::RefreshToken => write!(f, "refresh_token"),
+            Self::AwsSso => write!(f, "aws_sso"),
+            Self::KiroCli => write!(f, "kiro_cli"),
+        }
+    }
 }
 
 fn default_kiro_region() -> String {
@@ -311,14 +360,19 @@ fn default_kiro_region() -> String {
 }
 
 impl KiroProviderConfig {
-    /// Returns true if we have enough credentials to attempt authentication.
+    /// Returns true if we have enough configuration to attempt authentication.
     pub fn has_credentials(&self) -> bool {
-        self.refresh_token.is_some()
-            || self.credentials_file.is_some()
-            || std::env::var("GAUD_KIRO_REFRESH_TOKEN").is_ok()
-            || std::env::var("GAUD_KIRO_CREDS_FILE").is_ok()
-            // Deprecated: kept as fallback for users migrating from older configs.
-            || std::env::var("KIRO_REFRESH_TOKEN").is_ok()
+        match self.auth_method {
+            KiroAuthMethod::Auto => true, // Probes multiple sources
+            KiroAuthMethod::RefreshToken => {
+                self.refresh_token.is_some()
+                    || self.credentials_file.is_some()
+                    || std::env::var("GAUD_KIRO_REFRESH_TOKEN").is_ok()
+                    || std::env::var("GAUD_KIRO_CREDS_FILE").is_ok()
+            }
+            KiroAuthMethod::AwsSso => true, // Probes ~/.aws/sso/cache/
+            KiroAuthMethod::KiroCli => true, // Probes ~/.local/share/kiro-cli/
+        }
     }
 
     /// Resolve the effective refresh token (config value → env var → creds file).
@@ -921,6 +975,29 @@ impl Config {
         );
 
         // -- Providers --
+        if let Ok(val) = std::env::var("GAUD_KIRO_AUTH_METHOD") {
+            if let Ok(method) = val.parse() {
+                if let Some(ref mut kiro) = self.providers.kiro {
+                    kiro.auth_method = method;
+                    ov.record("providers.kiro.auth_method", "GAUD_KIRO_AUTH_METHOD");
+                }
+            }
+        }
+        if let Some(ref mut kiro) = self.providers.kiro {
+            if let Ok(val) = std::env::var("GAUD_KIRO_AWS_PROFILE") {
+                kiro.aws_profile = if val.is_empty() { None } else { Some(val) };
+                ov.record("providers.kiro.aws_profile", "GAUD_KIRO_AWS_PROFILE");
+            }
+            if let Ok(val) = std::env::var("GAUD_KIRO_SSO_CACHE") {
+                kiro.sso_cache_dir = if val.is_empty() { None } else { Some(val) };
+                ov.record("providers.kiro.sso_cache_dir", "GAUD_KIRO_SSO_CACHE");
+            }
+            if let Ok(val) = std::env::var("GAUD_KIRO_DB_PATH") {
+                kiro.kiro_db_path = if val.is_empty() { None } else { Some(val) };
+                ov.record("providers.kiro.kiro_db_path", "GAUD_KIRO_DB_PATH");
+            }
+        }
+
         if let Ok(val) = std::env::var("GAUD_PROVIDERS_ROUTING") {
             if let Ok(strategy) = val.parse() {
                 self.providers.routing_strategy = strategy;
@@ -1302,6 +1379,56 @@ impl Config {
                 "GAUD_LOG_CONTENT",
                 "bool",
             ),
+            // -- Kiro --
+            {
+                let mut e = se(
+                    "providers.kiro.auth_method",
+                    "Kiro",
+                    "Auth Method",
+                    serde_json::json!(self.providers.kiro.as_ref().map(|k| k.auth_method.to_string()).unwrap_or("auto".to_string())),
+                    "GAUD_KIRO_AUTH_METHOD",
+                    "select",
+                );
+                e.options = Some(vec![
+                    "auto".to_string(),
+                    "refresh_token".to_string(),
+                    "aws_sso".to_string(),
+                    "kiro_cli".to_string(),
+                ]);
+                e
+            },
+            se(
+                "providers.kiro.region",
+                "Kiro",
+                "AWS Region",
+                serde_json::json!(self.providers.kiro.as_ref().map(|k| k.region.as_str()).unwrap_or("us-east-1")),
+                "GAUD_KIRO_REGION",
+                "text",
+            ),
+            se(
+                "providers.kiro.aws_profile",
+                "Kiro",
+                "AWS Profile",
+                serde_json::json!(self.providers.kiro.as_ref().and_then(|k| k.aws_profile.as_deref()).unwrap_or("")),
+                "GAUD_KIRO_AWS_PROFILE",
+                "text",
+            ),
+            se(
+                "providers.kiro.sso_cache_dir",
+                "Kiro",
+                "SSO Cache Directory",
+                serde_json::json!(self.providers.kiro.as_ref().and_then(|k| k.sso_cache_dir.as_deref()).unwrap_or("")),
+                "GAUD_KIRO_SSO_CACHE",
+                "text",
+            ),
+            se(
+                "providers.kiro.kiro_db_path",
+                "Kiro",
+                "Kiro CLI DB Path",
+                serde_json::json!(self.providers.kiro.as_ref().and_then(|k| k.kiro_db_path.as_deref()).unwrap_or("")),
+                "GAUD_KIRO_DB_PATH",
+                "text",
+            ),
         ];
 
         // -- Cache --
@@ -1642,6 +1769,36 @@ impl Config {
             }
             "cache.skip_tool_requests" => {
                 self.cache.skip_tool_requests = value.as_bool().ok_or("Expected boolean")?;
+            }
+            "providers.kiro.auth_method" => {
+                let s = value.as_str().ok_or("Expected string")?;
+                if let Some(ref mut kiro) = self.providers.kiro {
+                    kiro.auth_method = s.parse().map_err(|e: String| e)?;
+                }
+            }
+            "providers.kiro.region" => {
+                let s = value.as_str().ok_or("Expected string")?;
+                if let Some(ref mut kiro) = self.providers.kiro {
+                    kiro.region = s.to_string();
+                }
+            }
+            "providers.kiro.aws_profile" => {
+                let s = value.as_str().ok_or("Expected string")?;
+                if let Some(ref mut kiro) = self.providers.kiro {
+                    kiro.aws_profile = if s.is_empty() { None } else { Some(s.to_string()) };
+                }
+            }
+            "providers.kiro.sso_cache_dir" => {
+                let s = value.as_str().ok_or("Expected string")?;
+                if let Some(ref mut kiro) = self.providers.kiro {
+                    kiro.sso_cache_dir = if s.is_empty() { None } else { Some(s.to_string()) };
+                }
+            }
+            "providers.kiro.kiro_db_path" => {
+                let s = value.as_str().ok_or("Expected string")?;
+                if let Some(ref mut kiro) = self.providers.kiro {
+                    kiro.kiro_db_path = if s.is_empty() { None } else { Some(s.to_string()) };
+                }
             }
             _ => return Err(format!("Unknown setting key: {key}")),
         }
@@ -2015,6 +2172,13 @@ json = true
 
     #[test]
     fn test_config_save_and_reload() {
+        // Clear env vars that other tests may have leaked (tests run in parallel).
+        unsafe {
+            std::env::remove_var("GAUD_SERVER_HOST");
+            std::env::remove_var("GAUD_SERVER_PORT");
+            std::env::remove_var("GAUD_AUTH_ENABLED");
+        }
+
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("save_test.toml");
 

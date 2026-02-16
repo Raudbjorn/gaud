@@ -15,7 +15,7 @@ use crate::providers::transform::util::{detect_context_window_error, parse_rate_
 use crate::providers::transform::{ClaudeTransformer, SseEvent, SseParser};
 use crate::providers::transformer::{ProviderResponseMeta, ProviderTransformer};
 use crate::providers::types::*;
-use crate::providers::{LlmProvider, ProviderError, TokenStorage};
+use crate::providers::{LlmProvider, ProviderError, TokenService};
 
 const API_BASE: &str = "https://api.anthropic.com/v1";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
@@ -26,14 +26,14 @@ const SUPPORTED_MODELS: &[&str] = &[
 ];
 
 /// LLM provider that communicates with the Anthropic Messages API.
-pub struct ClaudeProvider<T: TokenStorage> {
+pub struct ClaudeProvider {
     http: Client,
-    tokens: std::sync::Arc<T>,
+    tokens: std::sync::Arc<dyn TokenService>,
 }
 
-impl<T: TokenStorage + 'static> ClaudeProvider<T> {
-    /// Create a new Claude provider backed by the given token storage.
-    pub fn new(tokens: std::sync::Arc<T>) -> Self {
+impl ClaudeProvider {
+    /// Create a new Claude provider backed by the given token service.
+    pub fn new(tokens: std::sync::Arc<dyn TokenService>) -> Self {
         Self {
             http: Client::new(),
             tokens,
@@ -42,16 +42,11 @@ impl<T: TokenStorage + 'static> ClaudeProvider<T> {
 
     /// Retrieve an access token or return an error.
     async fn get_token(&self) -> Result<String, ProviderError> {
-        self.tokens
-            .get_access_token("claude")
-            .await?
-            .ok_or_else(|| ProviderError::NoToken {
-                provider: "claude".to_string(),
-            })
+        self.tokens.get_token("claude").await
     }
 }
 
-impl<T: TokenStorage + 'static> LlmProvider for ClaudeProvider<T> {
+impl LlmProvider for ClaudeProvider {
     fn id(&self) -> &str {
         "claude"
     }
@@ -276,11 +271,11 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    struct MockTokenStorage {
+    struct MockTokenService {
         token: Option<String>,
     }
 
-    impl MockTokenStorage {
+    impl MockTokenService {
         fn with_token(token: &str) -> Self {
             Self {
                 token: Some(token.into()),
@@ -292,22 +287,25 @@ mod tests {
         }
     }
 
-    impl TokenStorage for MockTokenStorage {
-        async fn get_access_token(&self, _provider: &str) -> Result<Option<String>, ProviderError> {
-            Ok(self.token.clone())
+    #[async_trait::async_trait]
+    impl TokenService for MockTokenService {
+        async fn get_token(&self, _provider: &str) -> Result<String, ProviderError> {
+            self.token.clone().ok_or_else(|| ProviderError::NoToken {
+                provider: "claude".to_string(),
+            })
         }
     }
 
     #[test]
     fn test_id_and_name() {
-        let p = ClaudeProvider::new(Arc::new(MockTokenStorage::empty()));
+        let p = ClaudeProvider::new(Arc::new(MockTokenService::empty()));
         assert_eq!(p.id(), "claude");
         assert_eq!(p.name(), "Claude (Anthropic)");
     }
 
     #[test]
     fn test_models_list() {
-        let p = ClaudeProvider::new(Arc::new(MockTokenStorage::empty()));
+        let p = ClaudeProvider::new(Arc::new(MockTokenService::empty()));
         let models = p.models();
         assert!(models.contains(&"claude-sonnet-4-20250514".to_string()));
         assert!(models.contains(&"claude-haiku-3-5-20241022".to_string()));
@@ -316,26 +314,26 @@ mod tests {
 
     #[test]
     fn test_supports_model() {
-        let p = ClaudeProvider::new(Arc::new(MockTokenStorage::empty()));
+        let p = ClaudeProvider::new(Arc::new(MockTokenService::empty()));
         assert!(p.supports_model("claude-sonnet-4-20250514"));
         assert!(!p.supports_model("gpt-4o"));
     }
 
     #[tokio::test]
     async fn test_health_check_no_token() {
-        let p = ClaudeProvider::new(Arc::new(MockTokenStorage::empty()));
+        let p = ClaudeProvider::new(Arc::new(MockTokenService::empty()));
         assert!(!p.health_check().await);
     }
 
     #[tokio::test]
     async fn test_health_check_with_token() {
-        let p = ClaudeProvider::new(Arc::new(MockTokenStorage::with_token("test-token")));
+        let p = ClaudeProvider::new(Arc::new(MockTokenService::with_token("test-token")));
         assert!(p.health_check().await);
     }
 
     #[tokio::test]
     async fn test_chat_no_token() {
-        let p = ClaudeProvider::new(Arc::new(MockTokenStorage::empty()));
+        let p = ClaudeProvider::new(Arc::new(MockTokenService::empty()));
         let req = ChatRequest {
             model: "claude-sonnet-4-20250514".into(),
             messages: vec![ChatMessage {
@@ -360,7 +358,7 @@ mod tests {
 
     #[test]
     fn test_pricing_returns_claude_models() {
-        let p = ClaudeProvider::new(Arc::new(MockTokenStorage::empty()));
+        let p = ClaudeProvider::new(Arc::new(MockTokenService::empty()));
         let pricing = p.pricing();
         assert!(!pricing.is_empty());
         for mp in &pricing {

@@ -62,13 +62,13 @@ pub fn exact_hash(request: &ChatRequest) -> String {
     hasher.update(request.model.as_bytes());
     hasher.update(b"|");
 
-    // Messages: normalize all content to plain text, trim whitespace
+    // Messages: normalize all content to plain text, lowercase, and collapse whitespace
     for msg in &request.messages {
         hasher.update(format!("{:?}", msg.role).as_bytes());
         hasher.update(b":");
         if let Some(ref content) = msg.content {
             let text = flatten_content(content);
-            hasher.update(text.trim().as_bytes());
+            hasher.update(normalize_text(&text).as_bytes());
         }
         hasher.update(b";");
     }
@@ -114,7 +114,7 @@ pub fn system_prompt_hash(request: &ChatRequest) -> String {
     for msg in &request.messages {
         if matches!(msg.role, MessageRole::System) {
             if let Some(ref content) = msg.content {
-                hasher.update(flatten_content(content).trim().as_bytes());
+                hasher.update(normalize_text(&flatten_content(content)).as_bytes());
                 hasher.update(b";");
             }
         }
@@ -188,10 +188,9 @@ pub fn semantic_text(request: &ChatRequest) -> String {
 
 /// Flatten `MessageContent` (Text or Parts) into a single plain-text string.
 ///
-/// **Trimming contract:** This function does NOT trim whitespace. Callers that
-/// need whitespace-normalized strings (e.g. `exact_hash`, `system_prompt_hash`)
-/// must call `.trim()` on the result. `semantic_text` intentionally preserves
-/// spacing because embeddings can be sensitive to whitespace layout.
+/// **Trimming contract:** This function does NOT trim whitespace or lowercase.
+/// `semantic_text` intentionally preserves spacing because embeddings can be
+/// sensitive to whitespace layout.
 pub(crate) fn flatten_content(content: &MessageContent) -> String {
     match content {
         MessageContent::Text(s) => s.clone(),
@@ -204,6 +203,14 @@ pub(crate) fn flatten_content(content: &MessageContent) -> String {
             .collect::<Vec<_>>()
             .join(" "),
     }
+}
+
+/// Normalize text for hashing: lowercase and collapse internal whitespace.
+fn normalize_text(text: &str) -> String {
+    text.to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 // ---------------------------------------------------------------------------
 // Tests

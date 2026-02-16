@@ -56,6 +56,7 @@ use tracing::{debug, info, warn};
 
 use crate::config::{Config, StorageBackend};
 use crate::db::Database;
+use crate::providers::{ProviderError, TokenService};
 
 // =============================================================================
 // TokenProvider Trait
@@ -71,6 +72,17 @@ pub trait TokenProvider: Send + Sync {
     ///
     /// The implementation should handle refreshing if necessary.
     async fn get_token(&self, provider: &str) -> Result<String, OAuthError>;
+}
+
+impl From<OAuthError> for ProviderError {
+    fn from(err: OAuthError) -> Self {
+        match err {
+            OAuthError::TokenNotFound(p) => ProviderError::NoToken { provider: p },
+            OAuthError::TokenExpired(p) => ProviderError::NoToken { provider: p },
+            OAuthError::Http(e) => ProviderError::Http(e),
+            other => ProviderError::Other(other.to_string()),
+        }
+    }
 }
 
 // =============================================================================
@@ -604,6 +616,13 @@ impl OAuthManager {
         self.storage.remove(provider)?;
         info!(provider, "Token removed");
         Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl TokenService for OAuthManager {
+    async fn get_token(&self, provider: &str) -> Result<String, ProviderError> {
+        self.get_valid_token(provider).await.map_err(Into::into)
     }
 }
 

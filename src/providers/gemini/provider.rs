@@ -48,9 +48,9 @@ pub struct GeminiProvider {
 }
 
 impl GeminiProvider {
-    /// Create a new Gemini provider backed by the given token provider.
-    pub fn new(token_provider: std::sync::Arc<dyn crate::oauth::TokenProvider>) -> Self {
-        let client = CloudCodeClient::new(token_provider);
+    /// Create a new Gemini provider backed by the given token service.
+    pub fn new(token_service: std::sync::Arc<dyn crate::providers::TokenService>) -> Self {
+        let client = CloudCodeClient::new(token_service);
         Self { client }
     }
 
@@ -458,14 +458,14 @@ impl LlmProvider for GeminiProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::oauth::{OAuthError, TokenProvider};
+    use crate::providers::{ProviderError, TokenService};
     use std::sync::Arc;
 
     struct MockTokenProvider;
 
     #[async_trait::async_trait]
-    impl TokenProvider for MockTokenProvider {
-        async fn get_token(&self, _provider: &str) -> Result<String, OAuthError> {
+    impl TokenService for MockTokenProvider {
+        async fn get_token(&self, _provider: &str) -> Result<String, ProviderError> {
             Ok("mock_token".to_string())
         }
     }
