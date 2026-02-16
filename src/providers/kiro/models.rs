@@ -44,6 +44,11 @@ impl std::fmt::Display for CredentialSource {
 pub struct KiroTokenInfo {
     pub access_token: String,
     pub refresh_token: String,
+    /// Seconds since the Unix epoch (i64).
+    ///
+    /// Compared against `chrono::Utc::now().timestamp()` in
+    /// [`needs_refresh()`](Self::needs_refresh), so callers must store
+    /// seconds — not milliseconds.
     pub expires_at: i64,
     pub region: String,
     pub profile_arn: Option<String>,
@@ -107,10 +112,21 @@ impl KiroTokenInfo {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct TokenUpdate {
     pub access_token: String,
     pub refresh_token: Option<String>,
     pub expires_at: i64,
     pub profile_arn: Option<String>,
+}
+
+impl std::fmt::Debug for TokenUpdate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TokenUpdate")
+            .field("access_token", &"[REDACTED]")
+            .field("refresh_token", &self.refresh_token.as_ref().map(|_| "[REDACTED]"))
+            .field("expires_at", &self.expires_at)
+            .field("profile_arn", &self.profile_arn)
+            .finish()
+    }
 }

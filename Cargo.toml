@@ -284,8 +284,8 @@ pin-project-lite.workspace = true
 [dev-dependencies]
 tempfile = "3"
 proptest = "1.4"
-serial_test = "3.3"
-wiremock = "0.6"
+serial_test = { workspace = true }
+wiremock = { workspace = true }
 
 
 [features]
