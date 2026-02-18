@@ -63,18 +63,50 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Global caching support
-setup_global_cache() {
+# Dev-mode build optimizations: fast compile over fast runtime
+# Called for dev/check/test/lint - NOT for build/build --release
+setup_dev_optimizations() {
+    print_section "Dev Build Optimizations"
+
+    # Ensure sccache is wrapping rustc
     if command_exists sccache; then
         export RUSTC_WRAPPER=sccache
-        print_info "Global caching enabled via sccache"
+        sccache --start-server 2>/dev/null || true
+        local cache_loc
+        cache_loc=$(sccache --show-stats 2>&1 | grep 'Cache location' | sed 's/.*Cache location\s*//' | xargs) || cache_loc="unknown"
+        print_success "sccache: $cache_loc"
     else
-        print_warning "sccache not found - global caching disabled"
+        print_warning "sccache not found - compilation caching disabled"
+    fi
+
+    # Strip opt-level from RUSTFLAGS so cargo profiles control it
+    # (dev profile = O0 for fastest compile; release profile = O3)
+    if [[ "${RUSTFLAGS:-}" == *"opt-level"* ]]; then
+        RUSTFLAGS=$(echo "$RUSTFLAGS" | sed 's/-C opt-level=[0-9sz]*//g' | tr -s ' ')
+        export RUSTFLAGS
+        print_info "Stripped opt-level from RUSTFLAGS (dev=O0 for fast compile)"
+    fi
+
+    # Verify mold linker; strip -fuse-ld=mold from RUSTFLAGS if missing
+    if command_exists mold; then
+        print_success "Linker: mold $(mold --version 2>/dev/null | cut -d' ' -f2)"
+    else
+        print_warning "mold linker not found - falling back to default linker"
+        if [[ "${RUSTFLAGS:-}" == *"fuse-ld=mold"* ]]; then
+            RUSTFLAGS=$(echo "$RUSTFLAGS" | sed 's/-C link-arg=-fuse-ld=mold//g' | tr -s ' ')
+            export RUSTFLAGS
+        fi
+        if [[ "${LDFLAGS:-}" == *"fuse-ld=mold"* ]]; then
+            LDFLAGS=$(echo "$LDFLAGS" | sed 's/-fuse-ld=mold//g' | tr -s ' ')
+            export LDFLAGS
+        fi
+    fi
+
+    if [ "$VERBOSE" = true ]; then
+        print_verbose "RUSTC_WRAPPER=${RUSTC_WRAPPER:-unset}"
+        print_verbose "RUSTFLAGS=${RUSTFLAGS:-unset}"
     fi
 }
-
-# Initialize global cache
-setup_global_cache
 
 interrupt_handler() {
     echo ""
@@ -971,6 +1003,7 @@ case $COMMAND in
         print_timing_summary
         ;;
     dev)
+        setup_dev_optimizations
         if [ "$SKIP_DEPS_CHECK" != true ]; then
             if ! command_exists cargo; then
                 timed_run "Rust environment" check_rust_env
@@ -990,10 +1023,12 @@ case $COMMAND in
         print_timing_summary
         ;;
     test)
+        setup_dev_optimizations
         timed_run "Tests" run_tests
         print_timing_summary
         ;;
     check)
+        setup_dev_optimizations
         timed_run "Check" run_check
         print_timing_summary
         ;;
@@ -1001,6 +1036,7 @@ case $COMMAND in
         clean_artifacts
         ;;
     lint)
+        setup_dev_optimizations
         timed_run "Lint" run_lint
         print_timing_summary
         ;;
